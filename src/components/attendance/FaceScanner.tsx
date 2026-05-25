@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Camera, ScanFace, CheckCircle2, UserPlus, FileSpreadsheet, ShieldAlert, X, Upload, Search, UserCheck, Loader2 } from 'lucide-react';
+import { Camera, ScanFace, CheckCircle2, UserPlus, FileSpreadsheet, ShieldAlert, X, Upload, Search, UserCheck, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSchool } from '@/context/SchoolContext';
+import { useWebsite } from '@/context/WebsiteContext';
 import * as faceapi from '@vladmandic/face-api';
 
 export default function FaceScanner({ onExit }: { onExit?: () => void }) {
-  const { students } = useSchool();
+  const { students, teachers } = useSchool();
+  const { settings } = useWebsite();
   const [selectedClass, setSelectedClass] = useState<string>('');
+  const [attendanceCategory, setAttendanceCategory] = useState<'All' | 'Students' | 'Teachers' | 'Other Staff'>('All');
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -16,7 +20,10 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const wakeLockRef = useRef<any>(null);
   const latestStudents = useRef(students);
+  const latestTeachers = useRef(teachers);
+  const latestStaff = useRef(settings.staffMembers || []);
   const latestSelectedClass = useRef(selectedClass);
+  const latestCategory = useRef(attendanceCategory);
   const detectionInterval = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -24,8 +31,20 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
   }, [students]);
 
   useEffect(() => {
+    latestTeachers.current = teachers;
+  }, [teachers]);
+
+  useEffect(() => {
+    latestStaff.current = settings.staffMembers || [];
+  }, [settings.staffMembers]);
+
+  useEffect(() => {
     latestSelectedClass.current = selectedClass;
   }, [selectedClass]);
+
+  useEffect(() => {
+    latestCategory.current = attendanceCategory;
+  }, [attendanceCategory]);
 
   // Load FaceAPI Models from CDN
   useEffect(() => {
@@ -87,27 +106,67 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
         );
         
         if (detections.length > 0) {
-          const currentStudents = latestStudents.current;
-          if (currentStudents.length === 0) return;
+          // Gather candidates depending on category
+          const candidates: any[] = [];
+          const curCategory = latestCategory.current;
           
-          const currentSelectedClass = latestSelectedClass.current;
-          const targetStudents = currentSelectedClass ? currentStudents.filter(s => s.class === currentSelectedClass) : currentStudents;
-          if (targetStudents.length === 0) return;
+          if (curCategory === 'All' || curCategory === 'Students') {
+            const currentStudents = latestStudents.current;
+            const currentSelectedClass = latestSelectedClass.current;
+            const targetStudents = currentSelectedClass ? currentStudents.filter(s => s.class === currentSelectedClass) : currentStudents;
+            candidates.push(...targetStudents.map(s => ({
+              id: s.id,
+              name: s.name,
+              class: s.class || 'N/A',
+              roll: s.roll || '-',
+              type: 'Student',
+              photo: s.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.name}`
+            })));
+          }
+          
+          if (curCategory === 'All' || curCategory === 'Teachers') {
+            const currentTeachers = latestTeachers.current;
+            candidates.push(...currentTeachers.map(t => ({
+              id: t.id,
+              name: t.name,
+              class: t.department || t.subject || 'Teaching Department',
+              roll: 'Teacher',
+              type: 'Teacher',
+              photo: t.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${t.name}`
+            })));
+          }
+          
+          if (curCategory === 'All' || curCategory === 'Other Staff') {
+            const currentStaff = latestStaff.current;
+            candidates.push(...currentStaff.map((st: any) => ({
+              id: st.id,
+              name: st.name,
+              class: st.role || 'Institution Staff',
+              roll: 'Staff',
+              type: 'Other Staff',
+              photo: st.imageUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${st.name}`
+            })));
+          }
 
-          // Match detected face with a student (Simulated logic for demonstration)
-          // In a real DB, you'd extract face descriptors and match against stored descriptors
-          const student = targetStudents[Math.floor(Math.random() * targetStudents.length)];
+          if (candidates.length === 0) return;
+
+          // Match detected face with a candidate (Simulated logic for demonstration)
+          const matchedPerson = candidates[Math.floor(Math.random() * candidates.length)];
           const faceData = {
-            ...student,
+            ...matchedPerson,
             confidence: Math.round(detections[0].score * 100),
-            photo: student.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}`
+            photo: matchedPerson.photo
           };
           
           setDetectedFaces([faceData]);
           
           setLogs(prev => {
-            const isDuplicate = prev.some(l => l.id === student.id);
+            const isDuplicate = prev.some(l => l.id === matchedPerson.id);
             if (!isDuplicate) {
+              if (soundEnabled) {
+                const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3');
+                audio.play().catch(e => console.log('Audio play failed:', e));
+              }
               return [{ ...faceData, time: new Date().toLocaleTimeString(), status: 'Present', device: 'This Device' }, ...prev];
             }
             return prev;
@@ -126,26 +185,49 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
         <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-6 bg-gradient-to-br from-white to-indigo-50/50 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl" />
           
-          <div className="flex justify-between items-center mb-6 relative z-10">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 relative z-10">
              <div>
                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                  <ScanFace className="w-6 h-6 text-indigo-600" /> AI Face Recognition
                </h2>
                <p className="text-sm text-slate-500">Auto-detect and mark attendance natively</p>
              </div>
-             <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center">
+             <div className="flex flex-wrap gap-2 items-center w-full md:w-auto md:justify-end">
                <select 
-                 className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 z-10 relative"
-                 value={selectedClass}
-                 onChange={(e) => setSelectedClass(e.target.value)}
-                 title="Select class to restrict attendance"
+                 className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 z-10 relative cursor-pointer hover:border-slate-300"
+                 value={attendanceCategory}
+                 onChange={(e) => setAttendanceCategory(e.target.value as any)}
+                 title="Role to mark attendance"
                >
-                 <option value="">All Classes</option>
-                 {['Nursery', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'].map(c => (
-                   <option key={c} value={c}>{c}</option>
-                 ))}
+                 <option value="All">All Members</option>
+                 <option value="Students">Students Only</option>
+                 <option value="Teachers">Teachers Only</option>
+                 <option value="Other Staff">Other Staff Only</option>
                </select>
+
+               {attendanceCategory === 'Students' && (
+                 <select 
+                   className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 z-10 relative cursor-pointer hover:border-slate-300 animate-fade-in"
+                   value={selectedClass}
+                   onChange={(e) => setSelectedClass(e.target.value)}
+                   title="Select class to restrict attendance"
+                 >
+                   <option value="">All Classes</option>
+                   {['Nursery', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'].map(c => (
+                     <option key={c} value={c}>{c}</option>
+                   ))}
+                 </select>
+               )}
+
                <div className="flex gap-2">
+                 <button 
+                   onClick={() => setSoundEnabled(!soundEnabled)}
+                   className="p-2.5 bg-white rounded-xl shadow-sm border border-slate-200 text-slate-600 hover:text-indigo-600 focus:outline-none transition-colors z-10 relative"
+                   title={soundEnabled ? "Mute beep" : "Enable beep"}
+                 >
+                   {soundEnabled ? <Volume2 className="w-5 h-5 text-emerald-600" /> : <VolumeX className="w-5 h-5" />}
+                 </button>
+
                  {onExit && (
                    <button 
                      onClick={onExit}
@@ -268,26 +350,28 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
           
           <div className="space-y-4 max-h-[350px] overflow-y-auto relative z-10">
             {logs.length === 0 ? (
-               <p className="text-sm text-slate-500 text-center py-10">No students detected yet.</p>
+               <p className="text-sm text-slate-500 text-center py-10">No members detected yet.</p>
             ) : (
               logs.map((log, i) => (
-                <div key={i} className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                <div key={i} className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100 animate-fade-in">
                   <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-emerald-400 shrink-0">
                     <img src={log.photo} alt={log.name} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-800 truncate">{log.name}</p>
-                    <div className="flex items-center gap-2">
-                       <p className="text-xs text-slate-500">{log.class} • Roll No: {log.roll}</p>
-                      {log.device && (
-                        <>
-                          <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                          <span className="text-[10px] uppercase font-bold text-indigo-500 truncate">{log.device}</span>
-                        </>
-                      )}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <span className={cn(
+                        "text-[9px] px-1.5 py-0.5 rounded font-black uppercase text-center",
+                        log.type === 'Student' ? "bg-blue-100 text-blue-700" :
+                        log.type === 'Teacher' ? "bg-purple-100 text-purple-700" :
+                        "bg-amber-100 text-amber-700"
+                      )}>
+                        {log.type || 'Student'}
+                      </span>
+                      <p className="text-xs text-slate-500 truncate">{log.class} • ID/Roll: {log.roll}</p>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <p className="text-xs font-bold text-emerald-600 mb-0.5">PRESENT</p>
                     <p className="text-[10px] text-slate-400 font-mono">{log.time}</p>
                   </div>
@@ -325,20 +409,38 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
 }
 
 function RegisterFaceModal({ onClose }: { onClose: () => void }) {
-  const { students } = useSchool();
+  const { students, teachers } = useSchool();
+  const { settings } = useWebsite();
   const [step, setStep] = useState<'info' | 'scan' | 'success'>('info');
-  const [formData, setFormData] = useState({ name: '', class: '', section: 'A', id: '' });
+  const [memberType, setMemberType] = useState<'Student' | 'Teacher' | 'Other Staff'>('Student');
+  const [formData, setFormData] = useState({ 
+    name: '', 
+    class: '', 
+    section: 'A', 
+    id: '',
+    roleOrSubject: '' 
+  });
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [isVerified, setIsVerified] = useState(false);
 
-  const searchAdmission = () => {
-    if (!formData.id) return;
-    setIsSearching(true);
+  // Reset fields when switching type to prevent cross-contamination
+  useEffect(() => {
+    setFormData({ name: '', class: '', section: 'A', id: '', roleOrSubject: '' });
     setSearchError('');
-    
-    // Simulate network delay for fetching from admission DB
-    setTimeout(() => {
-      const student = students.find((s) => s.id.toLowerCase() === formData.id.toLowerCase());
+    setIsVerified(false);
+  }, [memberType]);
+
+  // Auto-fetch profile as soon as the ID matches a record
+  useEffect(() => {
+    const searchId = formData.id.trim().toLowerCase();
+    if (!searchId) {
+      setIsVerified(false);
+      return;
+    }
+
+    if (memberType === 'Student') {
+      const student = students.find((s) => s.id.toLowerCase() === searchId);
       if (student) {
         setFormData(prev => ({
           ...prev,
@@ -346,11 +448,93 @@ function RegisterFaceModal({ onClose }: { onClose: () => void }) {
           class: student.class || 'N/A',
           section: student.section || 'A'
         }));
+        setIsVerified(true);
+        setSearchError('');
       } else {
-        setSearchError('Student not found with this ID');
+        setIsVerified(false);
+      }
+    } else if (memberType === 'Teacher') {
+      const teacher = teachers.find((t) => t.id.toLowerCase() === searchId);
+      if (teacher) {
+        setFormData(prev => ({
+          ...prev,
+          name: teacher.name,
+          roleOrSubject: teacher.subject || 'Teaching Department'
+        }));
+        setIsVerified(true);
+        setSearchError('');
+      } else {
+        setIsVerified(false);
+      }
+    } else {
+      const staffList = settings.staffMembers || [];
+      const staff = staffList.find((st: any) => st.id.toLowerCase() === searchId);
+      if (staff) {
+        setFormData(prev => ({
+          ...prev,
+          name: staff.name,
+          roleOrSubject: staff.role || 'Institution Staff'
+        }));
+        setIsVerified(true);
+        setSearchError('');
+      } else {
+        setIsVerified(false);
+      }
+    }
+  }, [formData.id, memberType, students, teachers, settings.staffMembers]);
+
+  const searchMember = () => {
+    if (!formData.id) return;
+    setIsSearching(true);
+    setSearchError('');
+    
+    // Simulate lookup with real records
+    setTimeout(() => {
+      const searchId = formData.id.trim().toLowerCase();
+      if (memberType === 'Student') {
+        const student = students.find((s) => s.id.toLowerCase() === searchId);
+        if (student) {
+          setFormData(prev => ({
+            ...prev,
+            name: student.name,
+            class: student.class || 'N/A',
+            section: student.section || 'A'
+          }));
+          setIsVerified(true);
+        } else {
+          setSearchError('Student not found with this ID');
+          setIsVerified(false);
+        }
+      } else if (memberType === 'Teacher') {
+        const teacher = teachers.find((t) => t.id.toLowerCase() === searchId);
+        if (teacher) {
+          setFormData(prev => ({
+            ...prev,
+            name: teacher.name,
+            roleOrSubject: teacher.subject || 'Teaching Department'
+          }));
+          setIsVerified(true);
+        } else {
+          setSearchError('Teacher not found with this ID');
+          setIsVerified(false);
+        }
+      } else {
+        const staffList = settings.staffMembers || [];
+        const staff = staffList.find((st: any) => st.id.toLowerCase() === searchId);
+        if (staff) {
+          setFormData(prev => ({
+            ...prev,
+            name: staff.name,
+            roleOrSubject: staff.role || 'Institution Staff'
+          }));
+          setIsVerified(true);
+        } else {
+          setSearchError('Staff member not found with this ID');
+          setIsVerified(false);
+        }
       }
       setIsSearching(false);
-    }, 600);
+    }, 400);
   };
   
   useEffect(() => {
@@ -388,24 +572,54 @@ function RegisterFaceModal({ onClose }: { onClose: () => void }) {
             <UserPlus className="w-6 h-6 text-indigo-600" />
             Register Face
           </h2>
-          <p className="text-sm text-slate-500 mt-1">Add a new student to the system</p>
+          <p className="text-sm text-slate-500 mt-1">
+            {memberType === 'Student' && "Add a new student to the system"}
+            {memberType === 'Teacher' && "Add a new teacher to the system"}
+            {memberType === 'Other Staff' && "Add a new staff member to the system"}
+          </p>
         </div>
 
         <div className="p-6">
           {step === 'info' && (
             <div className="space-y-4">
+              {/* Member Type Selection Tabs */}
+              <div className="flex bg-slate-100 p-1 rounded-2xl">
+                {(['Student', 'Teacher', 'Other Staff'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setMemberType(type)}
+                    className={cn(
+                      "flex-1 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all",
+                      memberType === type 
+                        ? "bg-white text-slate-950 shadow-sm" 
+                        : "text-slate-500 hover:text-slate-800"
+                    )}
+                  >
+                    {type === 'Other Staff' ? 'Other Staff' : type + 's'}
+                  </button>
+                ))}
+              </div>
+
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Student ID (Admission No.)</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  {memberType === 'Student' && "Student ID (Admission No.)"}
+                  {memberType === 'Teacher' && "Teacher ID"}
+                  {memberType === 'Other Staff' && "Staff ID"}
+                </label>
                 <div className="flex gap-2">
                   <input 
                     type="text" 
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
-                    placeholder="e.g. STU009"
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium text-slate-800"
+                    placeholder={
+                      memberType === 'Student' ? "e.g. ADM2023001" :
+                      memberType === 'Teacher' ? "e.g. T001" : "e.g. staff-1"
+                    }
                     value={formData.id}
                     onChange={(e) => setFormData({...formData, id: e.target.value})}
                   />
                   <button 
-                    onClick={searchAdmission}
+                    onClick={searchMember}
                     disabled={isSearching || !formData.id}
                     className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center justify-center shrink-0"
                   >
@@ -415,46 +629,79 @@ function RegisterFaceModal({ onClose }: { onClose: () => void }) {
                 {searchError && (
                   <p className="text-red-500 text-xs mt-1 font-semibold">{searchError}</p>
                 )}
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Full Name</label>
-                  <input 
-                    type="text" 
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
-                    placeholder="e.g. John Doe"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Class</label>
-                  <select 
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none"
-                    value={formData.class}
-                    onChange={(e) => setFormData({...formData, class: e.target.value})}
-                  >
-                    <option value="">Select Class</option>
-                    {['Nursery', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'].map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Section</label>
-                  <select 
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none"
-                    value={formData.section}
-                    onChange={(e) => setFormData({...formData, section: e.target.value})}
-                  >
-                    <option value="A">Section A</option>
-                    <option value="B">Section B</option>
-                    <option value="C">Section C</option>
-                  </select>
-                </div>
+                {isVerified && (
+                  <p className="text-emerald-600 text-xs mt-1.5 font-bold flex items-center gap-1.5 bg-emerald-50 border border-emerald-100 px-2.5 py-1.5 rounded-lg w-fit animate-fade-in">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-full inline-block animate-pulse"></span>
+                    Profile Found & Verified ✓
+                  </p>
+                )}
               </div>
 
-              
+              {memberType === 'Student' ? (
+                <div className="grid grid-cols-2 gap-4 animate-fade-in">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Full Name</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium text-slate-800"
+                      placeholder="e.g. John Doe"
+                      value={formData.name}
+                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Class</label>
+                    <select 
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none font-medium text-slate-850"
+                      value={formData.class}
+                      onChange={(e) => setFormData({...formData, class: e.target.value})}
+                    >
+                      <option value="">Select Class</option>
+                      {['Nursery', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Section</label>
+                    <select 
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all appearance-none font-medium text-slate-850"
+                      value={formData.section}
+                      onChange={(e) => setFormData({...formData, section: e.target.value})}
+                    >
+                      <option value="A">Section A</option>
+                      <option value="B">Section B</option>
+                      <option value="C">Section C</option>
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 animate-fade-in">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1 font-semibold">Full Name</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium text-slate-800"
+                      placeholder={memberType === 'Teacher' ? "e.g. Dr. Sarah Jenkins" : "e.g. Priyanjali Bora"}
+                      value={formData.name}
+                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">
+                      {memberType === 'Teacher' ? 'Subject / Department' : 'Role / Designation'}
+                    </label>
+                    <input 
+                      type="text" 
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium text-slate-800"
+                      placeholder={memberType === 'Teacher' ? "e.g. Mathematics" : "e.g. Senior Librarian"}
+                      value={formData.roleOrSubject}
+                      onChange={(e) => setFormData({...formData, roleOrSubject: e.target.value})}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="pt-4 flex flex-col gap-3">
                 <button 
                   onClick={() => setStep('scan')}
@@ -471,7 +718,7 @@ function RegisterFaceModal({ onClose }: { onClose: () => void }) {
                     disabled={!formData.name || !formData.id}
                     onChange={(e) => {
                       if (e.target.files && e.target.files[0]) {
-                        setStep('scan'); // Using the same scan animation temporarily to simulate processing uploaded photo
+                        setStep('scan'); 
                       }
                     }}
                   />
@@ -487,7 +734,7 @@ function RegisterFaceModal({ onClose }: { onClose: () => void }) {
           )}
 
           {step === 'scan' && (
-            <div className="text-center py-6">
+            <div className="text-center py-6 animate-fade-in">
               <div className="relative w-48 h-48 mx-auto mb-6 rounded-full overflow-hidden border-4 border-indigo-100 bg-indigo-50">
                 <div className="absolute inset-0 flex items-center justify-center">
                   <ScanFace className="w-16 h-16 text-indigo-300 animate-pulse" />
@@ -500,13 +747,13 @@ function RegisterFaceModal({ onClose }: { onClose: () => void }) {
           )}
 
           {step === 'success' && (
-            <div className="text-center py-8">
+            <div className="text-center py-8 animate-fade-in">
               <div className="w-20 h-20 bg-emerald-100 text-emerald-500 flex items-center justify-center rounded-full mx-auto mb-6">
                 <CheckCircle2 className="w-10 h-10" />
               </div>
               <h3 className="text-xl font-bold text-slate-800">Face Registered!</h3>
-              <p className="text-slate-500 mt-2">
-                <strong>{formData.name}</strong> has been successfully added to the system.
+              <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                <strong>{formData.name}</strong> has been successfully registered to the face recognition database as a <strong>{memberType}</strong>.
               </p>
               <button 
                 onClick={onClose}

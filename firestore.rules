@@ -1,5 +1,4 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
     
@@ -15,8 +14,12 @@ service cloud.firestore {
 
     // Check if the authenticated user has a bootstrapped admin email
     function isEmailAdmin() {
-      let em = request.auth.token.email;
-      return isSignedIn() && (em == 'visitfaridul@gmail.com' || em == 'VISITFARIDUL@GMAIL.COM' || em == 'bjvnhs@gmail.com' || em == 'BJVNHS@GMAIL.COM');
+      return isSignedIn() && 
+             ('email' in request.auth.token) && 
+             (request.auth.token.email == 'visitfaridul@gmail.com' || 
+              request.auth.token.email == 'VISITFARIDUL@GMAIL.COM' || 
+              request.auth.token.email == 'bjvnhs@gmail.com' || 
+              request.auth.token.email == 'BJVNHS@GMAIL.COM');
     }
 
     // Check if user is a Database-defined Admin
@@ -28,29 +31,65 @@ service cloud.firestore {
 
     // Users Collection rules
     match /users/{userId} {
-      allow read: if isSignedIn() && (
-        request.auth.uid == userId ||
-        isEmailAdmin() ||
-        isDbAdmin(request.auth.uid)
-      );
+      allow get: if true;
+      allow list: if isSignedIn();
 
       allow write: if isSignedIn() && (
-        request.auth.uid == userId ||
         isEmailAdmin() ||
-        isDbAdmin(request.auth.uid)
+        isDbAdmin(request.auth.uid) ||
+        (request.auth.uid == userId && (
+          (!exists(/databases/$(database)/documents/users/$(userId)) && (
+            request.resource.data.role == 'Student' || 
+            request.resource.data.role == 'Teacher' || 
+            request.resource.data.role == 'Parent' ||
+            (request.resource.data.role == 'Super Admin' && isEmailAdmin())
+          )) ||
+          (exists(/databases/$(database)/documents/users/$(userId)) && 
+           request.resource.data.role == resource.data.role)
+        ))
       );
     }
     
     // Students Collection rules
     match /students/{studentId} {
-      allow read, write: if isEmailAdmin();
-      allow read, write: if isSignedIn() && isDbAdmin(request.auth.uid);
+      allow read: if isSignedIn();
+      allow write: if isEmailAdmin() || (isSignedIn() && isDbAdmin(request.auth.uid));
     }
     
     // Teachers Collection rules
     match /teachers/{teacherId} {
-      allow read, write: if isEmailAdmin();
-      allow read, write: if isSignedIn() && isDbAdmin(request.auth.uid);
+      allow read: if isSignedIn();
+      allow write: if isEmailAdmin() || (isSignedIn() && isDbAdmin(request.auth.uid));
+    }
+
+    // Online Admissions rules
+    match /onlineAdmissions/{admissionId} {
+      allow create: if true;
+      allow read, update, delete: if isEmailAdmin() || (isSignedIn() && isDbAdmin(request.auth.uid));
+    }
+
+    // Student Results rules
+    match /results/{resultId} {
+      allow read: if true;
+      allow write: if isEmailAdmin() || (isSignedIn() && isDbAdmin(request.auth.uid));
+    }
+
+    // Academic Sessions rules
+    match /sessions/{sessionId} {
+      allow read: if true;
+      allow write: if isEmailAdmin() || (isSignedIn() && isDbAdmin(request.auth.uid));
+    }
+
+    // Courses rules
+    match /courses/{courseId} {
+      allow read: if true;
+      allow write: if isEmailAdmin() || (isSignedIn() && isDbAdmin(request.auth.uid));
+    }
+
+    // Website Settings rules
+    match /settings/{settingsId} {
+      allow read: if true;
+      allow write: if isEmailAdmin() || (isSignedIn() && isDbAdmin(request.auth.uid));
     }
   }
 }

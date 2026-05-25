@@ -3,6 +3,7 @@ import { Search, Calendar as CalendarIcon, CheckCircle, XCircle, Clock, Filter, 
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useSchool } from '@/context/SchoolContext';
+import { useWebsite } from '@/context/WebsiteContext';
 
 const QRScanner = lazy(() => import('@/components/attendance/QRScanner'));
 const FaceScanner = lazy(() => import('@/components/attendance/FaceScanner'));
@@ -16,7 +17,9 @@ const initialMockAttendance = [
 type ActiveTab = 'overview' | 'qr' | 'face';
 
 export default function Attendance() {
-  const { students } = useSchool();
+  const { students, teachers } = useSchool();
+  const { settings } = useWebsite();
+  const [memberType, setMemberType] = useState<'Student' | 'Teacher' | 'Other Staff'>('Student');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -26,6 +29,148 @@ export default function Attendance() {
   const [attendanceData, setAttendanceData] = useState(initialMockAttendance);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<any>(null);
+
+  // Persistent daily manual attendance registry
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, { status: 'Present' | 'Absent' | 'Late'; remarks: string }>>(() => {
+    const saved = localStorage.getItem('bhogamur_attendance_registry');
+    try {
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  const handleUpdateAttendanceStatus = (id: string, newStatus: 'Present' | 'Absent' | 'Late') => {
+    setAttendanceMap(prev => {
+      const key = `${date}:${id}`;
+      const record = prev[key] || { status: 'Present', remarks: '' };
+      const updated = {
+        ...prev,
+        [key]: {
+          ...record,
+          status: newStatus
+        }
+      };
+      localStorage.setItem('bhogamur_attendance_registry', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleUpdateRemarks = (id: string, text: string) => {
+    setAttendanceMap(prev => {
+      const key = `${date}:${id}`;
+      const record = prev[key] || { status: 'Present', remarks: '' };
+      const updated = {
+        ...prev,
+        [key]: {
+          ...record,
+          remarks: text
+        }
+      };
+      localStorage.setItem('bhogamur_attendance_registry', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleUpdateInTime = (id: string, text: string) => {
+    setAttendanceMap(prev => {
+      const key = `${date}:${id}`;
+      const record = prev[key] || { status: 'Present', remarks: '', inTime: '', outTime: '', earlyOutReason: '' };
+      const updated = {
+        ...prev,
+        [key]: {
+          ...record,
+          inTime: text
+        }
+      };
+      localStorage.setItem('bhogamur_attendance_registry', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleUpdateOutTime = (id: string, text: string) => {
+    setAttendanceMap(prev => {
+      const key = `${date}:${id}`;
+      const record = prev[key] || { status: 'Present', remarks: '', inTime: '', outTime: '', earlyOutReason: '' };
+      const updated = {
+        ...prev,
+        [key]: {
+          ...record,
+          outTime: text
+        }
+      };
+      localStorage.setItem('bhogamur_attendance_registry', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleUpdateEarlyOutReason = (id: string, text: string) => {
+    setAttendanceMap(prev => {
+      const key = `${date}:${id}`;
+      const record = prev[key] || { status: 'Present', remarks: '', inTime: '', outTime: '', earlyOutReason: '' };
+      const updated = {
+        ...prev,
+        [key]: {
+          ...record,
+          earlyOutReason: text
+        }
+      };
+      localStorage.setItem('bhogamur_attendance_registry', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const currentLevelStats = useMemo(() => {
+    let presentCount = 0;
+    let absentCount = 0;
+    let lateCount = 0;
+
+    if (memberType === 'Student') {
+      const activeList = selectedClass ? students.filter(s => s.class === selectedClass) : students;
+      activeList.forEach(student => {
+        const record = attendanceMap[`${date}:${student.id}`];
+        const status = record?.status || 'Present';
+        if (status === 'Present') presentCount++;
+        else if (status === 'Absent') absentCount++;
+        else if (status === 'Late') lateCount++;
+      });
+      return {
+        present: presentCount,
+        absent: absentCount,
+        late: lateCount,
+        total: activeList.length
+      };
+    } else if (memberType === 'Teacher') {
+      teachers.forEach(teacher => {
+        const record = attendanceMap[`${date}:${teacher.id}`];
+        const status = record?.status || 'Present';
+        if (status === 'Present') presentCount++;
+        else if (status === 'Absent') absentCount++;
+        else if (status === 'Late') lateCount++;
+      });
+      return {
+        present: presentCount,
+        absent: absentCount,
+        late: lateCount,
+        total: teachers.length
+      };
+    } else {
+      const staffList = settings.staffMembers || [];
+      staffList.forEach((staff: any) => {
+        const record = attendanceMap[`${date}:${staff.id}`];
+        const status = record?.status || 'Present';
+        if (status === 'Present') presentCount++;
+        else if (status === 'Absent') absentCount++;
+        else if (status === 'Late') lateCount++;
+      });
+      return {
+        present: presentCount,
+        absent: absentCount,
+        late: lateCount,
+        total: staffList.length
+      };
+    }
+  }, [students, teachers, settings.staffMembers, memberType, selectedClass, date, attendanceMap]);
 
   const classes = ['Nursery', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'];
 
@@ -42,6 +187,28 @@ export default function Attendance() {
     });
   }, [students, selectedClass, searchQuery]);
 
+  const filteredTeachers = useMemo(() => {
+    return teachers.filter(t => {
+      const matchesSearch = searchQuery
+        ? t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (t.subject && t.subject.toLowerCase().includes(searchQuery.toLowerCase()))
+        : true;
+      return matchesSearch;
+    });
+  }, [teachers, searchQuery]);
+
+  const filteredStaff = useMemo(() => {
+    return (settings.staffMembers || []).filter((st: any) => {
+      const matchesSearch = searchQuery
+        ? st.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          st.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (st.role && st.role.toLowerCase().includes(searchQuery.toLowerCase()))
+        : true;
+      return matchesSearch;
+    });
+  }, [settings.staffMembers, searchQuery]);
+
   const filteredAttendanceData = useMemo(() => {
     return attendanceData.filter(record => {
       if (!searchQuery) return true;
@@ -57,21 +224,32 @@ export default function Attendance() {
     let csvRows = [];
 
     if (selectedClass) {
-      csvHeader = "Roll No,Student Name,Class,Section,Status,Remarks\n";
+      csvHeader = "Roll No,Student Name,Class,Section,Status,In Time,Out Time,Early Out Reason,Remarks\n";
       const classStudents = students.filter(s => s.class === selectedClass);
-      classStudents.forEach((student, index) => {
-        // Mock attendance status based on ID index
-        const statuses = ['Present', 'Present', 'Present', 'Absent', 'Late'];
-        const status = statuses[index % statuses.length];
-        csvRows.push(`${student.roll},${student.name},${student.class},${student.section},${status},`);
+      classStudents.forEach((student) => {
+        const record = attendanceMap[`${date}:${student.id}`];
+        const status = record?.status || 'Present';
+        const inTime = record?.inTime || (status !== 'Absent' ? '09:00' : '');
+        const outTime = record?.outTime || (status !== 'Absent' ? '15:00' : '');
+        const earlyOutReason = record?.earlyOutReason || '';
+        const remarks = record?.remarks || '';
+        csvRows.push(`${student.roll || ''},"${student.name}","${student.class}","${student.section || 'A'}",${status},"${inTime}","${outTime}","${earlyOutReason}","${remarks}"`);
       });
     } else {
       csvHeader = "Class,Section,Total Students,Present,Absent,Late\n";
       classes.forEach(c => {
         const classStudents = students.filter(s => s.class === c);
-        const randPresent = Math.max(0, classStudents.length - Math.floor(Math.random() * 3));
-        const randAbsent = classStudents.length - randPresent;
-        csvRows.push(`${c},A,${classStudents.length},${randPresent},${randAbsent},0`);
+        let present = 0;
+        let absent = 0;
+        let late = 0;
+        classStudents.forEach(st => {
+          const record = attendanceMap[`${date}:${st.id}`];
+          const status = record?.status || 'Present';
+          if (status === 'Present') present++;
+          else if (status === 'Absent') absent++;
+          else if (status === 'Late') late++;
+        });
+        csvRows.push(`"${c}",A,${classStudents.length},${present},${absent},${late}`);
       });
     }
 
@@ -223,7 +401,7 @@ export default function Attendance() {
                    </div>
                    <div>
                      <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">Total Present</p>
-                     <h3 className="text-2xl font-black text-slate-900 mt-1">2,412</h3>
+                     <h3 className="text-2xl font-black text-slate-900 mt-1">{currentLevelStats.present}</h3>
                    </div>
                  </div>
                </div>
@@ -235,7 +413,7 @@ export default function Attendance() {
                    </div>
                    <div>
                      <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">Total Absent</p>
-                     <h3 className="text-2xl font-black text-slate-900 mt-1">124</h3>
+                     <h3 className="text-2xl font-black text-slate-900 mt-1">{currentLevelStats.absent}</h3>
                    </div>
                  </div>
                </div>
@@ -247,7 +425,7 @@ export default function Attendance() {
                    </div>
                    <div>
                      <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">Late Arrivals</p>
-                     <h3 className="text-2xl font-black text-slate-900 mt-1">32</h3>
+                     <h3 className="text-2xl font-black text-slate-900 mt-1">{currentLevelStats.late}</h3>
                    </div>
                  </div>
                </div>
@@ -258,8 +436,8 @@ export default function Attendance() {
                      <ScanFace className="w-6 h-6" />
                    </div>
                    <div>
-                     <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">AI Verified</p>
-                     <h3 className="text-2xl font-black text-slate-900 mt-1">84.2%</h3>
+                     <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">Presence Rate</p>
+                     <h3 className="text-2xl font-black text-slate-900 mt-1">{currentLevelStats.total > 0 ? Math.round((currentLevelStats.present / currentLevelStats.total) * 100) : 100}%</h3>
                    </div>
                  </div>
                </div>
@@ -267,30 +445,83 @@ export default function Attendance() {
 
             {/* Table */}
             <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+              {/* Member Type Selection Tabs */}
+              <div className="flex border-b border-slate-200 p-4 gap-2 bg-white flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberType('Student');
+                    setViewMode('detailed');
+                  }}
+                  className={cn(
+                    "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                    memberType === 'Student' 
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/10" 
+                      : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
+                  )}
+                >
+                  👥 Students List ({students.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberType('Teacher');
+                    setViewMode('detailed');
+                    setSelectedClass('');
+                  }}
+                  className={cn(
+                    "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                    memberType === 'Teacher' 
+                      ? "bg-purple-600 text-white shadow-md shadow-purple-500/10" 
+                      : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
+                  )}
+                >
+                  🎓 Teachers List ({teachers.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberType('Other Staff');
+                    setViewMode('detailed');
+                    setSelectedClass('');
+                  }}
+                  className={cn(
+                    "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                    memberType === 'Other Staff' 
+                      ? "bg-amber-600 text-white shadow-md shadow-amber-500/10" 
+                      : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
+                  )}
+                >
+                  💼 Other Staff List ({settings.staffMembers?.length || 0})
+                </button>
+              </div>
+
               <div className="p-5 border-b border-slate-200 flex flex-col md:flex-row justify-between gap-4 bg-slate-50/50">
                 <div className="flex flex-wrap gap-4 flex-1 items-center">
-                  <div className="relative min-w-[200px]">
-                    <select
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
-                      value={selectedClass}
-                      onChange={(e) => {
-                        setSelectedClass(e.target.value);
-                        if (e.target.value) {
-                          setViewMode('detailed');
-                        }
-                      }}
-                    >
-                      <option value="">All Classes (Summary)</option>
-                      {classes.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {memberType === 'Student' && (
+                    <div className="relative min-w-[200px]">
+                      <select
+                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
+                        value={selectedClass}
+                        onChange={(e) => {
+                          setSelectedClass(e.target.value);
+                          if (e.target.value) {
+                            setViewMode('detailed');
+                          }
+                        }}
+                      >
+                        <option value="">All Classes (Summary)</option>
+                        {classes.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="relative max-w-xs w-full">
                     <Search className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input 
                       type="text" 
-                      placeholder="Search class or student..." 
+                      placeholder={memberType === 'Student' ? "Search student or summary..." : memberType === 'Teacher' ? "Search teacher..." : "Search staff member..."} 
                       className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium shadow-sm"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -306,7 +537,7 @@ export default function Attendance() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  {!selectedClass && (
+                  {memberType === 'Student' && !selectedClass && (
                     <div className="flex bg-slate-200/60 p-1 rounded-xl whitespace-nowrap">
                       <button
                         type="button"
@@ -341,10 +572,13 @@ export default function Attendance() {
                   <thead className="bg-slate-100 text-slate-600 border-b border-slate-200">
                     {selectedClass || viewMode === 'detailed' ? (
                       <tr>
-                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Roll No</th>
-                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Student Name</th>
-                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Class / Section</th>
+                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">{memberType === 'Student' ? 'Roll No' : 'ID'}</th>
+                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">{memberType === 'Student' ? 'Student Name' : memberType === 'Teacher' ? 'Teacher Name' : 'Staff Name'}</th>
+                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">{memberType === 'Student' ? 'Class / Section' : memberType === 'Teacher' ? 'Subject / Department' : 'Role / Responsibility'}</th>
                         <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Status</th>
+                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">In Time</th>
+                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Out Time</th>
+                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Early Out Reason</th>
                         <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Remarks</th>
                       </tr>
                     ) : (
@@ -361,43 +595,339 @@ export default function Attendance() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {selectedClass || viewMode === 'detailed' ? (
-                      filteredStudents.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="px-6 py-10 text-center font-medium text-slate-400">
-                            No students found matching your criteria.
-                          </td>
-                        </tr>
+                      memberType === 'Student' ? (
+                        filteredStudents.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-6 py-10 text-center font-medium text-slate-400">
+                              No students found matching your criteria.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredStudents.map((student) => {
+                            const record = attendanceMap[`${date}:${student.id}`];
+                            const status = record?.status || 'Present';
+                            const remarks = record?.remarks || '';
+                            return (
+                              <tr key={student.id} className="hover:bg-slate-50 transition-colors group">
+                                <td className="px-6 py-4 font-bold text-slate-900">{student.roll || '-'}</td>
+                                <td className="px-6 py-4 font-bold text-slate-800 flex items-center gap-3">
+                                  <img
+                                    src={student.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(student.name)}`}
+                                    alt="avatar"
+                                    className="w-8 h-8 rounded-full border border-slate-200 bg-white"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  {student.name}
+                                </td>
+                                <td className="px-6 py-4 font-bold text-slate-600">{student.class} - {student.section || 'A'}</td>
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateAttendanceStatus(student.id, 'Present')}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border",
+                                        status === 'Present' 
+                                          ? "bg-emerald-600 border-emerald-600 text-white shadow-sm" 
+                                          : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+                                      )}
+                                    >
+                                      Present
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateAttendanceStatus(student.id, 'Absent')}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border",
+                                        status === 'Absent' 
+                                          ? "bg-rose-600 border-rose-600 text-white shadow-sm" 
+                                          : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600"
+                                      )}
+                                    >
+                                      Absent
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateAttendanceStatus(student.id, 'Late')}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border",
+                                        status === 'Late' 
+                                          ? "bg-amber-500 border-amber-500 text-white shadow-sm" 
+                                          : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600"
+                                      )}
+                                    >
+                                      Late
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <input 
+                                    type="time" 
+                                    value={record?.inTime || (status !== 'Absent' ? '09:00' : '')}
+                                    disabled={status === 'Absent'}
+                                    onChange={(e) => handleUpdateInTime(student.id, e.target.value)}
+                                    className="px-2 py-1 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                  />
+                                </td>
+                                <td className="px-6 py-4">
+                                  <input 
+                                    type="time" 
+                                    value={record?.outTime || (status !== 'Absent' ? '15:00' : '')}
+                                    disabled={status === 'Absent'}
+                                    onChange={(e) => handleUpdateOutTime(student.id, e.target.value)}
+                                    className="px-2 py-1 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                  />
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col gap-1 w-full max-w-[180px]">
+                                    <input 
+                                      type="text" 
+                                      placeholder="Leave early reason..." 
+                                      value={record?.earlyOutReason || ""}
+                                      disabled={status === 'Absent'}
+                                      onChange={(e) => handleUpdateEarlyOutReason(student.id, e.target.value)}
+                                      className="px-2 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold placeholder:text-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    />
+                                    {record?.outTime && record?.outTime < "14:00" && !record?.earlyOutReason && status !== 'Absent' && (
+                                      <span className="text-[10px] text-rose-600 font-bold animate-pulse">⚠️ Early leave? Provide reason</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <input 
+                                    type="text" 
+                                    placeholder="Enter remarks..." 
+                                    value={remarks}
+                                    onChange={(e) => handleUpdateRemarks(student.id, e.target.value)}
+                                    className="px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 w-full max-w-[200px] font-semibold"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )
+                      ) : memberType === 'Teacher' ? (
+                        filteredTeachers.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-6 py-10 text-center font-medium text-slate-400">
+                              No teachers found matching your criteria.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredTeachers.map((teacher) => {
+                            const record = attendanceMap[`${date}:${teacher.id}`];
+                            const status = record?.status || 'Present';
+                            const remarks = record?.remarks || '';
+                            return (
+                              <tr key={teacher.id} className="hover:bg-slate-50 transition-colors group">
+                                <td className="px-6 py-4 font-bold text-slate-900">{teacher.id || '-'}</td>
+                                <td className="px-6 py-4 font-bold text-slate-800 flex items-center gap-3">
+                                  <img
+                                    src={teacher.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(teacher.name)}`}
+                                    alt="avatar"
+                                    className="w-8 h-8 rounded-full border border-slate-200 bg-white"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  {teacher.name}
+                                </td>
+                                <td className="px-6 py-4 font-bold text-slate-600">{teacher.department || teacher.subject || 'Faculty'}</td>
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateAttendanceStatus(teacher.id, 'Present')}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border",
+                                        status === 'Present' 
+                                          ? "bg-emerald-600 border-emerald-600 text-white shadow-sm" 
+                                          : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+                                      )}
+                                    >
+                                      Present
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateAttendanceStatus(teacher.id, 'Absent')}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border",
+                                        status === 'Absent' 
+                                          ? "bg-rose-600 border-rose-600 text-white shadow-sm" 
+                                          : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600"
+                                      )}
+                                    >
+                                      Absent
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateAttendanceStatus(teacher.id, 'Late')}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border",
+                                        status === 'Late' 
+                                          ? "bg-amber-500 border-amber-500 text-white shadow-sm" 
+                                          : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600"
+                                      )}
+                                    >
+                                      Late
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <input 
+                                    type="time" 
+                                    value={record?.inTime || (status !== 'Absent' ? '09:00' : '')}
+                                    disabled={status === 'Absent'}
+                                    onChange={(e) => handleUpdateInTime(teacher.id, e.target.value)}
+                                    className="px-2 py-1 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                  />
+                                </td>
+                                <td className="px-6 py-4">
+                                  <input 
+                                    type="time" 
+                                    value={record?.outTime || (status !== 'Absent' ? '15:00' : '')}
+                                    disabled={status === 'Absent'}
+                                    onChange={(e) => handleUpdateOutTime(teacher.id, e.target.value)}
+                                    className="px-2 py-1 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                  />
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col gap-1 w-full max-w-[180px]">
+                                    <input 
+                                      type="text" 
+                                      placeholder="Leave early reason..." 
+                                      value={record?.earlyOutReason || ""}
+                                      disabled={status === 'Absent'}
+                                      onChange={(e) => handleUpdateEarlyOutReason(teacher.id, e.target.value)}
+                                      className="px-2 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold placeholder:text-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    />
+                                    {record?.outTime && record?.outTime < "14:00" && !record?.earlyOutReason && status !== 'Absent' && (
+                                      <span className="text-[10px] text-rose-600 font-bold animate-pulse">⚠️ Early leave? Provide reason</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <input 
+                                    type="text" 
+                                    placeholder="Enter remarks..." 
+                                    value={remarks}
+                                    onChange={(e) => handleUpdateRemarks(teacher.id, e.target.value)}
+                                    className="px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 w-full max-w-[200px] font-semibold"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )
                       ) : (
-                        filteredStudents.map((student, idx) => {
-                          const statuses = ['Present', 'Present', 'Present', 'Absent', 'Late'];
-                          const status = statuses[idx % statuses.length];
-                          return (
-                            <tr key={student.id} className="hover:bg-slate-50 transition-colors group">
-                              <td className="px-6 py-4 font-bold text-slate-900">{student.roll || '-'}</td>
-                              <td className="px-6 py-4 font-bold text-slate-800 flex items-center gap-3">
-                                <img
-                                  src={student.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}`}
-                                  alt="avatar"
-                                  className="w-8 h-8 rounded-full border border-slate-200 bg-white"
-                                  referrerPolicy="no-referrer"
-                                />
-                                {student.name}
-                              </td>
-                              <td className="px-6 py-4 font-bold text-slate-600">{student.class} - {student.section || 'A'}</td>
-                              <td className="px-6 py-4">
-                                <span className={cn(
-                                  "px-3 py-1.5 rounded-full text-xs font-bold",
-                                  status === 'Present' ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
-                                  status === 'Absent' ? "bg-rose-50 text-rose-700 border border-rose-200" :
-                                  "bg-amber-50 text-amber-700 border border-amber-200"
-                                )}>
-                                  {status}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 text-slate-500 font-medium">Auto-marked today</td>
-                            </tr>
-                          );
-                        })
+                        filteredStaff.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-6 py-10 text-center font-medium text-slate-400">
+                              No staff members found matching your criteria.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredStaff.map((staff) => {
+                            const record = attendanceMap[`${date}:${staff.id}`];
+                            const status = record?.status || 'Present';
+                            const remarks = record?.remarks || '';
+                            return (
+                              <tr key={staff.id} className="hover:bg-slate-50 transition-colors group">
+                                <td className="px-6 py-4 font-bold text-slate-900">{staff.id || '-'}</td>
+                                <td className="px-6 py-4 font-bold text-slate-800 flex items-center gap-3">
+                                  <img
+                                    src={staff.imageUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(staff.name)}`}
+                                    alt="avatar"
+                                    className="w-8 h-8 rounded-full border border-slate-200 bg-white"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  {staff.name}
+                                </td>
+                                <td className="px-6 py-4 font-bold text-slate-600">{staff.role || 'Institution Staff'}</td>
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateAttendanceStatus(staff.id, 'Present')}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border",
+                                        status === 'Present' 
+                                          ? "bg-emerald-600 border-emerald-600 text-white shadow-sm" 
+                                          : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+                                      )}
+                                    >
+                                      Present
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateAttendanceStatus(staff.id, 'Absent')}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border",
+                                        status === 'Absent' 
+                                          ? "bg-rose-600 border-rose-600 text-white shadow-sm" 
+                                          : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600"
+                                      )}
+                                    >
+                                      Absent
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateAttendanceStatus(staff.id, 'Late')}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border",
+                                        status === 'Late' 
+                                          ? "bg-amber-500 border-amber-500 text-white shadow-sm" 
+                                          : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600"
+                                      )}
+                                    >
+                                      Late
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <input 
+                                    type="time" 
+                                    value={record?.inTime || (status !== 'Absent' ? '09:00' : '')}
+                                    disabled={status === 'Absent'}
+                                    onChange={(e) => handleUpdateInTime(staff.id, e.target.value)}
+                                    className="px-2 py-1 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                  />
+                                </td>
+                                <td className="px-6 py-4">
+                                  <input 
+                                    type="time" 
+                                    value={record?.outTime || (status !== 'Absent' ? '15:00' : '')}
+                                    disabled={status === 'Absent'}
+                                    onChange={(e) => handleUpdateOutTime(staff.id, e.target.value)}
+                                    className="px-2 py-1 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                  />
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col gap-1 w-full max-w-[180px]">
+                                    <input 
+                                      type="text" 
+                                      placeholder="Leave early reason..." 
+                                      value={record?.earlyOutReason || ""}
+                                      disabled={status === 'Absent'}
+                                      onChange={(e) => handleUpdateEarlyOutReason(staff.id, e.target.value)}
+                                      className="px-2 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold placeholder:text-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    />
+                                    {record?.outTime && record?.outTime < "14:00" && !record?.earlyOutReason && status !== 'Absent' && (
+                                      <span className="text-[10px] text-rose-600 font-bold animate-pulse">⚠️ Early leave? Provide reason</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <input 
+                                    type="text" 
+                                    placeholder="Enter remarks..." 
+                                    value={remarks}
+                                    onChange={(e) => handleUpdateRemarks(staff.id, e.target.value)}
+                                    className="px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 w-full max-w-[200px] font-semibold"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )
                       )
                     ) : (
                       filteredAttendanceData.map((record) => (

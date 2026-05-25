@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSchool } from '../../context/SchoolContext';
-import { Download, Check, X, Search, Filter } from 'lucide-react';
+import { Download, Check, X, Search, Filter, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 export default function AdmissionData() {
@@ -71,6 +71,18 @@ export default function AdmissionData() {
     }
   };
 
+  const handleDeleteAdmission = (id: string) => {
+    if (window.confirm('Are you sure you want to permanently delete this admission request?')) {
+      setOnlineAdmissions(prev => prev.filter(a => a.id !== id));
+    }
+  };
+
+  const handleClearAll = () => {
+    if (window.confirm('⚠️ WARNING: This will permanently delete ALL online admission request records! This action cannot be undone. Are you sure you want to proceed?')) {
+      setOnlineAdmissions([]);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in relative z-10">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -78,7 +90,16 @@ export default function AdmissionData() {
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Online Admissions Data</h1>
           <p className="text-slate-500 text-sm mt-1">Review, approve, and export online admission requests.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          {onlineAdmissions.length > 0 && (
+            <button 
+              onClick={handleClearAll}
+              className="flex items-center gap-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm"
+            >
+              <Trash2 className="w-4 h-4" />
+              Clear All Data
+            </button>
+          )}
           <button 
             onClick={handleExportExcel}
             className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
@@ -156,23 +177,32 @@ export default function AdmissionData() {
                       </span>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-right">
-                      {admission.status === 'Pending' ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <button 
-                            onClick={() => handleUpdateStatus(admission.id, 'Approved')}
-                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors border border-emerald-200" title="Approve & Enroll"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => handleUpdateStatus(admission.id, 'Rejected')}
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200" title="Reject">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400">Processed</span>
-                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        {admission.status === 'Pending' ? (
+                          <>
+                            <button 
+                              onClick={() => handleUpdateStatus(admission.id, 'Approved')}
+                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors border border-emerald-200" title="Approve & Enroll"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleUpdateStatus(admission.id, 'Rejected')}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-rose-200" title="Reject">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs font-bold text-slate-400 mr-1.5">Processed</span>
+                        )}
+                        <button 
+                          onClick={() => handleDeleteAdmission(admission.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-slate-200 hover:border-rose-200"
+                          title="Delete Request"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Search, Wallet, DollarSign, ArrowUpRight, ArrowDownRight, FileText, Download, Filter, Printer, X, CheckCircle, CreditCard, Landmark, Banknote, ScanFace, Edit2, Trash2, Save } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,15 @@ export default function Fees() {
   const [isCollectModalOpen, setIsCollectModalOpen] = useState(false);
   const { students } = useSchool();
   
-  const [transactions, setTransactions] = useState(initialMockTransactions);
+  const [transactions, setTransactions] = useState<any[]>(() => {
+    const saved = localStorage.getItem('bhogamur_fees_transactions');
+    try {
+      return saved ? JSON.parse(saved) : initialMockTransactions;
+    } catch (e) {
+      return initialMockTransactions;
+    }
+  });
+
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTx, setEditTx] = useState<any>(null);
 
@@ -33,7 +41,7 @@ export default function Fees() {
   };
 
   const saveEditModal = () => {
-    setTransactions((prev) => prev.map((tx) => {
+    const updated = transactions.map((tx) => {
       if (tx.id === editTx.id) {
         return { 
           ...editTx, 
@@ -41,14 +49,37 @@ export default function Fees() {
         };
       }
       return tx;
-    }));
+    });
+    setTransactions(updated);
+    localStorage.setItem('bhogamur_fees_transactions', JSON.stringify(updated));
     setIsEditModalOpen(false);
     setEditTx(null);
   };
 
   const handleDelete = (id: string) => {
-    setTransactions((prev) => prev.filter((tx) => tx.id !== id));
+    if (window.confirm('Are you sure you want to delete this transaction record?')) {
+      const updated = transactions.filter((tx) => tx.id !== id);
+      setTransactions(updated);
+      localStorage.setItem('bhogamur_fees_transactions', JSON.stringify(updated));
+    }
   };
+  
+  // Calculate dynamic metric totals on the fly
+  const totalCollectedSum = useMemo(() => {
+    return transactions.filter(tx => tx.status === 'Paid').reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+  }, [transactions]);
+
+  const totalPendingSum = useMemo(() => {
+    return transactions.filter(tx => tx.status === 'Pending' || tx.status === 'Overdue').reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+  }, [transactions]);
+
+  const totalReceiptsCount = useMemo(() => {
+    return transactions.length;
+  }, [transactions]);
+
+  const defaultersCount = useMemo(() => {
+    return transactions.filter(tx => tx.status === 'Overdue' || tx.status === 'Pending').length;
+  }, [transactions]);
   
   // Collect Payment Form State
   const [selectedStudentId, setSelectedStudentId] = useState('');
@@ -75,6 +106,21 @@ export default function Fees() {
   };
 
   const handleCollect = () => {
+    if (selectedStudent) {
+      const newTx = {
+        id: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        student: selectedStudent.name,
+        class: selectedStudent.class,
+        amount: totalFee,
+        date: new Date().toISOString(),
+        type: 'Term Fee Collection',
+        status: 'Paid',
+        mode: paymentMode
+      };
+      const updated = [newTx, ...transactions];
+      setTransactions(updated);
+      localStorage.setItem('bhogamur_fees_transactions', JSON.stringify(updated));
+    }
     setReceiptGenerated(true);
   };
 
@@ -272,7 +318,7 @@ export default function Fees() {
                <div className="flex justify-between items-start mb-6">
                  <div>
                    <p className="text-sm font-medium text-blue-100 flex items-center gap-2 mb-1"><Wallet className="w-4 h-4"/> Academic Year 2023-24 Collection</p>
-                   <h3 className="text-4xl font-bold tracking-tight">{formatCurrency(4528500)}</h3>
+                   <h3 className="text-4xl font-bold tracking-tight">{formatCurrency(totalCollectedSum)}</h3>
                  </div>
                  <div className="text-right">
                    <p className="text-sm text-blue-200 mb-1 font-medium">Target</p>
@@ -282,11 +328,11 @@ export default function Fees() {
                
                <div>
                   <div className="w-full bg-black/20 rounded-full h-2 mb-2 overflow-hidden">
-                    <div className="bg-emerald-400 h-2 rounded-full shadow-[0_0_10px_rgba(52,211,153,0.5)]" style={{ width: '85%' }}></div>
+                    <div className="bg-emerald-400 h-2 rounded-full shadow-[0_0_10px_rgba(52,211,153,0.5)]" style={{ width: `${Math.min(Math.round((totalCollectedSum / 5000000) * 100), 100)}%` }}></div>
                   </div>
                   <div className="flex justify-between text-xs text-blue-100 font-bold">
-                    <span>85% Collected</span>
-                    <span>15% Pending</span>
+                    <span>{Math.min(Math.round((totalCollectedSum / 5000000) * 100), 100)}% Collected</span>
+                    <span>{Math.max(100 - Math.min(Math.round((totalCollectedSum / 5000000) * 100), 100), 0)}% Pending</span>
                   </div>
                </div>
              </div>
@@ -301,9 +347,9 @@ export default function Fees() {
                  </div>
                  <p className="font-bold text-slate-800">Pending Dues</p>
                </div>
-               <h3 className="text-3xl font-bold text-slate-900 mb-2">{formatCurrency(471500)}</h3>
+               <h3 className="text-3xl font-bold text-slate-900 mb-2">{formatCurrency(totalPendingSum)}</h3>
                <div className="flex items-center gap-2 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2 py-1 rounded-md w-fit">
-                 124 Students Defaulters
+                 {defaultersCount} Students Defaulters
                </div>
              </div>
            </div>
@@ -317,7 +363,7 @@ export default function Fees() {
                  </div>
                  <p className="font-bold text-slate-800">Receipts</p>
                </div>
-               <h3 className="text-3xl font-bold text-slate-900 mb-2">1,842</h3>
+               <h3 className="text-3xl font-bold text-slate-900 mb-2">{totalReceiptsCount.toLocaleString()}</h3>
                <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-md w-fit">
                  Generated this year
                </div>

@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { db, handleFirestoreError, OperationType, auth } from '../firebase';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 
 export interface WebsiteStaffMember {
   id: string;
@@ -425,70 +427,78 @@ interface WebsiteContextType {
 const WebsiteContext = createContext<WebsiteContextType | undefined>(undefined);
 
 export const WebsiteProvider = ({ children }: { children: ReactNode }) => {
-  const [settings, setSettings] = useState<WebsiteSettings>(() => {
-    try {
-      const saved = localStorage.getItem('bhogamur_website_settings');
-      if (saved) {
-        try {
-              const parsed = JSON.parse(saved);
-              // Migration for old default hero headline
+  const [settings, setSettings] = useState<WebsiteSettings>(defaultSettings);
 
-            if (
-                parsed.heroHeadline === "Manage your school with complete ease." ||
-                parsed.heroHeadline === "Bhogamur Jatiya Vidya Niketon" ||
-                parsed.heroHeadline === "Bhogamur Jatiya Viyda Niketon" ||
-                parsed.heroHeadline === "Bhogamur Jatiya Viyda Niketon ভগামুৰ জাতীয় বিদ্যা নিকেতন" ||
-                parsed.heroHeadline === ""
-            ) {
-                parsed.heroHeadline = "ভগামুৰ জাতীয় বিদ্যা নিকেতন";
-            }
-            
-            if (
-                !parsed.aboutText ||
-                parsed.aboutText === "The most comprehensive and beautifully designed Bhogamur Jatiya Vidya Niketon available." ||
-                parsed.aboutText.includes("comprehensive and beautifully designed")
-            ) {
-                parsed.aboutText = "য’ত সপোনৰ আৰম্ভণি হয় আৰু ভৱিষ্যত উজলি উঠে।";
-            }
-            
-            if (
-                parsed.schoolName === "School Management System" || 
-                parsed.schoolName === "Smart School" ||
-                parsed.schoolName === "My App" ||
-                !parsed.schoolName
-            ) {
-                parsed.schoolName = "Bhogamur Jatiya Vidya Niketon";
-            }
-            if (parsed.promoVideoUrl && (!parsed.promoVideos || parsed.promoVideos.length === 0)) {
-                parsed.promoVideos = [{
-                    id: "v-initial",
-                    title: "Campus Tour",
-                    description: "Discover what makes our school the perfect place for your child's education and growth.",
-                    embedUrl: parsed.promoVideoUrl
-                }];
-                delete parsed.promoVideoUrl;
-            }
-            return { ...defaultSettings, ...parsed };
-      } catch (e) {
-        return defaultSettings;
-      }
-    }
-    return defaultSettings;
-    } catch {
-      return defaultSettings;
-    }
-  });
-
+  // Firestore Snapshot listener for live website settings
   useEffect(() => {
-    try {
-      localStorage.setItem('bhogamur_website_settings', JSON.stringify(settings));
-    } catch {
-      // Ignored
-    }
-  }, [settings]);
+    const docRef = doc(db, 'settings', 'website');
+    const unsub = onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const parsed = snapshot.data() as WebsiteSettings;
+        
+        // Migration for old default values
+        if (
+            parsed.heroHeadline === "Manage your school with complete ease." ||
+            parsed.heroHeadline === "Bhogamur Jatiya Vidya Niketon" ||
+            parsed.heroHeadline === "Bhogamur Jatiya Viyda Niketon" ||
+            parsed.heroHeadline === "Bhogamur Jatiya Viyda Niketon ভগামুৰ জাতীয় বিদ্যা নিকেতন" ||
+            parsed.heroHeadline === ""
+        ) {
+            parsed.heroHeadline = "ভগামুৰ জাতীয় বিদ্যা নিকেতন";
+        }
+        
+        if (
+            !parsed.aboutText ||
+            parsed.aboutText === "The most comprehensive and beautifully designed Bhogamur Jatiya Vidya Niketon available." ||
+            parsed.aboutText.includes("comprehensive and beautifully designed")
+        ) {
+            parsed.aboutText = "য’ত সপোনৰ আৰম্ভণি হয় আৰু ভৱিষ্যত উজলি উঠে।";
+        }
+        
+        if (
+            parsed.schoolName === "School Management System" || 
+            parsed.schoolName === "Smart School" ||
+            parsed.schoolName === "My App" ||
+            !parsed.schoolName
+        ) {
+            parsed.schoolName = "Bhogamur Jatiya Vidya Niketon";
+        }
 
-  const updateSettings = (newSettings: Partial<WebsiteSettings>) => {
-    setSettings(prev => ({ ...prev, ...newSettings }));
+        setSettings({ ...defaultSettings, ...parsed });
+      } else {
+        // If settings doc doesn't exist in Firestore yet, bootstrap if signed in as an admin
+        const userEmail = auth.currentUser?.email?.toLowerCase();
+        const allowedAdminEmails = ['visitfaridul@gmail.com', 'bjvnhs@gmail.com'];
+        if (userEmail && allowedAdminEmails.includes(userEmail)) {
+          console.log("Admin logged in. Bootstrapping default website settings template to Firestore...");
+          setDoc(doc(db, 'settings', 'website'), defaultSettings).catch(err => {
+            console.error("Failed to bootstrap default website settings on Firestore: ", err);
+          });
+        }
+      }
+    }, (error) => {
+      console.warn("Website settings listener background error: ", error.message);
+    });
+
+    return () => unsub();
+  }, []);
+
+  const updateSettings = async (newSettings: Partial<WebsiteSettings>) => {
+    try {
+      const nextSettings = { ...settings, ...newSettings };
+      
+      // Optimistic update
+      setSettings(nextSettings);
+
+      // Save to Firestore
+      try {
+        await setDoc(doc(db, 'settings', 'website'), nextSettings, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, 'settings/website');
+      }
+    } catch (e) {
+      console.error("Error setting website configurations: ", e);
+    }
   };
 
   return (
@@ -497,6 +507,7 @@ export const WebsiteProvider = ({ children }: { children: ReactNode }) => {
     </WebsiteContext.Provider>
   );
 };
+
 
 export const useWebsite = () => {
   const context = useContext(WebsiteContext);

@@ -9,7 +9,10 @@
         "name": { "type": "string" },
         "class": { "type": "string" },
         "section": { "type": "string" },
-        "roll": { "type": "string" }
+        "roll": { "type": "string" },
+        "parentName": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string" }
       }
     },
     "Teacher": {
@@ -19,7 +22,82 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
+        "subject": { "type": "string" },
+        "qualification": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "OnlineAdmissionForm": {
+      "title": "OnlineAdmissionForm",
+      "description": "An online admission form application",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "submitDate": { "type": "string" },
+        "name": { "type": "string" },
+        "class": { "type": "string" },
+        "dob": { "type": "string" },
+        "parentName": { "type": "string" },
+        "motherName": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "aadhaar": { "type": "string" },
+        "pen": { "type": "string" },
+        "apaar": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "StudentResult": {
+      "title": "StudentResult",
+      "description": "A student result marksheet",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "className": { "type": "string" },
+        "examName": { "type": "string" },
+        "totalMarks": { "type": "number" },
+        "percentage": { "type": "number" },
+        "grade": { "type": "string" },
+        "status": { "type": "string" },
+        "remarks": { "type": "string" }
+      }
+    },
+    "AcademicSession": {
+      "title": "AcademicSession",
+      "description": "An academic year/session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      }
+    },
+    "Course": {
+      "title": "Course",
+      "description": "A class subject course with study materials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "class": { "type": "string" },
         "subject": { "type": "string" }
+      }
+    },
+    "WebsiteSettings": {
+      "title": "WebsiteSettings",
+      "description": "Live custom layout configurations and static page variables",
+      "type": "object",
+      "properties": {
+        "schoolName": { "type": "string" },
+        "heroHeadline": { "type": "string" },
+        "heroSubtitle": { "type": "string" }
       }
     }
   },
@@ -31,6 +109,26 @@
     "teachers": {
       "schema": "Teacher",
       "description": "Teachers collection"
+    },
+    "onlineAdmissions": {
+      "schema": "OnlineAdmissionForm",
+      "description": "Online admissions requests collection"
+    },
+    "results": {
+      "schema": "StudentResult",
+      "description": "Results published for lookup"
+    },
+    "sessions": {
+      "schema": "AcademicSession",
+      "description": "School academic sessions"
+    },
+    "courses": {
+      "schema": "Course",
+      "description": "Class courses lists and materials"
+    },
+    "settings": {
+      "schema": "WebsiteSettings",
+      "description": "Generic website settings documents collection"
     }
   }
 }
