@@ -47,6 +47,17 @@ export default function StaffManagement() {
     setEditingId(null);
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, imageUrl: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.role) return;
@@ -155,22 +166,52 @@ export default function StaffManagement() {
               
               <div className="flex-1 overflow-y-auto p-6">
                 <form id="staff-form" onSubmit={handleSave} className="space-y-6">
-                  {/* Photo Input (URL based for simplicity in mockup) */}
+                  {/* Photo Input (URL based & direct upload) */}
                   <div>
-                     <label className="block text-sm font-bold text-slate-700 mb-2">Profile Photo URL</label>
-                     <div className="flex gap-4">
-                        <div className="w-16 h-16 rounded-full bg-slate-100 flex-shrink-0 overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center">
-                           {formData.imageUrl ? <img src={formData.imageUrl} alt="preview" className="w-full h-full object-cover" /> : <Camera className="w-6 h-6 text-slate-300" />}
-                        </div>
-                        <input 
-                           type="url" 
-                           required={false}
-                           value={formData.imageUrl} 
-                           onChange={e => setFormData({...formData, imageUrl: e.target.value})}
-                           placeholder="https://images.unsplash.com/photo-..." 
-                           className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                        />
-                     </div>
+                      <label className="block text-sm font-bold text-slate-700 mb-2">Profile Photo</label>
+                      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                         <div className="w-16 h-16 rounded-full bg-slate-100 flex-shrink-0 overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center relative group">
+                            {formData.imageUrl ? (
+                              <img src={formData.imageUrl} alt="preview" className="w-full h-full object-cover" />
+                            ) : (
+                              <Camera className="w-6 h-6 text-slate-300" />
+                            )}
+                         </div>
+                         <div className="flex-1 space-y-2.5 w-full">
+                            <div className="flex flex-wrap items-center gap-2">
+                               <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm transition inline-flex items-center gap-1.5">
+                                  <Camera className="w-4 h-4 text-slate-500" />
+                                  Browse Photo...
+                                  <input 
+                                     type="file" 
+                                     accept="image/*" 
+                                     onChange={handleFileChange}
+                                     className="hidden" 
+                                  />
+                               </label>
+                               {formData.imageUrl && (
+                                  <button 
+                                     type="button" 
+                                     onClick={() => setFormData({ ...formData, imageUrl: '' })}
+                                     className="text-xs text-rose-500 hover:text-rose-600 font-bold px-3 py-2.5 border border-rose-100 bg-rose-50 rounded-xl hover:bg-rose-100 transition"
+                                  >
+                                     Remove Photo
+                                  </button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                               <span className="text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">Or use URL:</span>
+                               <input 
+                                  type="url" 
+                                  required={false}
+                                  value={formData.imageUrl && !formData.imageUrl.startsWith('data:') ? formData.imageUrl : ''} 
+                                  onChange={e => setFormData({...formData, imageUrl: e.target.value})}
+                                  placeholder="https://images.unsplash.com/photo-..." 
+                                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                               />
+                            </div>
+                         </div>
+                      </div>
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-6">
