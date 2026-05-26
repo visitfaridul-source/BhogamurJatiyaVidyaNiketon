@@ -79,10 +79,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      const hasDirect = localStorage.getItem('direct_super_admin_session');
-      if (hasDirect) {
-        setLoading(false);
-        return;
+      if (firebaseUser) {
+        // If a real Firebase session is active, discard any legacy mock session to ensure writes save to the database correctly
+        localStorage.removeItem('direct_super_admin_session');
+      } else {
+        const hasDirect = localStorage.getItem('direct_super_admin_session');
+        if (hasDirect) {
+          setLoading(false);
+          return;
+        }
       }
 
       if (firebaseUser) {

@@ -129,10 +129,40 @@ export default function LoginPage() {
     const isMubarakDirect = (username.trim().toLowerCase() === 'mubarak hussain' || username.trim().toLowerCase() === 'visitfaridul@gmail.com') && password === 'Bjvn@1968';
 
     if (isMubarakDirect) {
-      setTimeout(() => {
-        loginAsSuperAdminDirectly('Mubarak Hussain', 'visitfaridul@gmail.com');
+      try {
+        // Authenticate with real Firebase Auth so they have actual write permissions on Firestore (required for Vercel/production)
+        await signInWithEmailAndPassword(auth, 'visitfaridul@gmail.com', 'Bjvn@1968');
+        // Clear any direct bypass session to ensure the real Firebase Auth is active
+        localStorage.removeItem('direct_super_admin_session');
+      } catch (authError: any) {
+        console.warn("Direct Firebase sign-in failed, attempting to auto-register Mubarak Hussain Super Admin:", authError);
+        const errCode = authError?.code;
+        if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential' || String(authError).includes('invalid-credential') || String(authError).includes('user-not-found')) {
+          try {
+            // Auto-register the Super Admin account dynamically to grant proper Firebase permissions
+            const userCred = await createUserWithEmailAndPassword(auth, 'visitfaridul@gmail.com', 'Bjvn@1968');
+            const firebaseUser = userCred.user;
+            
+            // Create user document in Firestore on the spot
+            await setDoc(doc(db, 'users', firebaseUser.uid), {
+              name: 'Mubarak Hussain',
+              email: 'visitfaridul@gmail.com',
+              role: 'Super Admin',
+              createdAt: new Date().toISOString()
+            });
+            localStorage.removeItem('direct_super_admin_session');
+          } catch (regError) {
+            console.error("Auto-registration of direct bypass also failed, falling back to client-only bypass:", regError);
+            // Fallback to client-only bypass as a safe safety recovery measure
+            loginAsSuperAdminDirectly('Mubarak Hussain', 'visitfaridul@gmail.com');
+          }
+        } else {
+          // General fallback
+          loginAsSuperAdminDirectly('Mubarak Hussain', 'visitfaridul@gmail.com');
+        }
+      } finally {
         setIsAnimating(false);
-      }, 500);
+      }
       return;
     }
 
