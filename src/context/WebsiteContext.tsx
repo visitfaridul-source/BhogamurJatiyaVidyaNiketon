@@ -188,31 +188,7 @@ export interface WebsiteSettings {
 const defaultSettings: WebsiteSettings = {
   schoolName: "Bhogamur Jatiya Vidya Niketon",
   logoUrl: null,
-  staffMembers: [
-    {
-      id: "staff-1",
-      name: "Dr. Sarah Jenkins",
-      role: "Principal",
-      bio: "With over 20 years of experience in education leadership, Dr. Jenkins guides our school with vision and compassion.",
-      imageUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=800",
-      email: "principal@smartschool.com"
-    },
-    {
-      id: "staff-2",
-      name: "David Chen",
-      role: "Vice Principal",
-      bio: "Mr. Chen oversees academic operations and ensures excellence in our daily curriculum and student development.",
-      imageUrl: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=800",
-      email: "vprincipal@smartschool.com"
-    },
-    {
-      id: "staff-3",
-      name: "Anita Sharma",
-      role: "Head of Administration",
-      bio: "Mrs. Sharma ensures the smooth functioning of school operations, bridging communication between parents and staff.",
-      imageUrl: "https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=800"
-    }
-  ],
+  staffMembers: [],
   heroHeadline: "ভগামুৰ জাতীয় বিদ্যা নিকেতন",
   heroSubtitle: "A premium, colorful, and fully responsive platform for administration, teachers, students, and parents. Simplify attendance, fees, exams, and more in one unified dashboard.",
   heroGalleryImages: [
@@ -435,6 +411,12 @@ export const WebsiteProvider = ({ children }: { children: ReactNode }) => {
     const unsub = onSnapshot(docRef, (snapshot) => {
       if (snapshot.exists()) {
         const parsed = snapshot.data() as WebsiteSettings;
+        
+        // Filter out mock staff members
+        if (parsed.staffMembers) {
+          const mockStaffIds = ["staff-1", "staff-2", "staff-3"];
+          parsed.staffMembers = parsed.staffMembers.filter(member => !mockStaffIds.includes(member.id));
+        }
         
         // Migration for old default values
         if (

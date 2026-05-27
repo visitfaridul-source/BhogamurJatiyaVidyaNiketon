@@ -53,7 +53,10 @@ export default function Dashboard() {
   const [transactions] = useState<any[]>(() => {
     const saved = localStorage.getItem('bhogamur_fees_transactions');
     try {
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      const mockIds = ['INV-2023-001', 'INV-2023-002', 'INV-2023-003', 'INV-2023-004', 'INV-2023-005'];
+      return parsed.filter((tx: any) => !mockIds.includes(tx.id));
     } catch (e) {
       return [];
     }

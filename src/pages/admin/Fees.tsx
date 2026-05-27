@@ -5,13 +5,7 @@ import { cn } from '@/lib/utils';
 import { useSchool } from '@/context/SchoolContext';
 import { useWebsite } from '@/context/WebsiteContext';
 
-const initialMockTransactions = [
-  { id: 'INV-2023-001', student: 'Aarav Sharma', class: 'Class 10 - A', amount: 15500, date: new Date().toISOString(), type: 'Term 1 Fee', status: 'Paid', mode: 'UPI' },
-  { id: 'INV-2023-002', student: 'Diya Patel', class: 'Class 8 - B', amount: 4500, date: new Date().toISOString(), type: 'Transport Fee + Monthly', status: 'Pending', mode: '-' },
-  { id: 'INV-2023-003', student: 'Rohan Gupta', class: 'Class 12 - Science', amount: 24000, date: new Date(Date.now() - 86400000).toISOString(), type: 'Term 1 Fee + Lab', status: 'Paid', mode: 'Bank Transfer' },
-  { id: 'INV-2023-004', student: 'Ananya Verma', class: 'Class 5 - A', amount: 8500, date: new Date(Date.now() - 172800000).toISOString(), type: 'Tuition Fee (Q2)', status: 'Overdue', mode: '-' },
-  { id: 'INV-2023-005', student: 'Karan Singh', class: 'Class 10 - B', amount: 12000, date: new Date(Date.now() - 259200000).toISOString(), type: 'Term 1 Fee', status: 'Paid', mode: 'Cash' },
-];
+const initialMockTransactions: any[] = [];
 
 export default function Fees() {
   const { settings } = useWebsite();
@@ -22,9 +16,16 @@ export default function Fees() {
   const [transactions, setTransactions] = useState<any[]>(() => {
     const saved = localStorage.getItem('bhogamur_fees_transactions');
     try {
-      return saved ? JSON.parse(saved) : initialMockTransactions;
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      const mockIds = ['INV-2023-001', 'INV-2023-002', 'INV-2023-003', 'INV-2023-004', 'INV-2023-005'];
+      const filtered = parsed.filter((tx: any) => !mockIds.includes(tx.id));
+      if (filtered.length !== parsed.length) {
+        localStorage.setItem('bhogamur_fees_transactions', JSON.stringify(filtered));
+      }
+      return filtered;
     } catch (e) {
-      return initialMockTransactions;
+      return [];
     }
   });
 
