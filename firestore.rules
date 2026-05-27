@@ -16,12 +16,8 @@ service cloud.firestore {
     function isEmailAdmin() {
       return isSignedIn() && (
         request.auth.uid == 'EepWyaNAChdn3aOYhkR2u6ME7pv1' ||
-        (request.auth.token != null && 
-         'email' in request.auth.token && (
-           request.auth.token.email == 'visitfaridul@gmail.com' || 
-           request.auth.token.email == 'bjvnhs@gmail.com'
-         )
-        )
+        request.auth.token.get('email', '') == 'visitfaridul@gmail.com' || 
+        request.auth.token.get('email', '') == 'bjvnhs@gmail.com'
       );
     }
 
