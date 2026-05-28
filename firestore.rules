@@ -11,10 +11,12 @@ service cloud.firestore {
     function isSuperAdmin() {
       return isSignedIn() && (
         request.auth.uid == 'EepWyaNAChdn3aOYhkR2u6ME7pv1' ||
-        request.auth.token.get('email', '') == 'bjvnhs@gmail.com' ||
-        request.auth.token.get('email', '') == 'visitfaridul@gmail.com' ||
-        request.auth.token.get('email', '') == 'BJVNHS@GMAIL.COM' ||
-        request.auth.token.get('email', '') == 'VISITFARIDUL@GMAIL.COM'
+        (request.auth.token != null && 'email' in request.auth.token && (
+          request.auth.token.email == 'bjvnhs@gmail.com' ||
+          request.auth.token.email == 'visitfaridul@gmail.com' ||
+          request.auth.token.email == 'BJVNHS@GMAIL.COM' ||
+          request.auth.token.email == 'VISITFARIDUL@GMAIL.COM'
+        ))
       );
     }
 
