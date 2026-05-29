@@ -3,6 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation, Navigate } from 'react-route
 import { useWebsite } from '@/context/WebsiteContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
+import { auth } from '@/firebase';
 import { 
   LayoutDashboard, 
   Users, 
@@ -69,6 +70,7 @@ export default function AdminLayout() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+  const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { settings } = useWebsite();
@@ -337,9 +339,15 @@ export default function AdminLayout() {
                           <Database className="w-4 h-4 text-blue-600" />
                           <h4 className="font-bold text-sm text-slate-900">Firebase Cloud Hub</h4>
                         </div>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-700 font-bold block">
-                          Ready
-                        </span>
+                        {auth.currentUser ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-700 font-bold block">
+                            Secure Cloud
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-700 font-bold block">
+                            Local Session
+                          </span>
+                        )}
                       </div>
 
                       {/* DB Live breakdown stats */}
@@ -381,9 +389,24 @@ export default function AdminLayout() {
                         </div>
                       </div>
 
+                      {/* Check if user is in bypass login mode and show warning */}
+                      {!auth.currentUser && (
+                        <div className="p-2.5 bg-amber-50 text-amber-800 border border-amber-100 rounded-xl text-left text-[11px] leading-relaxed">
+                          <p className="font-bold mb-1">⚠️ Local Dev Session (Bypass Auth)</p>
+                          <p className="opacity-90">Cloud writes are rejected because you are not authenticated with real Firebase Auth. Please enable "Email/Password" in your Firebase console and authenticate as `visitfaridul@gmail.com` to push securely.</p>
+                        </div>
+                      )}
+
                       {actionSuccessMessage && (
                         <div className="p-2.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-center text-xs font-bold leading-snug">
                           {actionSuccessMessage}
+                        </div>
+                      )}
+
+                      {actionErrorMessage && (
+                        <div className="p-2.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-left text-xs font-medium leading-relaxed max-h-36 overflow-y-auto">
+                          <p className="font-bold mb-1">❌ Sync Failure Detail:</p>
+                          <p>{actionErrorMessage}</p>
                         </div>
                       )}
 
@@ -391,12 +414,19 @@ export default function AdminLayout() {
                         <button
                           disabled={isSyncing}
                           onClick={async () => {
+                            setActionSuccessMessage(null);
+                            setActionErrorMessage(null);
                             try {
                               await syncAllToFirebase();
                               setActionSuccessMessage("✓ All records pushed inside Firebase Firestore successfully!");
-                              setTimeout(() => setActionSuccessMessage(null), 4000);
+                              setTimeout(() => setActionSuccessMessage(null), 5000);
                             } catch (e: any) {
-                              alert("Sync error: " + (e.message || String(e)));
+                              const errStr = e.message || String(e);
+                              if (errStr.includes("permission-denied") || errStr.includes("Missing or insufficient permissions")) {
+                                setActionErrorMessage("Missing or insufficient privileges. To solve, please confirm you are authenticated with Firebase instead of a local direct-bypass session.");
+                              } else {
+                                setActionErrorMessage(errStr);
+                              }
                             }
                           }}
                           className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
@@ -409,12 +439,19 @@ export default function AdminLayout() {
                           disabled={isSyncing}
                           onClick={async () => {
                             if (confirm("WARNING: This will completely overwrite all remote documents in Firebase with original mock student templates. Are you sure you want to perform a full database reset?")) {
+                              setActionSuccessMessage(null);
+                              setActionErrorMessage(null);
                               try {
                                 await resetFirestoreToMock();
                                 setActionSuccessMessage("✓ Database schema has been reset to mockup templates!");
-                                setTimeout(() => setActionSuccessMessage(null), 4000);
+                                setTimeout(() => setActionSuccessMessage(null), 5000);
                               } catch (e: any) {
-                                alert("Reset error: " + (e.message || String(e)));
+                                const errStr = e.message || String(e);
+                                if (errStr.includes("permission-denied") || errStr.includes("Missing or insufficient permissions")) {
+                                  setActionErrorMessage("Missing or insufficient privileges on remote Firestore reset. Confirm you are signed in using real Firebase authentication.");
+                                } else {
+                                  setActionErrorMessage(errStr);
+                                }
                               }
                             }
                           }}
