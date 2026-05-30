@@ -80,6 +80,12 @@ export default function Attendance() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<any>(null);
 
+  const [isMonthlyModalOpen, setIsMonthlyModalOpen] = useState(false);
+  const [registerMonth, setRegisterMonth] = useState<number>(new Date().getMonth());
+  const [registerYear, setRegisterYear] = useState<number>(new Date().getFullYear());
+  const [registerTeacher, setRegisterTeacher] = useState<string>("");
+  const [registerClass, setRegisterClass] = useState<string>(selectedClass || "Class 10");
+
   const handleUpdateAttendanceStatus = (
     id: string,
     newStatus: "Present" | "Absent" | "Late",
@@ -261,7 +267,7 @@ export default function Attendance() {
 
     if (selectedClass) {
       csvHeader =
-        "Roll No,Student Name,Class,Section,Status,In Time,Out Time,Early Out Reason,Remarks\n";
+        "Roll No,Student Name,Class,Section,Status,In Time,Out Time\n";
       const classStudents = students.filter((s) => s.class === selectedClass);
       classStudents.forEach((student) => {
         const record = attendanceMap[`${date}:${student.id}`];
@@ -272,10 +278,8 @@ export default function Attendance() {
         const outTime =
           record?.outTime ||
           (status !== "Absent" && status !== "Not Recorded" ? "15:00" : "");
-        const earlyOutReason = record?.earlyOutReason || "";
-        const remarks = record?.remarks || "";
         csvRows.push(
-          `${student.roll || ""},"${student.name}","${student.class}","${student.section || "A"}",${status},"${inTime}","${outTime}","${earlyOutReason}","${remarks}"`,
+          `${student.roll || ""},"${student.name}","${student.class}","${student.section || "A"}",${status},"${inTime}","${outTime}"`,
         );
       });
     } else {
@@ -372,6 +376,448 @@ export default function Attendance() {
     }
   };
 
+  const printMonthlyRegister = (monthVal: number, yearVal: number, teacherName: string, classVal: string, targetType: "Student" | "Teacher" | "Other Staff") => {
+    const totalDays = new Date(yearVal, monthVal + 1, 0).getDate();
+    const weekdayShorts = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+    
+    const daysArray = [];
+    for (let d = 1; d <= totalDays; d++) {
+      const curDate = new Date(yearVal, monthVal, d);
+      const dayName = weekdayShorts[curDate.getDay()];
+      const dateStr = `${yearVal}-${String(monthVal + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      daysArray.push({
+        dayNum: d,
+        dayName: dayName,
+        dateStr: dateStr
+      });
+    }
+
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const monthName = monthNames[monthVal];
+
+    let membersList = [];
+    let titleSubject = "";
+    if (targetType === "Student") {
+      membersList = students.filter((s) => s.class === classVal);
+      membersList.sort((a, b) => {
+        const rA = parseInt(a.roll) || 999;
+        const rB = parseInt(b.roll) || 999;
+        if (rA !== rB) return rA - rB;
+        return a.name.localeCompare(b.name);
+      });
+      titleSubject = `Class: ${classVal}`;
+    } else if (targetType === "Teacher") {
+      membersList = [...teachers].sort((a,b) => a.name.localeCompare(b.name));
+      titleSubject = "Faculty / Teachers";
+    } else {
+      membersList = [...(settings.staffMembers || [])].sort((a,b) => a.name.localeCompare(b.name));
+      titleSubject = "Non-Teaching / Other Staff";
+    }
+
+    let tableRowsHtml = "";
+
+    membersList.forEach((member, index) => {
+      let presentCount = 0;
+      let absentCount = 0;
+      let lateCount = 0;
+      let dailyStatusCells = "";
+      
+      daysArray.forEach((day) => {
+        const record = attendanceMap[`${day.dateStr}:${member.id}`];
+        let statusSymbol = "";
+        let cellClass = "";
+        
+        if (record && record.status) {
+          if (record.status === "Present") {
+            statusSymbol = "P";
+            presentCount++;
+            cellClass = "p-cell";
+          } else if (record.status === "Absent") {
+            statusSymbol = "A";
+            absentCount++;
+            cellClass = "a-cell";
+          } else if (record.status === "Late") {
+            statusSymbol = "L";
+            lateCount++;
+            cellClass = "l-cell";
+          }
+        } else {
+          const isSunday = day.dayName === "Su";
+          if (isSunday) {
+            statusSymbol = "Su";
+            cellClass = "sunday-col";
+          } else {
+            statusSymbol = "";
+            cellClass = "";
+          }
+        }
+
+        dailyStatusCells += `<td class="${cellClass}">${statusSymbol}</td>`;
+      });
+
+      const displayRollOrId = targetType === "Student" ? (member.roll || index + 1) : (member.id || index + 1);
+
+      tableRowsHtml += `
+        <tr>
+          <td class="roll-col">${displayRollOrId}</td>
+          <td class="name-col">${member.name}</td>
+          ${dailyStatusCells}
+          <td class="total-col p-total">${presentCount}</td>
+          <td class="total-col a-total">${absentCount}</td>
+          <td class="total-col l-total">${lateCount}</td>
+        </tr>
+      `;
+    });
+
+    const displaySchoolName = settings.schoolName || "Bhogamur Jatiya Vidya Niketon";
+    const logoImgUrl = settings.logoUrl || "";
+
+    let htmlContent = `
+      <html>
+        <head>
+          <title>Monthly Attendance Register - ${monthName} ${yearVal}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+            @media print {
+              @page {
+                size: landscape;
+                margin: 6mm 10mm 6mm 10mm;
+              }
+              body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                color: #000;
+              }
+              .no-print {
+                display: none !important;
+              }
+            }
+            body {
+              font-family: 'Inter', -apple-system, sans-serif;
+              font-size: 10px;
+              margin: 0;
+              padding: 15px;
+              color: #1e293b;
+              background-color: #fff;
+            }
+            .header-container {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              margin-bottom: 12px;
+              border-bottom: 2px solid #0f172a;
+              padding-bottom: 8px;
+            }
+            .school-title {
+              font-size: 18px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin: 0;
+              color: #0f172a;
+            }
+            .register-subtitle {
+              font-size: 12px;
+              font-weight: 600;
+              margin: 2px 0 0 0;
+              color: #475569;
+              text-transform: uppercase;
+            }
+            .meta-info {
+              font-size: 10px;
+              font-weight: 700;
+              display: flex;
+              gap: 15px;
+              margin-top: 4px;
+            }
+            .meta-info-item {
+              background: #f8fafc;
+              padding: 3px 8px;
+              border-radius: 4px;
+              border: 1px solid #cbd5e1;
+            }
+            .meta-info-item span {
+              color: #64748b;
+              font-weight: 500;
+              margin-right: 4px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 8px;
+            }
+            th, td {
+              border: 1px solid #334155;
+              padding: 3px 2px;
+              text-align: center;
+              font-size: 8.5px;
+              line-height: 1.2;
+            }
+            th {
+              background-color: #f1f5f9;
+              font-weight: bold;
+              color: #1e293b;
+              text-transform: uppercase;
+              font-size: 8px;
+            }
+            .main-head {
+              font-size: 9px;
+            }
+            .name-col {
+              text-align: left;
+              padding-left: 6px;
+              font-weight: 600;
+              white-space: nowrap;
+              min-width: 140px;
+              color: #020617;
+            }
+            .roll-col {
+              font-weight: 700;
+              min-width: 35px;
+              background-color: #f8fafc;
+            }
+            .p-cell {
+              color: #16a34a;
+              font-weight: 800;
+              background-color: #f0fdf4 !important;
+            }
+            .a-cell {
+              color: #dc2626;
+              font-weight: 800;
+              background-color: #fef2f2 !important;
+            }
+            .l-cell {
+              color: #d97706;
+              font-weight: 800;
+              background-color: #fffbeb !important;
+            }
+            .sunday-col {
+              background-color: #e2e8f0 !important;
+              color: #475569;
+              font-size: 8px;
+              font-weight: bold;
+            }
+            .sunday-header {
+              background-color: #cbd5e1 !important;
+              color: #0f172a;
+            }
+            .total-col {
+              font-weight: 800;
+              min-width: 25px;
+              background-color: #f8fafc;
+              font-size: 9px;
+            }
+            .p-total {
+              color: #16a34a;
+              background-color: #f0fdf4;
+            }
+            .a-total {
+              color: #dc2626;
+              background-color: #fef2f2;
+            }
+            .l-total {
+              color: #d97706;
+              background-color: #fffbeb;
+            }
+            .footer-sign {
+              display: flex;
+              justify-content: space-between;
+              margin-top: 35px;
+              padding: 0 30px;
+            }
+            .signature-box {
+              border-top: 1px solid #475569;
+              width: 160px;
+              text-align: center;
+              padding-top: 5px;
+              font-size: 10px;
+              font-weight: 600;
+              color: #475569;
+            }
+            .print-btn-bar {
+              background: #f8fafc;
+              padding: 10px 15px;
+              border-bottom: 1px solid #e2e8f0;
+              display: flex;
+              gap: 10px;
+              justify-content: flex-end;
+              align-items: center;
+              font-family: sans-serif;
+            }
+            .action-btn {
+              background: #4f46e5;
+              color: white;
+              border: none;
+              padding: 6px 12px;
+              border-radius: 6px;
+              font-size: 12px;
+              font-weight: bold;
+              cursor: pointer;
+            }
+            .action-btn:hover {
+              background: #4338ca;
+            }
+            .close-btn {
+              background: white;
+              color: #475569;
+              border: 1px solid #e2e8f0;
+            }
+            .close-btn:hover {
+              background: #f1f5f9;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-btn-bar no-print">
+            <span style="font-size: 12px; color: #64748b; margin-right: auto; font-weight: 500;">
+              Landscape Orientation Recommended in print options!
+            </span>
+            <button class="action-btn close-btn" onclick="window.close()">Close Window</button>
+            <button class="action-btn" onclick="window.print()">Print / Save PDF</button>
+          </div>
+          
+          <div class="header-container">
+            <div>
+              <h1 class="school-title">${displaySchoolName}</h1>
+              <h2 class="register-subtitle">Monthly Attendance Register</h2>
+              
+              <div class="meta-info">
+                <div class="meta-info-item"><span>Month:</span>${monthName} ${yearVal}</div>
+                <div class="meta-info-item"><span>T. Name:</span>${teacherName || "N/A"}</div>
+                <div class="meta-info-item"><span>Category / Subject:</span>${titleSubject}</div>
+              </div>
+            </div>
+            ${logoImgUrl ? `<img src="${logoImgUrl}" alt="School Logo" style="height: 42px; object-fit: contain; margin-top: 2px;" onerror="this.style.display='none'" />` : ''}
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th rowspan="2" class="main-head roll-col">${targetType === "Student" ? "Roll No" : "ID"}</th>
+                <th rowspan="2" class="main-head name-col">${targetType === "Student" ? "Student Name" : "Name"}</th>
+                ${daysArray.map(day => `<th class="main-head ${day.dayName === 'Su' ? 'sunday-header' : ''}">${day.dayNum}</th>`).join('')}
+                <th rowspan="2" class="main-head total-col p-total" title="Total Present">P</th>
+                <th rowspan="2" class="main-head total-col a-total" title="Total Absent">A</th>
+                <th rowspan="2" class="main-head total-col l-total" title="Total Late">L</th>
+              </tr>
+              <tr>
+                ${daysArray.map(day => `<th class="${day.dayName === 'Su' ? 'sunday-header' : ''}" style="font-size: 7px; padding: 2px 1px;">${day.dayName}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRowsHtml}
+            </tbody>
+          </table>
+
+          <div class="footer-sign">
+            <div class="signature-box">Class Teacher / T. Name Signature</div>
+            <div class="signature-box">Principal / Registrar Signature</div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(htmlContent);
+      win.document.close();
+      setTimeout(() => {
+        win.print();
+      }, 500);
+    }
+  };
+
+  const exportMonthlyRegisterCSV = (monthVal: number, yearVal: number, teacherName: string, classVal: string, targetType: "Student" | "Teacher" | "Other Staff") => {
+    const totalDays = new Date(yearVal, monthVal + 1, 0).getDate();
+    const weekdayShorts = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+    
+    const daysArray = [];
+    for (let d = 1; d <= totalDays; d++) {
+      const curDate = new Date(yearVal, monthVal, d);
+      daysArray.push({
+        num: d,
+        day: weekdayShorts[curDate.getDay()],
+        dateStr: `${yearVal}-${String(monthVal + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      });
+    }
+
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const monthName = monthNames[monthVal];
+
+    let csvContent = `MONTHLY ATTENDANCE REGISTER - ${monthName.toUpperCase()} ${yearVal}\n`;
+    csvContent += `School Name,${settings.schoolName || "Bhogamur Jatiya Vidya Niketon"}\n`;
+    csvContent += `T. Name,${teacherName || "N/A"}\n`;
+    csvContent += `Category / Subject,${targetType === "Student" ? "Class " + classVal : targetType}\n\n`;
+
+    const row1 = [targetType === "Student" ? "Roll No" : "ID", targetType === "Student" ? "Student Name" : "Name"];
+    daysArray.forEach(d => row1.push(String(d.num)));
+    row1.push("Total Present", "Total Absent", "Total Late");
+    csvContent += row1.map(cell => `"${cell}"`).join(",") + "\n";
+
+    const row2 = ["", ""];
+    daysArray.forEach(d => row2.push(d.day));
+    row2.push("", "", "");
+    csvContent += row2.map(cell => `"${cell}"`).join(",") + "\n";
+
+    let membersList = [];
+    if (targetType === "Student") {
+      membersList = students.filter((s) => s.class === classVal);
+      membersList.sort((a, b) => (parseInt(a.roll) || 999) - (parseInt(b.roll) || 999));
+    } else if (targetType === "Teacher") {
+      membersList = [...teachers].sort((a,b) => a.name.localeCompare(b.name));
+    } else {
+      membersList = [...(settings.staffMembers || [])].sort((a,b) => a.name.localeCompare(b.name));
+    }
+
+    membersList.forEach((member, index) => {
+      const rowData = [targetType === "Student" ? (member.roll || index + 1) : (member.id || index + 1), member.name];
+      let presentCount = 0;
+      let absentCount = 0;
+      let lateCount = 0;
+
+      daysArray.forEach((day) => {
+        const record = attendanceMap[`${day.dateStr}:${member.id}`];
+        let symbol = "";
+        if (record && record.status) {
+          if (record.status === "Present") {
+            symbol = "P";
+            presentCount++;
+          } else if (record.status === "Absent") {
+            symbol = "A";
+            absentCount++;
+          } else if (record.status === "Late") {
+            symbol = "L";
+            lateCount++;
+          }
+        } else if (day.day === "Su") {
+          symbol = "Su";
+        }
+        rowData.push(symbol);
+      });
+
+      rowData.push(String(presentCount), String(absentCount), String(lateCount));
+      csvContent += rowData.map(cell => `"${cell}"`).join(",") + "\n";
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const encodedUri = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute(
+      "download",
+      `Monthly_Register_${monthName}_${yearVal}_${targetType === "Student" ? classVal : targetType}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const openEditModal = (record: any) => {
     setEditRecord({ ...record });
     setIsEditModalOpen(true);
@@ -412,15 +858,30 @@ export default function Attendance() {
         </div>
         <div className="flex flex-wrap gap-3">
           <button
+            onClick={() => {
+              if (selectedClass) {
+                setRegisterClass(selectedClass);
+              }
+              if (teachers.length > 0 && !registerTeacher) {
+                setRegisterTeacher(teachers[0].name);
+              }
+              setIsMonthlyModalOpen(true);
+            }}
+            className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-100 transition-colors shadow-sm cursor-pointer"
+          >
+            <CalendarIcon className="w-4 h-4" />
+            <span>Monthly Register</span>
+          </button>
+          <button
             onClick={printClassList}
-            className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-100 transition-colors shadow-sm"
+            className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-100 transition-colors shadow-sm cursor-pointer"
           >
             <Printer className="w-4 h-4" />
             <span className="hidden sm:inline">Print Blank List</span>
           </button>
           <button
             onClick={exportAttendanceDetails}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors shadow-sm"
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span className="hidden sm:inline">Export Report</span>
@@ -696,12 +1157,7 @@ export default function Attendance() {
                         <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">
                           Out Time
                         </th>
-                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">
-                          Early Out Reason
-                        </th>
-                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">
-                          Remarks
-                        </th>
+
                       </tr>
                     ) : (
                       <tr>
@@ -735,7 +1191,7 @@ export default function Attendance() {
                         filteredStudents.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={8}
+                              colSpan={6}
                               className="px-6 py-10 text-center font-medium text-slate-400"
                             >
                               No students found matching your criteria.
@@ -876,45 +1332,6 @@ export default function Attendance() {
                                     className="px-2 py-1 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                                   />
                                 </td>
-                                <td className="px-6 py-4">
-                                  <div className="flex flex-col gap-1 w-full max-w-[180px]">
-                                    <input
-                                      type="text"
-                                      placeholder="Leave early reason..."
-                                      value={record?.earlyOutReason || ""}
-                                      disabled={status === "Absent"}
-                                      onChange={(e) =>
-                                        handleUpdateEarlyOutReason(
-                                          student.id,
-                                          e.target.value,
-                                        )
-                                      }
-                                      className="px-2 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold placeholder:text-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    />
-                                    {record?.outTime &&
-                                      record?.outTime < "14:30" &&
-                                      !record?.earlyOutReason &&
-                                      status !== "Absent" && (
-                                        <span className="text-[10px] text-rose-600 font-bold animate-pulse">
-                                          ⚠️ Early leave? Provide reason
-                                        </span>
-                                      )}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <input
-                                    type="text"
-                                    placeholder="Enter remarks..."
-                                    value={remarks}
-                                    onChange={(e) =>
-                                      handleUpdateRemarks(
-                                        student.id,
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 w-full max-w-[200px] font-semibold"
-                                  />
-                                </td>
                               </tr>
                             );
                           })
@@ -923,7 +1340,7 @@ export default function Attendance() {
                         filteredTeachers.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={8}
+                              colSpan={6}
                               className="px-6 py-10 text-center font-medium text-slate-400"
                             >
                               No teachers found matching your criteria.
@@ -1066,45 +1483,6 @@ export default function Attendance() {
                                     className="px-2 py-1 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                                   />
                                 </td>
-                                <td className="px-6 py-4">
-                                  <div className="flex flex-col gap-1 w-full max-w-[180px]">
-                                    <input
-                                      type="text"
-                                      placeholder="Leave early reason..."
-                                      value={record?.earlyOutReason || ""}
-                                      disabled={status === "Absent"}
-                                      onChange={(e) =>
-                                        handleUpdateEarlyOutReason(
-                                          teacher.id,
-                                          e.target.value,
-                                        )
-                                      }
-                                      className="px-2 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold placeholder:text-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    />
-                                    {record?.outTime &&
-                                      record?.outTime < "14:30" &&
-                                      !record?.earlyOutReason &&
-                                      status !== "Absent" && (
-                                        <span className="text-[10px] text-rose-600 font-bold animate-pulse">
-                                          ⚠️ Early leave? Provide reason
-                                        </span>
-                                      )}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <input
-                                    type="text"
-                                    placeholder="Enter remarks..."
-                                    value={remarks}
-                                    onChange={(e) =>
-                                      handleUpdateRemarks(
-                                        teacher.id,
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 w-full max-w-[200px] font-semibold"
-                                  />
-                                </td>
                               </tr>
                             );
                           })
@@ -1112,7 +1490,7 @@ export default function Attendance() {
                       ) : filteredStaff.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={8}
+                            colSpan={6}
                             className="px-6 py-10 text-center font-medium text-slate-400"
                           >
                             No staff members found matching your criteria.
@@ -1249,46 +1627,7 @@ export default function Attendance() {
                                   className="px-2 py-1 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                                 />
                               </td>
-                              <td className="px-6 py-4">
-                                <div className="flex flex-col gap-1 w-full max-w-[180px]">
-                                  <input
-                                    type="text"
-                                    placeholder="Leave early reason..."
-                                    value={record?.earlyOutReason || ""}
-                                    disabled={status === "Absent"}
-                                    onChange={(e) =>
-                                      handleUpdateEarlyOutReason(
-                                        staff.id,
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="px-2 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold placeholder:text-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                                  />
-                                  {record?.outTime &&
-                                    record?.outTime < "14:30" &&
-                                    !record?.earlyOutReason &&
-                                    status !== "Absent" && (
-                                      <span className="text-[10px] text-rose-600 font-bold animate-pulse">
-                                        ⚠️ Early leave? Provide reason
-                                      </span>
-                                    )}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <input
-                                  type="text"
-                                  placeholder="Enter remarks..."
-                                  value={remarks}
-                                  onChange={(e) =>
-                                    handleUpdateRemarks(
-                                      staff.id,
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 w-full max-w-[200px] font-semibold"
-                                />
-                              </td>
-                            </tr>
+                             </tr>
                           );
                         })
                       )
@@ -1440,6 +1779,179 @@ export default function Attendance() {
                 className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 transition-all"
               >
                 Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isMonthlyModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h3 className="font-bold text-xl text-slate-800">
+                  Generate Monthly Register
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Design & print school-standard landscape sheets
+                </p>
+              </div>
+              <button
+                onClick={() => setIsMonthlyModalOpen(false)}
+                className="p-2 bg-white border border-slate-200 text-slate-400 hover:text-rose-500 rounded-full hover:bg-rose-50 transition-colors shadow-sm cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              {/* Category Picker Info */}
+              <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start gap-2.5 text-xs text-indigo-800 font-semibold leading-relaxed">
+                <CheckCircle className="w-4 h-4 shrink-0 text-indigo-600 mt-0.5" />
+                <div>
+                  Currently generating for:{" "}
+                  <span className="underline decoration-indigo-300 decoration-2 underline-offset-2">
+                    {memberType === "Student"
+                      ? "Students of selected class"
+                      : memberType === "Teacher"
+                      ? "All School Faculty / Teachers"
+                      : "Non-Teaching / Other Staff"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Month & Year selection */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                    Select Month
+                  </label>
+                  <select
+                    value={registerMonth}
+                    onChange={(e) => setRegisterMonth(parseInt(e.target.value, 10))}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    {[
+                      "January", "February", "March", "April", "May", "June",
+                      "July", "August", "September", "October", "November", "December"
+                    ].map((m, idx) => (
+                      <option key={idx} value={idx}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                    Select Year
+                  </label>
+                  <select
+                    value={registerYear}
+                    onChange={(e) => setRegisterYear(parseInt(e.target.value, 10))}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Class selection (only if memberType is Student) */}
+              {memberType === "Student" && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                    Target Class
+                  </label>
+                  <select
+                    value={registerClass}
+                    onChange={(e) => setRegisterClass(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    {classes.map((cls) => (
+                      <option key={cls} value={cls}>
+                        {cls}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Teacher Name */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                  Class Teacher / T. Name
+                </label>
+                <div className="space-y-2">
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setRegisterTeacher(e.target.value);
+                      }
+                    }}
+                    value={teachers.some(t => t.name === registerTeacher) ? registerTeacher : ""}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="">-- Quick Select from Teacher List --</option>
+                    {teachers.map((t) => (
+                      <option key={t.id} value={t.name}>
+                        {t.name} ({t.id})
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Enter Custom Teacher Name (T. Name)"
+                    value={registerTeacher}
+                    onChange={(e) => setRegisterTeacher(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 font-semibold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 mt-auto">
+              <button
+                onClick={() => setIsMonthlyModalOpen(false)}
+                className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer text-xs sm:text-sm text-center"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  exportMonthlyRegisterCSV(
+                    registerMonth,
+                    registerYear,
+                    registerTeacher,
+                    registerClass,
+                    memberType
+                  );
+                }}
+                className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs sm:text-sm"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span>Export CSV Matrix</span>
+              </button>
+              <button
+                onClick={() => {
+                  printMonthlyRegister(
+                    registerMonth,
+                    registerYear,
+                    registerTeacher,
+                    registerClass,
+                    memberType
+                  );
+                }}
+                className="px-6 py-2.5 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs sm:text-sm text-center"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Landscape / Save PDF</span>
               </button>
             </div>
           </div>
