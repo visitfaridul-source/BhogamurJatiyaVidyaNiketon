@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useSchool, StudentResult, SubjectMark } from '../../context/SchoolContext';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmationContext';
-import { Search, Plus, Edit2, Trash2, CheckCircle2, XCircle, FileSpreadsheet, ChevronDown, Download, Award, BookOpen, Printer, Sparkles, TrendingUp, ExternalLink } from 'lucide-react';
+import { useWebsite } from '../../context/WebsiteContext';
+import { Search, Plus, Edit2, Trash2, CheckCircle2, XCircle, FileSpreadsheet, ChevronDown, Download, Award, BookOpen, Printer, Sparkles, TrendingUp, ExternalLink, Lock, Unlock, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import html2pdf from 'html2pdf.js';
@@ -23,6 +24,28 @@ export default function ResultsManagement() {
   const isStudentOrParent = user?.role === 'Student' || user?.role === 'Parent';
   const { results, setResults, students } = useSchool();
   const { confirm } = useConfirm();
+  const { settings, updateSettings } = useWebsite();
+  const [showRestrictionModal, setShowRestrictionModal] = useState(false);
+  const [isUpdatingRestriction, setIsUpdatingRestriction] = useState(false);
+
+  const toggleClassRestriction = async (className: string) => {
+    setIsUpdatingRestriction(true);
+    const currentlyRestricted = settings.restrictedResultClasses || [];
+    let updated;
+    if (currentlyRestricted.includes(className)) {
+      updated = currentlyRestricted.filter(c => c !== className);
+    } else {
+      updated = [...currentlyRestricted, className];
+    }
+    try {
+      await updateSettings({ restrictedResultClasses: updated });
+    } catch (err) {
+      console.error("Failed to update result restriction settings", err);
+    } finally {
+      setIsUpdatingRestriction(false);
+    }
+  };
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -623,11 +646,20 @@ export default function ResultsManagement() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => window.open('/#/result', '_blank')}
-            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-800 px-4 py-2 rounded-xl transition-colors font-bold shadow-xs text-sm border border-slate-200"
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-800 px-4 py-2 rounded-xl transition-colors font-bold shadow-xs text-sm border border-slate-205"
           >
             <ExternalLink className="w-5 h-5" />
             <span className="hidden sm:inline">View Public Portal</span>
           </button>
+          {user?.role === 'Super Admin' && (
+            <button
+              onClick={() => setShowRestrictionModal(true)}
+              className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 px-4 py-2 rounded-xl transition-colors font-bold shadow-xs text-sm"
+            >
+              <Lock className="w-4 h-4" />
+              <span>Lock/Publish Classes</span>
+            </button>
+          )}
           {!isStudentOrParent && (
             <>
               <button
@@ -1391,6 +1423,98 @@ export default function ResultsManagement() {
                 className="px-6 py-2 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Import Data
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Public Results Restrictions Modal */}
+      {showRestrictionModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col border border-slate-200"
+          >
+            <div className="p-6 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-rose-500" />
+                  Public Portal Controls
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">Restrict or enable public viewing of results class-wise.</p>
+              </div>
+              <button
+                onClick={() => setShowRestrictionModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg p-2 rounded-full hover:bg-slate-100 transition-all outline-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+              <div className="text-xs text-slate-600 bg-amber-50 border border-amber-200 p-3 rounded-2xl leading-relaxed flex items-start gap-2.5">
+                <span className="text-amber-500 text-sm">⚠️</span>
+                <span>
+                  <strong>Locked/restricted</strong> classes will be completely hidden from public queries on the public results portal. Use this when exam compilation is in progress or to secure marks.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+                {uniqueClasses.map((cl) => {
+                  const isRestricted = (settings?.restrictedResultClasses || []).includes(cl);
+                  return (
+                    <button
+                      key={cl}
+                      disabled={isUpdatingRestriction}
+                      onClick={() => toggleClassRestriction(cl)}
+                      className={cn(
+                        "flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all relative group select-none cursor-pointer",
+                        isRestricted
+                          ? "border-rose-200 bg-rose-50/40 text-rose-850 shadow-xs hover:bg-rose-50 hover:border-rose-300"
+                          : "border-emerald-200 bg-emerald-50/30 text-emerald-900 shadow-xs hover:bg-emerald-50/60 hover:border-emerald-300"
+                      )}
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-extrabold uppercase tracking-wide">
+                          {cl}
+                        </span>
+                        <span className={cn(
+                          "text-[10px] font-bold tracking-widest uppercase",
+                          isRestricted ? "text-rose-600" : "text-emerald-705"
+                        )}>
+                          {isRestricted ? "LOCKED (PRIVATE)" : "PUBLISHED (PUBLIC)"}
+                        </span>
+                      </div>
+                      <div className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center transition-transform group-hover:scale-105",
+                        isRestricted ? "bg-rose-100/80 text-rose-600" : "bg-emerald-100 text-emerald-600"
+                      )}>
+                        {isRestricted ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+              {isUpdatingRestriction ? (
+                <span className="text-xs text-indigo-650 font-bold animate-pulse flex items-center gap-1.5">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin"></span>
+                  Updating settings...
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                  Changes auto-saved instantly
+                </span>
+              )}
+              <button
+                onClick={() => setShowRestrictionModal(false)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm rounded-xl transition-all shadow-sm cursor-pointer"
+              >
+                Close Controls
               </button>
             </div>
           </motion.div>

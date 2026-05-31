@@ -65,30 +65,56 @@ export default function StaffPage() {
                            transition={{ delay: index * 0.1 }}
                            className="group relative bg-white rounded-[1.5rem] overflow-hidden shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 border border-slate-100 flex flex-col"
                         >
-                            {/* Image Container with Neon animated border */}
+                            {/* Image Container with Neon animated border and inset bevel look */}
                             <div 
-                              className="relative aspect-square overflow-hidden bg-slate-900 p-[3px] cursor-pointer"
+                              className="relative aspect-[4/3] overflow-hidden bg-slate-950 p-[2px] cursor-pointer border-b border-slate-950 shadow-md"
                               onClick={() => staff.imageUrl && setSelectedImage(staff.imageUrl)}
                             >
-                                {/* Neon Gradient Spinners */}
-                                <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_340deg,#0ea5e9_360deg)] animate-[spin_3s_linear_infinite]" />
-                                <div className="absolute inset-[-100%] bg-[conic-gradient(from_180deg,transparent_0_340deg,#e879f9_360deg)] animate-[spin_3s_linear_infinite]" />
+                                {/* High-tech Glowing Accent Spinners at the border edge */}
+                                <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_340deg,#3b82f6_360deg)] animate-[spin_4s_linear_infinite] opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
+                                <div className="absolute inset-[-100%] bg-[conic-gradient(from_180deg,transparent_0_340deg,#a855f7_360deg)] animate-[spin_4s_linear_infinite] opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
                                 
-                                <div className="relative h-full w-full rounded-[calc(1.5rem-3px)] rounded-b-none overflow-hidden shadow-inner isolate bg-slate-50 flex items-center justify-center p-2">
+                                {/* Inner bezel boundaries for deep embedding effect */}
+                                <div className="relative h-full w-full rounded-[calc(1.5rem-2px)] rounded-b-none overflow-hidden bg-slate-900 border-2 border-slate-950 shadow-[inset_0_5px_15px_rgba(0,0,0,0.8)] flex items-center justify-center p-3.5 isolate">
+                                    {/* Inside-shadow overlay layer around the edges of the image container to sink it inwards */}
+                                    <div className="absolute inset-0 pointer-events-none rounded-[calc(1.5rem-3px)] rounded-b-none shadow-[inset_0_4px_10px_rgba(0,0,0,0.75)] z-15 border border-slate-800/80" />
+                                    
                                     {staff.imageUrl ? (
                                         <>
                                           <img 
                                               src={staff.imageUrl} 
                                               alt={staff.name} 
-                                              className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105"
+                                              className="w-full h-full object-contain filter drop-shadow-[0_8px_12px_rgba(0,0,0,0.6)] transition-transform duration-700 group-hover:scale-110 z-10"
                                           />
+                                          
+                                          {/* Slick diagonal glass flash sweep scan effect */}
+                                          <div className="absolute inset-0 w-1/3 h-[200%] bg-gradient-to-r from-transparent via-white/30 to-transparent -skew-x-[25deg] -translate-x-[150%] -translate-y-1/4 group-hover:animate-[shimmer_1s_ease-in-out] z-20 pointer-events-none" />
+                                          
                                           {/* Overlay prompt to click */}
-                                          <div className="absolute inset-x-2 inset-y-2 rounded-xl bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                                            <span className="text-white text-xs font-bold uppercase tracking-widest border border-white/30 backdrop-blur-sm px-3 py-1 rounded-full">View</span>
+                                          <div className="absolute inset-x-2 inset-y-2 rounded-xl bg-slate-950/50 opacity-0 group-hover:opacity-100 transition-opacity duration-350 flex items-center justify-center z-25">
+                                            <span className="text-white text-xs font-bold uppercase tracking-widest border border-white/20 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all duration-300">
+                                              Expand View
+                                            </span>
                                           </div>
                                         </>
                                     ) : (
-                                        <div className="text-slate-400 text-sm">No Image</div>
+                                        /* High-End, futuristic neon-glowing placeholder */
+                                        <div className="flex flex-col items-center justify-center gap-2 relative z-10 p-4 w-full h-full">
+                                          {/* Glossy sweep layer active even on mock profile placeholder */}
+                                          <div className="absolute inset-0 w-1/3 h-[200%] bg-gradient-to-r from-transparent via-white/10 to-transparent -skew-x-[25deg] -translate-x-[150%] -translate-y-1/4 group-hover:animate-[shimmer_1s_ease-in-out] z-20 pointer-events-none" />
+                                          
+                                          <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-slate-950/70 border border-slate-700/50 shadow-md group-hover:border-blue-500/50 group-hover:shadow-[0_0_15px_rgba(59,130,246,0.25)] transition-all duration-300">
+                                            {/* Concentric rotating ring */}
+                                            <div className="absolute inset-0.5 rounded-full border border-dashed border-slate-600/30 animate-[spin_12s_linear_infinite]" />
+                                            <span className="text-xl font-bold text-slate-500 group-hover:text-blue-400 transition-colors">
+                                              {staff.name ? staff.name.charAt(0) : "T"}
+                                            </span>
+                                          </div>
+                                          
+                                          <span className="text-[10px] font-black tracking-widest text-slate-500 uppercase group-hover:text-blue-400 transition-colors">
+                                            No Portrait
+                                          </span>
+                                        </div>
                                     )}
                                 </div>
                             </div>

@@ -190,6 +190,7 @@ export interface WebsiteSettings {
   onlineClasses: OnlineClassEvent[];
   
   feeStructures: FeeStructureTier[];
+  restrictedResultClasses?: string[];
 }
 
 const defaultSettings: WebsiteSettings = {
@@ -440,7 +441,8 @@ const defaultSettings: WebsiteSettings = {
         { id: "fs-2-3", class: 'Grade 11 to 12 (Arts/Commerce)', admissionFee: '₹30,000', tuitionFee: '₹5,000/month', annualFee: '₹2,000/yr', totalAnnual: '₹92,000' },
       ]
     }
-  ]
+  ],
+  restrictedResultClasses: []
 };
 
 interface WebsiteContextType {

@@ -34,6 +34,16 @@ export default function ResultPage() {
     );
 
     if (result) {
+      // Check if restricted by admin
+      const isRestricted = settings.restrictedResultClasses?.some(
+        c => result.className.toLowerCase().includes(c.toLowerCase()) || c.toLowerCase().includes(result.className.toLowerCase())
+      );
+      if (isRestricted) {
+        setSearchedResult(null);
+        setError(`The results for ${result.className} are currently restricted/locked by the school management. Please contact the administration.`);
+        return;
+      }
+
       // Calculate rank
       const peerResults = results.filter(
         r => r.className === result.className && r.examName === result.examName
