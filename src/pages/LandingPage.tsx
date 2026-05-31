@@ -171,7 +171,7 @@ export default function LandingPage() {
             className="w-full lg:w-1/2 flex flex-col items-center lg:items-start text-center lg:text-left relative z-50"
           >
             <h1 
-              className="text-2xl sm:text-3xl md:text-4xl lg:text-4xl xl:text-5xl font-tiro font-bold tracking-tight leading-[1.2] pb-2 text-white drop-shadow-sm"
+              className="text-2xl sm:text-3xl md:text-4xl lg:text-4xl xl:text-5xl font-tiro font-bold tracking-tight leading-[1.2] pb-2 bg-gradient-to-r from-amber-400 via-rose-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-md select-none"
             >
               {settings.heroHeadline}
             </h1>

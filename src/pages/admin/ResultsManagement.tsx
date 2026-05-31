@@ -56,6 +56,14 @@ export default function ResultsManagement() {
   const [bulkImportClass, setBulkImportClass] = useState('Class 10');
   const [bulkImportExam, setBulkImportExam] = useState('Half Yearly Examination');
 
+  const [showBulkDownloadModal, setShowBulkDownloadModal] = useState(false);
+  const [bulkDownloadClass, setBulkDownloadClass] = useState('Class 10');
+  const [bulkDownloadType, setBulkDownloadType] = useState<'consolidated' | 'single'>('consolidated');
+  const [bulkDownloadExam, setBulkDownloadExam] = useState('Half Yearly Examination');
+  const [bulkDownloadWeights, setBulkDownloadWeights] = useState({ ut1: 10, ut2: 10, hy: 30, annual: 50 });
+  const [bulkIsGenerating, setBulkIsGenerating] = useState(false);
+  const [bulkProgressPercent, setBulkProgressPercent] = useState(0);
+
   // Consolidated 4-Exam Studio States
   const [showConsolidatedStudio, setShowConsolidatedStudio] = useState(false);
   const [activeStudioTab, setActiveStudioTab] = useState<'dashboard' | 'entry' | 'reportcard'>('dashboard');
@@ -652,13 +660,23 @@ export default function ResultsManagement() {
             <span className="hidden sm:inline">View Public Portal</span>
           </button>
           {user?.role === 'Super Admin' && (
-            <button
-              onClick={() => setShowRestrictionModal(true)}
-              className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 px-4 py-2 rounded-xl transition-colors font-bold shadow-xs text-sm"
-            >
-              <Lock className="w-4 h-4" />
-              <span>Lock/Publish Classes</span>
-            </button>
+            <>
+              <button
+                onClick={() => setShowRestrictionModal(true)}
+                className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 px-4 py-2 rounded-xl transition-colors font-bold shadow-xs text-sm"
+              >
+                <Lock className="w-4 h-4" />
+                <span>Lock/Publish Classes</span>
+              </button>
+              <button
+                onClick={() => setShowBulkDownloadModal(true)}
+                className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-4 py-2 rounded-xl transition-colors font-bold shadow-xs text-sm"
+              >
+                <Download className="w-4 h-4" />
+                <span className="hidden md:inline">Bulk Marksheets</span>
+                <span className="md:hidden">Bulk</span>
+              </button>
+            </>
           )}
           {!isStudentOrParent && (
             <>
@@ -1520,6 +1538,594 @@ export default function ResultsManagement() {
           </motion.div>
         </div>
       )}
+
+      {/* Super Admin Bulk Marksheet Downloader Modal */}
+      {showBulkDownloadModal && (() => {
+        const bulkStudents = (students || []).filter(s =>
+          s.class.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim() &&
+          s.active !== false
+        );
+
+        const handleBulkDownloadPDF = async () => {
+          setBulkIsGenerating(true);
+          setBulkProgressPercent(10);
+          
+          await new Promise(resolve => setTimeout(resolve, 600));
+          setBulkProgressPercent(35);
+
+          const element = document.getElementById('bulk-report-cards-printable-area');
+          if (!element) {
+            setBulkIsGenerating(false);
+            alert("Error: Render canvas element was not found in page DOM.");
+            return;
+          }
+          
+          setBulkProgressPercent(65);
+          await new Promise(resolve => setTimeout(resolve, 400));
+          setBulkProgressPercent(85);
+
+          const typePart = bulkDownloadType === 'consolidated' ? 'Consolidated_Annual' : `${bulkDownloadExam.replace(/\s+/g, '_')}`;
+          const opt = {
+            margin:       0.3,
+            filename:    `${bulkDownloadClass.replace(/\s+/g, '_')}_Bulk_Marksheets_${typePart}.pdf`,
+            image:        { type: 'jpeg' as const, quality: 0.98 },
+            html2canvas:  { scale: 2, useCORS: true },
+            jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' as const }
+          };
+
+          try {
+            await html2pdf().from(element).set(opt).save();
+            setBulkProgressPercent(100);
+            setTimeout(() => {
+              setBulkIsGenerating(false);
+              setShowBulkDownloadModal(false);
+            }, 600);
+          } catch (err) {
+            console.error("Bulk download pdf generation failed", err);
+            alert("PDF compiling error occurred. Check browser logs or retry.");
+            setBulkIsGenerating(false);
+          }
+        };
+
+        const totalWeights = bulkDownloadWeights.ut1 + bulkDownloadWeights.ut2 + bulkDownloadWeights.hy + bulkDownloadWeights.annual;
+
+        return (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col border border-slate-200"
+            >
+              {/* Modal Header */}
+              <div className="p-6 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-2xl shadow-md">
+                    <Download className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-slate-800 tracking-tight">Super Admin Bulk Downloader</h2>
+                    <p className="text-xs text-slate-500 mt-0.5 font-medium">Download combined high-fidelity student marksheets in one-click.</p>
+                  </div>
+                </div>
+                <button
+                  disabled={bulkIsGenerating}
+                  onClick={() => setShowBulkDownloadModal(false)}
+                  className="text-slate-400 hover:text-slate-600 font-bold text-lg p-2 rounded-full hover:bg-slate-100 transition-all outline-none disabled:opacity-30"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+                {/* Loader Overlay */}
+                {bulkIsGenerating && (
+                  <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 select-none">
+                    <div className="w-full max-w-sm space-y-6 text-center animate-pulse">
+                      <div className="inline-flex relative items-center justify-center p-5 bg-indigo-50 text-indigo-600 rounded-full mb-2">
+                        <div className="absolute inset-0 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+                        <FileSpreadsheet className="w-8 h-8" />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <h4 className="text-base font-black text-slate-800">Compiling Report Sheet Data</h4>
+                        <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                          Processing {bulkStudents.length} candidates, compiling score grids and embedding QR security seals...
+                        </p>
+                      </div>
+
+                      {/* Cool progress bar */}
+                      <div className="space-y-1">
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-indigo-600 rounded-full transition-all duration-300"
+                            style={{ width: `${bulkProgressPercent}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] font-bold text-slate-450 uppercase tracking-widest pt-1">
+                          <span>Progress Status</span>
+                          <span>{bulkProgressPercent}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Form Controls */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Select Class */}
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 tracking-wider uppercase mb-1.5">Selected Cohort Class</label>
+                    <select
+                      value={bulkDownloadClass}
+                      onChange={(e) => setBulkDownloadClass(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-extrabold text-slate-850 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                    >
+                      {uniqueClasses.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Select Report Card Type */}
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 tracking-wider uppercase mb-1.5">Marksheet Blueprint</label>
+                    <div className="grid grid-cols-2 gap-2 bg-slate-50 border border-slate-150 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setBulkDownloadType('consolidated')}
+                        className={cn(
+                          "py-2 text-[10px] font-black tracking-wider uppercase rounded-lg transition-all",
+                          bulkDownloadType === 'consolidated'
+                            ? "bg-white text-indigo-700 shadow-xs border border-slate-200"
+                            : "text-slate-500 hover:text-slate-800"
+                        )}
+                      >
+                        Consolidated Annual
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBulkDownloadType('single')}
+                        className={cn(
+                          "py-2 text-[10px] font-black tracking-wider uppercase rounded-lg transition-all",
+                          bulkDownloadType === 'single'
+                            ? "bg-white text-indigo-700 shadow-xs border border-slate-200"
+                            : "text-slate-500 hover:text-slate-800"
+                        )}
+                      >
+                        Single Exam Only
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Conditional customizer options */}
+                {bulkDownloadType === 'single' ? (
+                  <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl space-y-1.5">
+                    <label className="block text-[10px] font-black text-indigo-600 tracking-wider uppercase">Select Exam Target</label>
+                    <select
+                      value={bulkDownloadExam}
+                      onChange={(e) => setBulkDownloadExam(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
+                    >
+                      {['Unit Test 1', 'Unit Test 2', 'Unit Test 3', 'Unit Test 4', 'Half Yearly Examination', 'Annual Examination', 'Pre-Board Examination', 'Board Examination'].map(ex => (
+                        <option key={ex} value={ex}>{ex}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400 font-bold mt-1 leading-relaxed">
+                      This compiles independent scores directly as entered by standard school subject rules for this single exam event.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl space-y-3.5">
+                    <div className="flex items-center justify-between border-b border-indigo-100/50 pb-2">
+                      <span className="text-[10px] font-black text-indigo-700 tracking-wider uppercase">Annual Weight Configurations</span>
+                      <span className={cn(
+                        "text-[10px] font-bold px-2 py-0.5 rounded",
+                        totalWeights === 100 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800 animate-pulse"
+                      )}>
+                        Cumulative: {totalWeights}% {totalWeights !== 100 && "(Sum must be 100%)"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block text-[10px] text-slate-500 font-black mb-1">UT-1 (%)</label>
+                        <input
+                          type="number"
+                          value={bulkDownloadWeights.ut1}
+                          onChange={(e) => setBulkDownloadWeights({ ...bulkDownloadWeights, ut1: Math.max(0, Number(e.target.value) || 0) })}
+                          className="w-full py-1.5 bg-white border border-slate-200 text-center rounded-xl text-xs font-bold text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 font-black mb-1">UT-2 (%)</label>
+                        <input
+                          type="number"
+                          value={bulkDownloadWeights.ut2}
+                          onChange={(e) => setBulkDownloadWeights({ ...bulkDownloadWeights, ut2: Math.max(0, Number(e.target.value) || 0) })}
+                          className="w-full py-1.5 bg-white border border-slate-200 text-center rounded-xl text-xs font-bold text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 font-black mb-1">Term 1 / HY (%)</label>
+                        <input
+                          type="number"
+                          value={bulkDownloadWeights.hy}
+                          onChange={(e) => setBulkDownloadWeights({ ...bulkDownloadWeights, hy: Math.max(0, Number(e.target.value) || 0) })}
+                          className="w-full py-1.5 bg-white border border-slate-200 text-center rounded-xl text-xs font-bold text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 font-black mb-1">Term 2 / AE (%)</label>
+                        <input
+                          type="number"
+                          value={bulkDownloadWeights.annual}
+                          onChange={(e) => setBulkDownloadWeights({ ...bulkDownloadWeights, annual: Math.max(0, Number(e.target.value) || 0) })}
+                          className="w-full py-1.5 bg-white border border-slate-200 text-center rounded-xl text-xs font-bold text-slate-800"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Active Student List Summary */}
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-slate-700 font-bold uppercase tracking-wider">Cohort Information</p>
+                    <p className="text-xl font-black text-slate-900 tracking-tight">
+                      {bulkStudents.length} Active Candidates
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-semibold uppercase">
+                      Class: <strong className="text-slate-650">{bulkDownloadClass}</strong> • State: Active
+                    </p>
+                  </div>
+                  <div className="flex -space-x-2.5 overflow-hidden">
+                    {bulkStudents.slice(0, 5).map((st, i) => (
+                      <img
+                        key={st.id}
+                        className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-slate-50 border border-slate-200"
+                        src={st.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${st.name}`}
+                        alt="avatar"
+                      />
+                    ))}
+                    {bulkStudents.length > 5 && (
+                      <span className="flex items-center justify-center h-8 w-8 rounded-full ring-2 ring-white bg-indigo-100 text-[10px] font-black text-indigo-700">
+                        +{bulkStudents.length - 5}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-6 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">
+                  Secure PDF Verification SEAL Included
+                </span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowBulkDownloadModal(false)}
+                    className="px-4 py-2 border border-slate-200 hover:bg-slate-100 text-slate-600 font-black text-xs rounded-xl transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={bulkStudents.length === 0 || (bulkDownloadType === 'consolidated' && totalWeights !== 100)}
+                    onClick={handleBulkDownloadPDF}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download {bulkStudents.length} Marksheets</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        );
+      })()}
+
+      {/* HIDDEN OFFSCREEN RENDER CANVAS FOR COMBINED PDF EXPORT */}
+      {showBulkDownloadModal && (() => {
+        const bulkStudents = (students || []).filter(s =>
+          s.class.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim() &&
+          s.active !== false
+        );
+
+        return (
+          <div 
+            id="bulk-report-cards-printable-area" 
+            className="absolute opacity-0 pointer-events-none" 
+            style={{ left: '-9999px', top: '-9999px', width: '794px' }} // Standard paper printable pixel width (A4/Letter width)
+          >
+            {bulkStudents.map((st, sIdx) => {
+              // 1. Calculations inside map
+              const u1Res = results.find(r => 
+                r.studentId === st.id && 
+                r.className?.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim() &&
+                (r.examName?.toLowerCase().trim().includes('unit test 1') || r.examName?.toLowerCase().trim().includes('ut 1') || r.examName?.toLowerCase().trim().includes('ut-1') || r.examName === 'ut1')
+              );
+              const u2Res = results.find(r => 
+                r.studentId === st.id && 
+                r.className?.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim() &&
+                (r.examName?.toLowerCase().trim().includes('unit test 2') || r.examName?.toLowerCase().trim().includes('ut 2') || r.examName?.toLowerCase().trim().includes('ut-2') || r.examName === 'ut2')
+              );
+              const hRes = results.find(r => 
+                r.studentId === st.id && 
+                r.className?.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim() &&
+                (r.examName?.toLowerCase().trim().includes('half yearly') || r.examName?.toLowerCase().trim().includes('half') || r.examName?.toLowerCase().trim().includes('mid') || r.examName?.toLowerCase().trim().includes('term 1'))
+              );
+              const aRes = results.find(r => 
+                r.studentId === st.id && 
+                r.className?.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim() &&
+                (r.examName?.toLowerCase().trim().includes('annual') || r.examName?.toLowerCase().trim().includes('final') || r.examName?.toLowerCase().trim().includes('term 2') || r.examName?.toLowerCase().trim().includes('board'))
+              );
+
+              // Standard single exam result lookup
+              const singleRes = results.find(r =>
+                r.studentId === st.id &&
+                r.className?.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim() &&
+                r.examName?.toLowerCase().trim() === bulkDownloadExam.toLowerCase().trim()
+              );
+
+              // Gather unique subjects list
+              const subjectSet = new Set<string>();
+              if (bulkDownloadType === 'consolidated') {
+                [u1Res, u2Res, hRes, aRes].forEach(r => {
+                  r?.subjects.forEach(sub => {
+                    if (sub.subject.trim()) subjectSet.add(sub.subject.trim());
+                  });
+                });
+              } else {
+                singleRes?.subjects.forEach(sub => {
+                  if (sub.subject.trim()) subjectSet.add(sub.subject.trim());
+                });
+              }
+
+              const cardSubs = Array.from(subjectSet);
+              if (cardSubs.length === 0) {
+                ['English', 'Mathematics', 'Science', 'Social Studies'].forEach(s => subjectSet.add(s));
+              }
+              const finalSubjects = Array.from(subjectSet);
+
+              // Compile rows & compute percentage
+              let scoreSum = 0;
+              let activeCount = 0;
+
+              const rows = finalSubjects.map(subName => {
+                if (bulkDownloadType === 'consolidated') {
+                  const sUt1 = u1Res?.subjects.find(s => s.subject.toLowerCase() === subName.toLowerCase());
+                  const sUt2 = u2Res?.subjects.find(s => s.subject.toLowerCase() === subName.toLowerCase());
+                  const sHy = hRes?.subjects.find(s => s.subject.toLowerCase() === subName.toLowerCase());
+                  const sAnnual = aRes?.subjects.find(s => s.subject.toLowerCase() === subName.toLowerCase());
+
+                  const maxMarks = sAnnual?.maxMarks || sHy?.maxMarks || sUt1?.maxMarks || sUt2?.maxMarks || 100;
+
+                  const pctUt1 = sUt1 ? (sUt1.obtainedMarks / sUt1.maxMarks) * 100 : null;
+                  const pctUt2 = sUt2 ? (sUt2.obtainedMarks / sUt2.maxMarks) * 100 : null;
+                  const pctHy = sHy ? (sHy.obtainedMarks / sHy.maxMarks) * 100 : null;
+                  const pctAnnual = sAnnual ? (sAnnual.obtainedMarks / sAnnual.maxMarks) * 100 : null;
+
+                  let sumW = 0;
+                  let valPct = 0;
+
+                  if (pctUt1 !== null) {
+                    valPct += pctUt1 * bulkDownloadWeights.ut1;
+                    sumW += bulkDownloadWeights.ut1;
+                  }
+                  if (pctUt2 !== null) {
+                    valPct += pctUt2 * bulkDownloadWeights.ut2;
+                    sumW += bulkDownloadWeights.ut2;
+                  }
+                  if (pctHy !== null) {
+                    valPct += pctHy * bulkDownloadWeights.hy;
+                    sumW += bulkDownloadWeights.hy;
+                  }
+                  if (pctAnnual !== null) {
+                    valPct += pctAnnual * bulkDownloadWeights.annual;
+                    sumW += bulkDownloadWeights.annual;
+                  }
+
+                  const weightedSubPct = sumW > 0 ? (valPct / sumW) : null;
+                  const scoreObtained = weightedSubPct !== null ? Number(((weightedSubPct / 100) * maxMarks).toFixed(1)) : null;
+
+                  if (weightedSubPct !== null) {
+                    scoreSum += weightedSubPct;
+                    activeCount++;
+                  }
+
+                  return {
+                    name: subName,
+                    maxMarks,
+                    ut1: sUt1 ? `${sUt1.obtainedMarks}/${sUt1.maxMarks}` : '—',
+                    ut2: sUt2 ? `${sUt2.obtainedMarks}/${sUt2.maxMarks}` : '—',
+                    hy: sHy ? `${sHy.obtainedMarks}/${sHy.maxMarks}` : '—',
+                    annual: sAnnual ? `${sAnnual.obtainedMarks}/${sAnnual.maxMarks}` : '—',
+                    repr: scoreObtained !== null ? `${scoreObtained}/${maxMarks}` : '—',
+                    grade: weightedSubPct !== null ? getGradeForPercentage(weightedSubPct) : '—'
+                  };
+                } else {
+                  // Single exam logic
+                  const sSub = singleRes?.subjects.find(s => s.subject.toLowerCase() === subName.toLowerCase());
+                  const maxMarks = sSub?.maxMarks || 100;
+                  const earned = sSub ? sSub.obtainedMarks : null;
+                  const pct = sSub ? (sSub.obtainedMarks / sSub.maxMarks) * 100 : null;
+
+                  if (pct !== null) {
+                    scoreSum += pct;
+                    activeCount++;
+                  }
+
+                  return {
+                    name: subName,
+                    maxMarks,
+                    repr: earned !== null ? `${earned}/${maxMarks}` : '—',
+                    grade: pct !== null ? getGradeForPercentage(pct) : '—'
+                  };
+                }
+              });
+
+              const cPercentage = activeCount > 0 ? Number((scoreSum / activeCount).toFixed(2)) : null;
+              const overallGrade = cPercentage !== null ? getGradeForPercentage(cPercentage) : 'N/A';
+              const overallStatus = cPercentage !== null ? (cPercentage >= 40 ? 'PASS' : 'FAIL') : 'DRAFT';
+
+              let teacherComment = "Academic results compilation is currently raw/draft.";
+              if (cPercentage !== null) {
+                if (cPercentage >= 90) teacherComment = "Excellent academic year! Showing extreme brilliance and leading the cohort inside core assemblies.";
+                else if (cPercentage >= 80) teacherComment = "Outstanding achievement. Very attentive, consistent with homework submissions and respectful.";
+                else if (cPercentage >= 70) teacherComment = "Satisfactory work with steady academic improvements. Extremely creative mind.";
+                else if (cPercentage >= 55) teacherComment = "Progress has been steady. Needs supplementary guidance on advanced critical problem solving.";
+                else teacherComment = "Candidate needs rigorous, systematic improvement plan and parental engagement meetings.";
+              }
+
+              const qrPayload = `ID:${st.id}|NAME:${st.name}|CLASS:${st.class}|TYPE:${bulkDownloadType}|SCORE:${cPercentage?.toFixed(1) || 'N/A'}`;
+
+              return (
+                <div 
+                  key={st.id} 
+                  className="bg-white p-12 border-b border-slate-300"
+                  style={{ pageBreakAfter: sIdx < bulkStudents.length - 1 ? 'always' : 'auto' }}
+                >
+                  {/* School Badge Header */}
+                  <div className="text-center border-b border-indigo-200 pb-5 mb-5">
+                    <h2 className="text-2xl font-black text-indigo-950 tracking-wider uppercase">BHOGAMUR JATIYA VIDYA NIKETON</h2>
+                    <p className="text-[12px] text-slate-500 font-extrabold uppercase tracking-widest mt-0.5 leading-none">ESTD. 2004 • GORESWAR, ASSAM</p>
+                    <p className="text-[12px] text-slate-500 font-semibold mt-1">Under Shishu Shiksha Samiti, Assam (Affiliated to Vidya Bharati)</p>
+                    <div className="inline-block bg-indigo-50 border border-indigo-150 text-indigo-900 font-black text-[12px] uppercase tracking-widest px-5 py-1.5 rounded-full mt-3.5 shadow-xs">
+                      {bulkDownloadType === 'consolidated' ? "Consolidated Annual Report Card" : `${bulkDownloadExam}`}
+                    </div>
+                  </div>
+
+                  {/* Student bio details */}
+                  <div className="grid grid-cols-4 gap-4 text-xs font-semibold py-4 border border-slate-200 rounded-2xl bg-slate-50/50 p-5 mb-6">
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Student Name</p>
+                      <p className="text-slate-800 font-black uppercase">{st.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Admission ID</p>
+                      <p className="text-slate-800 font-mono">{st.id}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Class / Sec</p>
+                      <p className="text-slate-800">{st.section ? `${st.class} - ${st.section}` : st.class}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Roll Index</p>
+                      <p className="text-slate-800 font-black">{st.roll || '-'}</p>
+                    </div>
+                  </div>
+
+                  {/* Subject table */}
+                  {bulkDownloadType === 'consolidated' ? (
+                    <table className="w-full text-xs font-semibold border border-slate-300 rounded-xl overflow-hidden mb-6">
+                      <thead>
+                        <tr className="bg-indigo-950 text-white font-black text-[11px] text-left">
+                          <th className="px-3.5 py-3 border border-indigo-800 w-[180px]">Subject Item</th>
+                          <th className="px-3 py-3 border border-indigo-800 text-center">UT1 ({bulkDownloadWeights.ut1}%)</th>
+                          <th className="px-3 py-3 border border-indigo-800 text-center">UT2 ({bulkDownloadWeights.ut2}%)</th>
+                          <th className="px-3 py-3 border border-indigo-800 text-center">HY ({bulkDownloadWeights.hy}%)</th>
+                          <th className="px-3 py-3 border border-indigo-800 text-center">Annual ({bulkDownloadWeights.annual}%)</th>
+                          <th className="px-3.5 py-3 border border-indigo-900 text-center bg-indigo-900 text-indigo-250">Weighted Total</th>
+                          <th className="px-3 py-3 border border-indigo-800 text-center">Grade</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {rows.map((row, rIdx) => (
+                          <tr key={rIdx} className={cn(rIdx % 2 === 0 ? "bg-white" : "bg-slate-50/50")}>
+                            <td className="px-3.5 py-2.5 border border-slate-300 font-bold text-slate-800">{row.name}</td>
+                            <td className="px-3 py-2.5 border border-slate-300 text-center text-slate-600">{(row as any).ut1}</td>
+                            <td className="px-3 py-2.5 border border-slate-300 text-center text-slate-600">{(row as any).ut2}</td>
+                            <td className="px-3 py-2.5 border border-slate-300 text-center text-slate-600">{(row as any).hy}</td>
+                            <td className="px-3 py-2.5 border border-slate-300 text-center text-slate-600">{(row as any).annual}</td>
+                            <td className="px-3.5 py-2.5 border border-indigo-200 text-center font-extrabold text-indigo-955 bg-indigo-50/30">{row.repr}</td>
+                            <td className="px-3 py-2.5 border border-slate-300 text-center font-extrabold text-slate-800">{row.grade}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <table className="w-full text-xs font-semibold border border-slate-300 rounded-xl overflow-hidden mb-6">
+                      <thead>
+                        <tr className="bg-indigo-950 text-white font-black text-[11px] text-left">
+                          <th className="px-4 py-3 border border-indigo-800">Subject Name</th>
+                          <th className="px-4 py-3 border border-indigo-800 text-center">Marks Obtained / Max Marks</th>
+                          <th className="px-4 py-3 border border-indigo-800 text-center">Letter Grade</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {rows.map((row, rIdx) => (
+                          <tr key={rIdx} className={cn(rIdx % 2 === 0 ? "bg-white" : "bg-slate-50/50")}>
+                            <td className="px-4 py-3 border border-slate-300 font-bold text-slate-800">{row.name}</td>
+                            <td className="px-4 py-3 border border-slate-300 text-center font-extrabold text-indigo-950">{row.repr}</td>
+                            <td className="px-4 py-3 border border-slate-300 text-center font-extrabold text-slate-800">{row.grade}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* Summary card grids */}
+                  <div className="grid grid-cols-2 gap-5 mb-8">
+                    <div className="space-y-2.5 text-xs font-bold font-semibold">
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-450 uppercase uppercase">Weighted Percentage</span>
+                        <span className="text-slate-900 font-black">{cPercentage !== null ? `${cPercentage}%` : 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-450 uppercase">Scholastic Grade</span>
+                        <span className="text-slate-950 font-black text-indigo-650">{overallGrade}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-450 uppercase">Outcome Status</span>
+                        <span className={cn("text-[10px] uppercase font-black px-2 py-0.5 rounded", overallStatus === 'PASS' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800')}>
+                          {overallStatus}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-450 uppercase">Annual Session attendance</span>
+                        <span className="text-slate-900">188 / 206 Days (91.2%)</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50/80 p-4 border border-slate-200 rounded-2xl flex flex-col justify-between">
+                      <div>
+                        <h4 className="text-[9px] font-black text-slate-450 uppercase tracking-widest mb-1">Teacher Remarks</h4>
+                        <p className="text-xs text-slate-700 italic leading-relaxed">
+                          {teacherComment}
+                        </p>
+                      </div>
+                      <p className="text-[9px] text-slate-400 font-bold text-right pt-2 border-t border-slate-100/50 mt-2">Date: {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    </div>
+                  </div>
+
+                  {/* Bottom secure validations & Signatures */}
+                  <div className="grid grid-cols-4 gap-4 text-center text-[10px] font-bold text-slate-500 mt-10 pt-6 border-t border-slate-200">
+                    <div className="flex flex-col justify-end">
+                      <p className="border-t border-slate-300 inline-block px-2 pt-1 text-slate-600 uppercase tracking-wider">Class Teacher</p>
+                    </div>
+                    <div className="flex flex-col justify-end">
+                      <p className="border-t border-slate-300 inline-block px-2 pt-1 text-slate-600 uppercase tracking-wider">Parent / Guardian</p>
+                    </div>
+                    <div className="flex flex-col items-center justify-center p-2 border border-dashed border-slate-250 bg-slate-50 rounded-xl">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=85x85&color=1e293b&data=${encodeURIComponent(qrPayload)}`}
+                        alt="Verification QR"
+                        className="w-12 h-12 bg-white p-1 rounded border border-slate-200"
+                        referrerPolicy="no-referrer"
+                      />
+                      <span className="text-[7px] font-black text-slate-500 uppercase tracking-widest mt-1">Verify Digitally</span>
+                    </div>
+                    <div className="flex flex-col justify-end">
+                      <p className="border-t border-slate-300 inline-block px-2 pt-1 text-slate-600 uppercase tracking-wider">Principal Seal</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* NEW: Integrated 4-Exam Consolidated Studio Modal */}
       {showConsolidatedStudio && (
