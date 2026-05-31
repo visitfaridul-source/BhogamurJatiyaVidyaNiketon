@@ -62,13 +62,25 @@ export default function PrincipalMessagePage() {
               {settings.principalImageUrl && (
                 <div className="flex justify-center mb-10">
                   <div className="relative group">
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full blur-xl opacity-40 group-hover:opacity-60 transition-opacity duration-500"></div>
-                    <div className="relative w-32 h-32 sm:w-40 sm:h-40 rounded-2xl border-4 border-white shadow-2xl overflow-hidden bg-slate-50 p-1 flex items-center justify-center">
-                      <img 
-                        src={settings.principalImageUrl} 
-                        alt="Principal" 
-                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
-                      />
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full blur-2xl opacity-45 group-hover:opacity-65 transition-opacity duration-500"></div>
+                    
+                    <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-3xl overflow-hidden bg-slate-950 p-[3px] shadow-2xl flex items-center justify-center">
+                      {/* Neon Gradient Spinners */}
+                      <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_340deg,#3b82f6_360deg)] animate-[spin_4s_linear_infinite]" />
+                      <div className="absolute inset-[-100%] bg-[conic-gradient(from_180deg,transparent_0_340deg,#e879f9_360deg)] animate-[spin_4s_linear_infinite]" />
+                      
+                      <div className="relative h-full w-full rounded-[calc(1.5rem-2px)] overflow-hidden bg-slate-940 flex items-center justify-center isolate">
+                        <img 
+                          src={settings.principalImageUrl} 
+                          alt="Principal" 
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                        {/* Sleek diagonal glass flash sweep scan effect */}
+                        <div className="absolute inset-y-0 left-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/25 to-transparent pointer-events-none group-hover:animate-[shimmer_1.2s_ease-in-out] z-20" />
+                        
+                        {/* Clean warm subtle gradient overlay on hover */}
+                        <div className="absolute inset-0 bg-indigo-950/15 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
+                      </div>
                     </div>
                   </div>
                 </div>

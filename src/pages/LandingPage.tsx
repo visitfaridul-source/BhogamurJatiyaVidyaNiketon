@@ -210,15 +210,23 @@ export default function LandingPage() {
               {/* Principal Card */}
               <div 
                 onClick={() => navigate('/prospectus')}
-                className="flex items-center gap-3 bg-slate-900/60 backdrop-blur-md p-3 rounded-2xl border border-white/10 hover:border-amber-400/30 cursor-pointer active:scale-95 transition-all w-[240px] max-w-full text-left"
+                className="group flex items-center gap-3 bg-slate-900/60 backdrop-blur-md p-3 rounded-2xl border border-white/10 hover:border-amber-400/30 cursor-pointer active:scale-95 transition-all w-[240px] max-w-full text-left"
               >
-                <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-amber-400/50 shrink-0 bg-slate-950 p-0.5 flex items-center justify-center">
-                  <img 
-                    src={settings.principalHeroImage || settings.principalImageUrl || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200"} 
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-contain" 
-                    alt="Principal" 
-                  />
+                <div className="relative w-14 h-14 rounded-2xl overflow-hidden bg-slate-950 p-[2px] shrink-0 flex items-center justify-center">
+                  {/* Neon Gradient Spinners */}
+                  <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_340deg,#3b82f6_360deg)] animate-[spin_4s_linear_infinite]" />
+                  <div className="absolute inset-[-100%] bg-[conic-gradient(from_180deg,transparent_0_340deg,#e879f9_360deg)] animate-[spin_4s_linear_infinite]" />
+                  
+                  <div className="relative h-full w-full rounded-[calc(1rem-1px)] overflow-hidden bg-slate-940 flex items-center justify-center isolate">
+                    <img 
+                      src={settings.principalHeroImage || settings.principalImageUrl || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200"} 
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                      alt="Principal" 
+                    />
+                    {/* Sleek diagonal glass flash sweep scan effect */}
+                    <div className="absolute inset-y-0 left-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none group-hover:animate-[shimmer_1s_ease-in-out] z-20" />
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[10.5px] font-bold text-amber-300 tracking-wider uppercase leading-none">Principal</p>
@@ -232,15 +240,23 @@ export default function LandingPage() {
               {/* Vice Principal Card */}
               <div 
                 onClick={() => navigate('/video')}
-                className="flex items-center gap-3 bg-slate-900/60 backdrop-blur-md p-3 rounded-2xl border border-white/10 hover:border-blue-400/30 cursor-pointer active:scale-95 transition-all w-[240px] max-w-full text-left"
+                className="group flex items-center gap-3 bg-slate-900/60 backdrop-blur-md p-3 rounded-2xl border border-white/10 hover:border-blue-400/30 cursor-pointer active:scale-95 transition-all w-[240px] max-w-full text-left"
               >
-                <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-blue-400/50 shrink-0 bg-slate-950 p-0.5 flex items-center justify-center">
-                  <img 
-                    src={settings.vicePrincipalHeroImage || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200"} 
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-contain" 
-                    alt="Vice Principal" 
-                  />
+                <div className="relative w-14 h-14 rounded-2xl overflow-hidden bg-slate-950 p-[2px] shrink-0 flex items-center justify-center">
+                  {/* Neon Gradient Spinners */}
+                  <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_340deg,#3b82f6_360deg)] animate-[spin_4s_linear_infinite]" />
+                  <div className="absolute inset-[-100%] bg-[conic-gradient(from_180deg,transparent_0_340deg,#f43f5e_360deg)] animate-[spin_4s_linear_infinite]" />
+                  
+                  <div className="relative h-full w-full rounded-[calc(1rem-1px)] overflow-hidden bg-slate-940 flex items-center justify-center isolate">
+                    <img 
+                      src={settings.vicePrincipalHeroImage || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200"} 
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                      alt="Vice Principal" 
+                    />
+                    {/* Sleek diagonal glass flash sweep scan effect */}
+                    <div className="absolute inset-y-0 left-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none group-hover:animate-[shimmer_1s_ease-in-out] z-20" />
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[10.5px] font-bold text-blue-300 tracking-wider uppercase leading-none">Vice Principal</p>
@@ -270,13 +286,20 @@ export default function LandingPage() {
                   onClick={() => navigate('/prospectus')} 
                   className="group flex flex-col items-center justify-center gap-2.5 bg-slate-900/80 backdrop-blur-md hover:bg-slate-900/95 text-white p-4 rounded-[2rem] transition-all duration-500 shadow-2xl border border-white/15 hover:-translate-x-2 hover:border-amber-400/30 cursor-pointer w-[130px] text-center"
                 >
-                   <div className="relative w-14 h-14 rounded-xl overflow-hidden border-2 border-amber-400/60 shadow-lg group-hover:scale-105 transition-all duration-500 bg-slate-950 p-0.5 flex items-center justify-center">
-                      <img 
-                        src={settings.principalHeroImage || settings.principalImageUrl || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=300"} 
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-contain animate-fade-in" 
-                        alt="Principal" 
-                      />
+                   <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-slate-950 p-[2px] shadow-lg flex items-center justify-center group-hover:scale-105 transition-transform duration-500">
+                      {/* Neon Gradient Spinners */}
+                      <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_340deg,#3b82f6_360deg)] animate-[spin_4s_linear_infinite]" />
+                      <div className="absolute inset-[-100%] bg-[conic-gradient(from_180deg,transparent_0_340deg,#e879f9_360deg)] animate-[spin_4s_linear_infinite]" />
+                      
+                      <div className="relative h-full w-full rounded-[calc(1rem-1px)] overflow-hidden bg-slate-940 flex items-center justify-center isolate">
+                        <img 
+                          src={settings.principalHeroImage || settings.principalImageUrl || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=300"} 
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover transition-transform duration-500" 
+                          alt="Principal" 
+                        />
+                        <div className="absolute inset-y-0 left-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none group-hover:animate-[shimmer_1s_ease-in-out] z-20" />
+                      </div>
                    </div>
                    <div className="flex flex-col gap-0.5">
                       <span className="text-[10px] font-bold text-amber-300 tracking-wide uppercase">Principal</span>
@@ -284,10 +307,10 @@ export default function LandingPage() {
                    </div>
                    <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-amber-400 group-hover:text-slate-900 text-amber-300 transition-all duration-300 shadow-inner">
                       <Download className="w-4 h-4" />
-                   </div>
-                   <span className="text-[10px] font-extrabold uppercase tracking-wider text-white/80 group-hover:text-amber-300 transition-colors">Prospectus</span>
-                </div>
-              </div>
+                    </div>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-white/80 group-hover:text-amber-300 transition-colors">Prospectus</span>
+                 </div>
+               </div>
 
               {/* Elegant Gallery Container */}
               <div className="relative w-full max-w-[600px] mx-auto z-10">
@@ -347,13 +370,20 @@ export default function LandingPage() {
                    onClick={() => navigate('/video')} 
                    className="group flex flex-col items-center justify-center gap-2.5 bg-slate-900/80 backdrop-blur-md hover:bg-slate-900/95 text-white p-4 rounded-[2rem] transition-all duration-500 shadow-2xl border border-white/15 hover:translate-x-2 hover:border-blue-400/30 cursor-pointer w-[130px] text-center"
                  >
-                   <div className="relative w-14 h-14 rounded-xl overflow-hidden border-2 border-blue-400/60 shadow-lg group-hover:scale-105 transition-all duration-500 mx-auto bg-slate-950 p-0.5 flex items-center justify-center">
-                      <img 
-                        src={settings.vicePrincipalHeroImage || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=300"} 
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-contain animate-fade-in" 
-                        alt="Vice Principal" 
-                      />
+                   <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-slate-950 p-[2px] shadow-lg flex items-center justify-center group-hover:scale-105 transition-transform duration-500 mx-auto">
+                      {/* Neon Gradient Spinners */}
+                      <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_340deg,#3b82f6_360deg)] animate-[spin_4s_linear_infinite]" />
+                      <div className="absolute inset-[-100%] bg-[conic-gradient(from_180deg,transparent_0_340deg,#f43f5e_360deg)] animate-[spin_4s_linear_infinite]" />
+                      
+                      <div className="relative h-full w-full rounded-[calc(1rem-1px)] overflow-hidden bg-slate-940 flex items-center justify-center isolate">
+                        <img 
+                          src={settings.vicePrincipalHeroImage || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=300"} 
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover transition-transform duration-500" 
+                          alt="Vice Principal" 
+                        />
+                        <div className="absolute inset-y-0 left-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none group-hover:animate-[shimmer_1s_ease-in-out] z-20" />
+                      </div>
                    </div>
                    <div className="flex flex-col gap-0.5">
                       <span className="text-[10px] font-bold text-blue-300 tracking-wide uppercase leading-tight">Vice Principal</span>
