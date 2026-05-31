@@ -76,9 +76,74 @@ export default function Dashboard() {
     schoolEvents: events,
     attendanceMap,
     saveSchoolEvent,
-    deleteSchoolEvent
+    deleteSchoolEvent,
+    sessions
   } = useSchool();
   const { settings } = useWebsite();
+
+  // Selected Session for Dashboard filtering
+  const defaultSession = sessions?.find(s => s.isActive) || sessions?.[0];
+  const [selectedSessionId, setSelectedSessionId] = React.useState<string>('all');
+  
+  // Update selected session to default initially if it's set to 'all' and we want to enforce session view
+  React.useEffect(() => {
+    if (selectedSessionId === 'all' && defaultSession) {
+       setSelectedSessionId(defaultSession.id);
+    }
+  }, [sessions]);
+
+  // Derived session limits
+  const activeSession = sessions?.find(s => s.id === selectedSessionId) || defaultSession;
+  
+  const isDateInActiveSession = (dateStr: any) => {
+    if (!activeSession) return true;
+    const d = parseDateSafely(dateStr);
+    const start = parseDateSafely(activeSession.startDate);
+    const end = parseDateSafely(activeSession.endDate);
+    return d >= start && d <= end;
+  };
+
+  const isDateBeforeEndOfActiveSession = (dateStr: any) => {
+     if (!activeSession) return true;
+     const d = parseDateSafely(dateStr);
+     const end = parseDateSafely(activeSession.endDate);
+     return d <= end;
+  };
+
+  // Filter lists based on selected session
+  const filteredStudents = useMemo(() => {
+    if (!activeSession) return students;
+    // For students, check admissionDate if it exists; assume they belong if admitted before end of session
+    return students.filter(s => {
+      // If admission Date is not there, we assume they are active. OR we check created date if present. 
+      // Strictly speaking, if admitted strictly in this session or before
+      if (!s.admissionDate) return true; 
+      return isDateBeforeEndOfActiveSession(s.admissionDate);
+    });
+  }, [students, activeSession]);
+
+  const filteredTeachers = useMemo(() => {
+    if (!activeSession) return teachers;
+    return teachers.filter(t => {
+      if (!t.joinDate) return true;
+      return isDateBeforeEndOfActiveSession(t.joinDate);
+    });
+  }, [teachers, activeSession]);
+
+  const filteredTransactions = useMemo(() => {
+    if (!activeSession) return transactions;
+    return transactions.filter(t => isDateInActiveSession(t.date));
+  }, [transactions, activeSession]);
+
+  const filteredOnlineAdmissions = useMemo(() => {
+    if (!activeSession) return onlineAdmissions;
+    return onlineAdmissions.filter(a => isDateInActiveSession(a.submitDate || new Date()));
+  }, [onlineAdmissions, activeSession]);
+
+  const filteredEvents = useMemo(() => {
+    if (!activeSession) return events;
+    return events.filter(e => isDateInActiveSession(e.date));
+  }, [events, activeSession]);
 
   // Selected Year for Chart Filter
   const [selectedChartPeriod, setSelectedChartPeriod] = useState<'This Year' | 'Last Year'>('This Year');
@@ -149,16 +214,16 @@ export default function Dashboard() {
 
   // Calculate dynamic fees totals
   const totalPaidSum = useMemo(() => {
-    return transactions
+    return filteredTransactions
       .filter(tx => tx.status === 'Paid')
       .reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
-  }, [transactions]);
+  }, [filteredTransactions]);
 
   const totalOutstandingSum = useMemo(() => {
-    return transactions
+    return filteredTransactions
       .filter(tx => tx.status === 'Pending' || tx.status === 'Overdue')
       .reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
-  }, [transactions]);
+  }, [filteredTransactions]);
 
   // Dynamic Revenue Selector Chart Data
   const dynamicRevenueData = useMemo(() => {
@@ -176,7 +241,7 @@ export default function Dashboard() {
       'Jul': 72000,
     };
 
-    transactions.forEach(tx => {
+    filteredTransactions.forEach(tx => {
       if (tx.status === 'Paid') {
         try {
           const monthName = format(new Date(tx.date), 'MMM');
@@ -199,8 +264,8 @@ export default function Dashboard() {
 
   // Match live online admissions from database/state context
   const recentAdmissionsToShow = useMemo(() => {
-    if (onlineAdmissions && onlineAdmissions.length > 0) {
-      return onlineAdmissions.slice(0, 5).map((adm) => ({
+    if (filteredOnlineAdmissions && filteredOnlineAdmissions.length > 0) {
+      return filteredOnlineAdmissions.slice(0, 5).map((adm) => ({
         id: adm.id,
         name: adm.name,
         class: adm.class,
@@ -218,7 +283,7 @@ export default function Dashboard() {
       }));
     }
     return [];
-  }, [onlineAdmissions]);
+  }, [filteredOnlineAdmissions]);
 
   // Action methods: Approve & auto-enroll
   const handleProcessAdmissionOnDashboard = async (admId: string, finalStatus: 'Approved' | 'Rejected') => {
@@ -289,9 +354,28 @@ export default function Dashboard() {
           </h1>
           <p className="text-slate-500 text-xs sm:text-sm font-medium">Bhogamur Jatiya Vidya Niketon • Live Status Update Panel</p>
         </div>
-        <div className="bg-white px-3.5 py-1.5 rounded-xl shadow-xs border border-slate-200 flex items-center gap-2 w-full sm:w-auto">
-          <CalendarCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-          <span className="font-bold text-slate-800 text-xs sm:text-sm">{format(new Date(), 'EEEE, MMMM d, yyyy')}</span>
+        
+        <div className="flex flex-row items-center gap-2 w-full sm:w-auto">
+          {sessions && sessions.length > 0 && (
+            <div className="bg-white px-3 py-1.5 rounded-xl shadow-xs border border-slate-200 flex items-center gap-2">
+              <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Session:</span>
+              <select 
+                value={selectedSessionId}
+                onChange={(e) => setSelectedSessionId(e.target.value)}
+                className="text-xs sm:text-sm font-bold text-indigo-700 bg-transparent outline-none border-none cursor-pointer"
+              >
+                <option value="all">All Time (Cross Session)</option>
+                {sessions.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} {s.isActive ? '(Active)' : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          
+          <div className="bg-white px-3.5 py-1.5 rounded-xl shadow-xs border border-slate-200 flex items-center gap-2">
+            <CalendarCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span className="font-bold text-slate-800 text-xs sm:text-sm">{format(new Date(), 'EEEE, MMMM d, yyyy')}</span>
+          </div>
         </div>
       </div>
 
@@ -299,7 +383,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard 
           title="Total Students" 
-          value={students.length.toLocaleString()} 
+          value={filteredStudents.length.toLocaleString()} 
           icon={GraduationCap} 
           trend="Registered Students"
           trendUp={true}
@@ -307,7 +391,7 @@ export default function Dashboard() {
         />
         <StatCard 
           title="Total Teachers" 
-          value={teachers.length.toLocaleString()} 
+          value={filteredTeachers.length.toLocaleString()} 
           icon={Users} 
           trend="Active Faculty"
           trendUp={true}
@@ -494,7 +578,7 @@ export default function Dashboard() {
               <div className="flex-1">
                 <div className="flex justify-between items-center">
                   <h3 className="font-bold text-sm text-white tracking-tight">Active Event Agenda</h3>
-                  <span className="bg-rose-500/90 text-white text-[9px] font-bold px-2 py-0.5 rounded-full animate-pulse">{events.length} Scheduler Entries</span>
+                  <span className="bg-rose-500/90 text-white text-[9px] font-bold px-2 py-0.5 rounded-full animate-pulse">{filteredEvents.length} Scheduler Entries</span>
                 </div>
                 <p className="text-slate-300 text-[11px] mt-1 leading-relaxed">View school planner. Schedule staff council events, terminal exams & official student holidays.</p>
               </div>
@@ -713,16 +797,16 @@ export default function Dashboard() {
                 <div>
                   <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
                     <span>Scheduled Agenda</span>
-                    <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-lg text-slate-600 normal-case font-bold">{events.length} saved events</span>
+                    <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-lg text-slate-600 normal-case font-bold">{filteredEvents.length} saved events</span>
                   </h4>
 
                   <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                    {events.length === 0 ? (
+                    {filteredEvents.length === 0 ? (
                       <div className="p-8 text-center text-slate-400 text-xs">
                         No events logged. Try adding one on the left schema!
                       </div>
                     ) : (
-                      events.map(ev => (
+                      filteredEvents.map(ev => (
                         <div key={ev.id} className="flex justify-between items-center p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl text-xs transition-colors group">
                           <div>
                             <p className="font-bold text-slate-800 leading-tight">{ev.title}</p>
