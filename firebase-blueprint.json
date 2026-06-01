@@ -131,6 +131,17 @@
         "type": { "type": "string" }
       }
     },
+    "RegisteredFace": {
+      "title": "RegisteredFace",
+      "description": "A pre-registered face record for a student, teacher, or staff member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "registered": { "type": "boolean" },
+        "registeredAt": { "type": "string" }
+      },
+      "required": ["id"]
+    },
     "WebsiteSettings": {
       "title": "WebsiteSettings",
       "description": "Live custom layout configurations and static page variables",
@@ -182,6 +193,10 @@
     "events": {
       "schema": "SchoolEvent",
       "description": "School calendar events"
+    },
+    "registeredFaces": {
+      "schema": "RegisteredFace",
+      "description": "Faces pre-registered for the face scanner"
     }
   }
 }

@@ -1505,6 +1505,34 @@ export default function Attendance() {
                           {memberType === "Other Staff" && "Support Coordinator Logs (गैर-शिक्षण अमला प्रविष्टि)"}
                        </h3>
                     </div>
+                    {memberType === "Other Staff" && (
+                       <div className="flex bg-slate-100 p-1 rounded-xl whitespace-nowrap self-start sm:self-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setViewMode("detailed")}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                              viewMode === "detailed"
+                                ? "bg-amber-600 text-white shadow-xs"
+                                : "text-slate-500 hover:text-slate-800",
+                            )}
+                          >
+                            👥 Staff Register ({settings.staffMembers?.length || 0})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setViewMode("class-overview")}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                              viewMode === "class-overview"
+                                ? "bg-amber-600 text-white shadow-xs"
+                                : "text-slate-500 hover:text-slate-800",
+                            )}
+                          >
+                            🏫 Class-wise Overview (Students)
+                          </button>
+                       </div>
+                    )}
                     {memberType === "Student" && !selectedClass && (
                        <div className="flex bg-slate-100 p-1 rounded-xl whitespace-nowrap self-start sm:self-center gap-1">
                           <button
@@ -1621,7 +1649,7 @@ export default function Attendance() {
                  </div>
               </div>
 
-              {memberType === "Student" && viewMode === "class-overview" && !selectedClass ? (
+              {(memberType === "Student" || memberType === "Other Staff") && viewMode === "class-overview" && !selectedClass ? (
                 <div className="p-6 bg-slate-50/50 border-t border-slate-100">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {filteredOverviewClasses.map((className) => {

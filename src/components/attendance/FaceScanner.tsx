@@ -19,6 +19,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { useSchool } from "@/context/SchoolContext";
 import { useWebsite } from "@/context/WebsiteContext";
 import * as faceapi from "@vladmandic/face-api";
+import { db, handleFirestoreError, OperationType } from "@/firebase";
+import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
 
 let globalScannerModelsLoaded = false;
 
@@ -47,6 +49,66 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
   const latestScannerMode = useRef(scannerMode);
   const latestAttendance = useRef(attendanceMap);
   const detectionInterval = useRef<NodeJS.Timeout | null>(null);
+
+  const [registeredFaceIds, setRegisteredFaceIds] = useState<string[]>([]);
+
+  const [simulatedPersonId, setSimulatedPersonId] = useState<string>("ADM2023001");
+
+  const latestRegisteredFaceIds = useRef(registeredFaceIds);
+  const latestSimulatedPersonId = useRef(simulatedPersonId);
+
+  useEffect(() => {
+    latestRegisteredFaceIds.current = registeredFaceIds;
+  }, [registeredFaceIds]);
+
+  useEffect(() => {
+    latestSimulatedPersonId.current = simulatedPersonId;
+  }, [simulatedPersonId]);
+
+  // Sync registered face IDs from Firestore in real-time
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "registeredFaces"),
+      (snapshot) => {
+        const ids: string[] = [];
+        snapshot.forEach((doc) => {
+          ids.push(doc.id);
+        });
+        if (ids.length === 0) {
+          // Seed the default out-of-the-box face IDs directly to the cloud
+          const defaults = ["ADM2023001", "T001"];
+          defaults.forEach((defId) => {
+            setDoc(doc(db, "registeredFaces", defId), {
+              id: defId,
+              registered: true,
+              registeredAt: new Date().toISOString()
+            }).catch((e) => console.error("Error seeding default face in Firestore:", e));
+          });
+          setRegisteredFaceIds(defaults);
+        } else {
+          setRegisteredFaceIds(ids);
+        }
+      },
+      (error) => {
+        console.error("Cloud registered faces listener failed:", error);
+        handleFirestoreError(error, OperationType.LIST, "registeredFaces");
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const handleRegisterFace = async (id: string) => {
+    try {
+      await setDoc(doc(db, "registeredFaces", id), {
+        id,
+        registered: true,
+        registeredAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Cloud registration failed:", error);
+      handleFirestoreError(error, OperationType.WRITE, `registeredFaces/${id}`);
+    }
+  };
 
   // Native Web Audio Synthesizer for high-reliability beep sounds
   const playWebAudioSound = (type: "success" | "warning") => {
@@ -271,16 +333,15 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
 
           if (candidates.length === 0) return;
 
-          // Match detected face with a candidate (Simulated logic for demonstration)
-          const matchedPerson =
-            candidates[Math.floor(Math.random() * candidates.length)];
-          const faceData = {
-            ...matchedPerson,
-            confidence: Math.round(detections[0].score * 100),
-            photo: matchedPerson.photo,
-          };
+          if (candidates.length === 0) return;
 
-          setDetectedFaces([faceData]);
+          // Match detected face with the simulated person to check if they are registered
+          const curSimId = latestSimulatedPersonId.current;
+          const curRegIds = latestRegisteredFaceIds.current;
+
+          let targetCandidate = candidates.find((c) => c.id === curSimId);
+
+          const isRegistered = targetCandidate && curRegIds.includes(targetCandidate.id);
 
           const now = new Date();
           const scanTimeStr = now.toLocaleTimeString([], {
@@ -289,7 +350,60 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
             hour12: false,
           });
           const curScannerMode = latestScannerMode.current;
-          
+
+          if (!targetCandidate || !isRegistered) {
+            // It is an unregistered face standing in front of webcam!
+            // Warn and play warning buzz buzzer sound!
+            const faceData = {
+              id: "unknown",
+              name: targetCandidate ? `${targetCandidate.name} (Unregistered)` : "Unknown Person / Outer Guest",
+              class: targetCandidate ? targetCandidate.class : "Outer Guest",
+              roll: "-",
+              type: targetCandidate ? targetCandidate.type : "Unknown",
+              confidence: 0,
+              photo: "https://api.dicebear.com/7.x/bottts/svg?seed=unknown",
+            };
+
+            setDetectedFaces([faceData]);
+            setTimeout(() => setDetectedFaces([]), 2000);
+
+            setLogs((prev) => {
+              const isRecentDuplicate = prev
+                .slice(0, 5)
+                .some((l) => l.id === "unknown" && l.status === "UNREGISTERED");
+
+              if (!isRecentDuplicate) {
+                if (soundEnabled) {
+                  playWebAudioSound("warning");
+                  speakVoice("Face not registered! Admission declined.");
+                }
+
+                return [
+                  {
+                    ...faceData,
+                    time: scanTimeStr,
+                    mode: curScannerMode,
+                    status: "UNREGISTERED",
+                    device: "This Device",
+                  },
+                  ...prev.slice(0, 49),
+                ];
+              }
+              return prev;
+            });
+            return;
+          }
+
+          // If we reach here, we have a target candidate and they ARE registered!
+          const matchedPerson = targetCandidate;
+          const faceData = {
+            ...matchedPerson,
+            confidence: Math.round(detections[0].score * 100),
+            photo: matchedPerson.photo,
+          };
+
+          setDetectedFaces([faceData]);
+
           const year = now.getFullYear();
           const month = String(now.getMonth() + 1).padStart(2, '0');
           const day = String(now.getDate()).padStart(2, '0');
@@ -409,6 +523,60 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+      {/* Real-time Cloud Connection Explanation Banner */}
+      <div className="lg:col-span-3 bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-[2rem] p-6 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-16 w-96 h-96 bg-indigo-505/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-12 -bottom-12 p-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="space-y-2 max-w-3xl">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-500 text-emerald-950 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-emerald-950 rounded-full animate-ping"></span>
+                Cloud Synced Status
+              </span>
+              <span className="text-[11px] font-bold text-indigo-300">
+                • Firebase Firestore Core Active
+              </span>
+            </div>
+            <h1 className="text-xl md:text-2xl font-black tracking-tight">
+              कम्प्यूटर/मोबाइल कैमरा और हाजिरी रजिस्टर आपस में जुड़े हुए हैं! <br />
+              <span className="text-indigo-200">Both Camera Face-Scanning & Manual Attendance are fully Connected!</span>
+            </h1>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              आप चाहे <strong>"Start Camera"</strong> करके Face-Scan से हाजिरी लें, या <strong>"Attendance Page"</strong> पर मैन्युअल रजिस्टर से प्रविष्टि करें — दोनों रिकॉर्ड्स एक ही <strong>Cloud Database (Firebase Firestore)</strong> में सुरक्षित होते हैं और सभी डिवाइस पर तुरंत दिखते हैं।
+            </p>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-4 shrink-0 w-full md:w-auto">
+            <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 flex-1 min-w-[200px]">
+              <p className="text-xs font-black text-indigo-300 uppercase tracking-wider mb-1">Option A: Smart Camera</p>
+              <p className="text-[11px] text-slate-300">Place a device with <strong>Camera ON</strong> at the school gate. Attendance logs automatically as people stand in front of it.</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 flex-1 min-w-[200px]">
+              <p className="text-xs font-black text-emerald-300 uppercase tracking-wider mb-1">Option B: Manual Grid</p>
+              <p className="text-[11px] text-slate-300">Mark students Present/Absent directly using the <strong>Manual Register grid</strong> on the Attendance Page from any tablet or mobile.</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="mt-4 pt-4 border-t border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-slate-400 relative z-10">
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+              <strong>Simulate Target :</strong> Choose who stands in front of the lens to demo scanned states.
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+              <strong>Register Face :</strong> Register individual IDs to allow authorized face scans.
+            </span>
+          </div>
+          <span className="text-indigo-300 font-extrabold bg-indigo-500/25 px-2 py-0.5 rounded-md">
+            🚀 100% Mobile & Desktop Cross-Device Compatible
+          </span>
+        </div>
+      </div>
+
       {/* Left Column - Camera Feed */}
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-6 bg-gradient-to-br from-white to-indigo-50/50 relative overflow-hidden">
@@ -530,6 +698,64 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
             </div>
           </div>
 
+          {isScanning && (
+            <div className="mb-4 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10 animate-fade-in shadow-2xs">
+              <div className="flex items-center gap-3">
+                <span className="relative flex h-3 w-3 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+                </span>
+                <div>
+                  <p className="text-xs font-black text-indigo-950 uppercase tracking-widest">Simulate Camera Target</p>
+                  <p className="text-[11px] text-slate-500">Pick who stands in front of the camera to verify real-time log rules</p>
+                </div>
+              </div>
+              <select
+                className="px-4 py-2.5 bg-white border border-indigo-200 focus:border-indigo-400 rounded-xl text-xs font-extrabold text-slate-850 outline-none w-full sm:w-auto cursor-pointer"
+                value={simulatedPersonId}
+                onChange={(e) => setSimulatedPersonId(e.target.value)}
+              >
+                <optgroup label="✅ FACE REGISTERED (Allows check-in/out)">
+                  {students.filter(s => registeredFaceIds.includes(s.id)).map(s => (
+                    <option key={s.id} value={s.id}>
+                      🎓 [Student] {s.name} ({s.class} - Registered)
+                    </option>
+                  ))}
+                  {teachers.filter(t => registeredFaceIds.includes(t.id)).map(t => (
+                    <option key={t.id} value={t.id}>
+                      👔 [Teacher] {t.name} (Registered)
+                    </option>
+                  ))}
+                  {(settings.staffMembers || []).filter((st: any) => registeredFaceIds.includes(st.id)).map((st: any) => (
+                    <option key={st.id} value={st.id}>
+                      🛠️ [Staff] {st.name} (Registered)
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🚨 FACES UNREGISTERED (Triggers Warning Sound)">
+                  <option value="unregistered_guest">
+                    👽 Unregistered Guest / Unknown Face
+                  </option>
+                  {students.filter(s => !registeredFaceIds.includes(s.id)).map(s => (
+                    <option key={s.id} value={s.id}>
+                      ❌ Student: {s.name} ({s.class} - Unregistered)
+                    </option>
+                  ))}
+                  {teachers.filter(t => !registeredFaceIds.includes(t.id)).map(t => (
+                    <option key={t.id} value={t.id}>
+                      ❌ Teacher: {t.name} (Unregistered)
+                    </option>
+                  ))}
+                  {(settings.staffMembers || []).filter((st: any) => !registeredFaceIds.includes(st.id)).map((st: any) => (
+                    <option key={st.id} value={st.id}>
+                      ❌ Staff: {st.name} (Unregistered)
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+          )}
+
           <div className="relative rounded-3xl overflow-hidden bg-slate-900 aspect-video flex flex-col items-center justify-center border-[6px] border-slate-800 shadow-2xl relative z-10">
             {isScanning ? (
               !modelsLoaded ? (
@@ -552,24 +778,36 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
                   />
 
                   {/* Simulated Bounding Boxes Overlay */}
-                  {detectedFaces.map((face, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, scale: 1.1 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="absolute z-20 border-2 border-emerald-400 bg-emerald-400/10 rounded-xl"
-                      style={{
-                        left: "30%",
-                        top: "20%",
-                        width: "40%",
-                        height: "60%",
-                      }}
-                    >
-                      <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap shadow-lg">
-                        {face.name} • {face.confidence}% Match
-                      </div>
-                    </motion.div>
-                  ))}
+                  {detectedFaces.map((face, idx) => {
+                    const isUnregistered = face.id === "unknown";
+                    return (
+                      <motion.div
+                        key={idx}
+                        initial={{ opacity: 0, scale: 1.1 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className={cn(
+                          "absolute z-20 border-2 rounded-xl transition-all duration-300",
+                          isUnregistered
+                            ? "border-rose-500 bg-rose-500/10"
+                            : "border-emerald-400 bg-emerald-400/10"
+                        )}
+                        style={{
+                          left: "30%",
+                          top: "20%",
+                          width: "40%",
+                          height: "60%",
+                        }}
+                      >
+                        <div className={cn(
+                          "absolute -bottom-10 left-1/2 -translate-x-1/2 text-white text-[11px] font-black px-3 py-1.5 rounded-full whitespace-nowrap shadow-lg transition-colors flex items-center gap-1.5",
+                          isUnregistered ? "bg-rose-600 animate-bounce" : "bg-emerald-500"
+                        )}>
+                          {isUnregistered && <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping"></span>}
+                          {isUnregistered ? "⚠️ WARNING: Face Not Registered" : `${face.name} • ${face.confidence}% Match`}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
 
                   {/* Processing Overlay Effect */}
                   <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none mix-blend-overlay"></div>
@@ -654,7 +892,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
                   key={i}
                   className={cn(
                     "flex items-center gap-4 p-3 rounded-2xl border animate-fade-in",
-                    log.status === "ALREADY LOGGED"
+                    log.status === "ALREADY LOGGED" || log.status === "UNREGISTERED"
                       ? "bg-rose-50 border-rose-100"
                       : log.status === "LATE"
                         ? "bg-amber-50 border-amber-100"
@@ -664,14 +902,14 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
                   <div
                     className={cn(
                       "w-10 h-10 rounded-full overflow-hidden border-2 shrink-0",
-                      log.status === "ALREADY LOGGED"
-                        ? "border-rose-400"
+                      log.status === "ALREADY LOGGED" || log.status === "UNREGISTERED"
+                        ? "border-rose-400 animate-pulse"
                         : log.status === "LATE"
                           ? "border-amber-400"
                           : "border-emerald-400",
                     )}
                   >
-                    <img src={log.photo} alt={log.name} />
+                    <img referrerPolicy="no-referrer" src={log.photo} alt={log.name} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-800 truncate">
@@ -685,7 +923,9 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
                             ? "bg-blue-100 text-blue-700"
                             : log.type === "Teacher"
                               ? "bg-purple-100 text-purple-700"
-                              : "bg-amber-100 text-amber-700",
+                              : log.type === "Unknown"
+                                ? "bg-red-100 text-red-600 border border-red-200"
+                                : "bg-amber-100 text-amber-700",
                         )}
                       >
                         {log.type || "Student"}
@@ -699,16 +939,18 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
                     <p
                       className={cn(
                         "text-xs font-bold mb-0.5",
-                        log.status === "ALREADY LOGGED"
-                          ? "text-rose-600"
+                        log.status === "ALREADY LOGGED" || log.status === "UNREGISTERED"
+                          ? "text-rose-600 font-extrabold"
                           : log.status === "LATE"
-                            ? "text-amber-600"
-                            : "text-emerald-600",
+                            ? "text-amber-600 font-extrabold"
+                            : "text-emerald-600 font-extrabold",
                       )}
                     >
                       {log.status === "ALREADY LOGGED"
                         ? "ALREADY LOGGED"
-                        : log.status || "PRESENT"}
+                        : log.status === "UNREGISTERED"
+                          ? "NOT REGISTERED"
+                          : log.status || "PRESENT"}
                     </p>
                     <p className="text-[10px] text-slate-400 font-mono">
                       {log.time}
@@ -741,14 +983,23 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
 
       <AnimatePresence>
         {isRegisterModalOpen && (
-          <RegisterFaceModal onClose={() => setIsRegisterModalOpen(false)} />
+          <RegisterFaceModal
+            onClose={() => setIsRegisterModalOpen(false)}
+            onRegister={(id) => handleRegisterFace(id)}
+          />
         )}
       </AnimatePresence>
     </div>
   );
 }
 
-function RegisterFaceModal({ onClose }: { onClose: () => void }) {
+function RegisterFaceModal({
+  onClose,
+  onRegister,
+}: {
+  onClose: () => void;
+  onRegister?: (id: string) => void;
+}) {
   const { students, teachers } = useSchool();
   const { settings } = useWebsite();
   const [step, setStep] = useState<"info" | "scan" | "success">("info");
@@ -892,10 +1143,15 @@ function RegisterFaceModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     let timeout: NodeJS.Timeout;
     if (step === "scan") {
-      timeout = setTimeout(() => setStep("success"), 3000);
+      timeout = setTimeout(() => {
+        if (onRegister && formData.id) {
+          onRegister(formData.id);
+        }
+        setStep("success");
+      }, 3000);
     }
     return () => clearTimeout(timeout);
-  }, [step]);
+  }, [step, onRegister, formData.id]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
