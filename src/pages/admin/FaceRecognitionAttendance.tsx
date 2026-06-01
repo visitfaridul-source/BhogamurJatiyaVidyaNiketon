@@ -33,8 +33,10 @@ const saveDescriptorCache = (cache: Record<string, number[]>) => {
   }
 };
 
+let globalModelsLoaded = false;
+
 export default function FaceRecognitionAttendance() {
-  const { students, teachers, saveAttendanceRecord } = useSchool();
+  const { students, teachers, saveAttendanceRecord, attendanceMap } = useSchool();
   const { settings } = useWebsite();
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -58,6 +60,14 @@ export default function FaceRecognitionAttendance() {
       return {};
     }
   });
+
+  const mergedAttendanceRegistry = useMemo(() => {
+    // Combine local registry with the real-time Firestore map
+    return {
+      ...attendanceRegistry,
+      ...attendanceMap
+    };
+  }, [attendanceRegistry, attendanceMap]);
 
   const saveRegistry = (updated: Record<string, any>) => {
     setAttendanceRegistry(updated);
@@ -105,6 +115,11 @@ export default function FaceRecognitionAttendance() {
   // Load models on mount
   useEffect(() => {
     const loadModels = async () => {
+      if (globalModelsLoaded) {
+        setIsModelsLoaded(true);
+        setLoadingText('Models loaded successfully from memory.');
+        return;
+      }
       try {
         const MODEL_URL = 'https://vladmandic.github.io/face-api/model/';
          await Promise.all([
@@ -112,6 +127,7 @@ export default function FaceRecognitionAttendance() {
            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
          ]);
+         globalModelsLoaded = true;
          setIsModelsLoaded(true);
          setLoadingText('Models loaded successfully.');
       } catch (err) {
@@ -184,7 +200,7 @@ export default function FaceRecognitionAttendance() {
       }
 
       if (labeledFaceDescriptors.length > 0) {
-        setFaceMatcher(new faceapi.FaceMatcher(labeledFaceDescriptors, 0.45));
+        setFaceMatcher(new faceapi.FaceMatcher(labeledFaceDescriptors, 0.60));
         setLoadingText('');
       } else {
         setFaceMatcher(null);
@@ -232,7 +248,7 @@ export default function FaceRecognitionAttendance() {
     const minutes = String(now.getMinutes()).padStart(2, '0');
     const currentTime = `${hours}:${minutes}`;
 
-    const currentRecord = attendanceRegistry[key] || { status: 'Present', remarks: '' };
+    const currentRecord = mergedAttendanceRegistry[key] || { status: 'Present', remarks: '' };
     
     // Auto check-in if not already recorded for InTime
     if (currentRecord.inTime) {
@@ -268,7 +284,7 @@ export default function FaceRecognitionAttendance() {
     if (!selectedPerson) return;
 
     const key = `${todayDateStr}:${selectedPerson.id}`;
-    const currentRecord = attendanceRegistry[key] || { status: 'Present', remarks: '' };
+    const currentRecord = mergedAttendanceRegistry[key] || { status: 'Present', remarks: '' };
 
     const reason = selectedReason === 'Other' ? customReason : (LEAVE_REASONS.find(r => r.value === selectedReason)?.label || selectedReason);
     
@@ -383,7 +399,7 @@ export default function FaceRecognitionAttendance() {
 
     allPeople.forEach(p => {
       const key = `${todayDateStr}:${p.id}`;
-      const record = attendanceRegistry[key];
+      const record = mergedAttendanceRegistry[key];
       if (record) {
         list.push({
           ...p,
@@ -395,7 +411,7 @@ export default function FaceRecognitionAttendance() {
     });
 
     return list;
-  }, [students, teachers, settings.staffMembers, attendanceRegistry, todayDateStr]);
+  }, [students, teachers, settings.staffMembers, mergedAttendanceRegistry, todayDateStr]);
 
   const checkInLogs = useMemo(() => todayRecords.filter(r => r.inTime), [todayRecords]);
   const earlyOutLogs = useMemo(() => todayRecords.filter(r => r.outTime), [todayRecords]);
@@ -466,7 +482,7 @@ export default function FaceRecognitionAttendance() {
              if (validTarget && person) {
                 // Prevent duplicate logging triggers 
                 const key = `${todayDateStr}:${person.id}`;
-                const currentRecord = attendanceRegistry[key] || {};
+                const currentRecord = mergedAttendanceRegistry[key] || {};
                 
                 // If checking in and already recorded, skip logic
                 if (scanMode === 'check-in' && currentRecord.inTime) return;
@@ -857,7 +873,7 @@ export default function FaceRecognitionAttendance() {
 
                            // Lookup today's check status
                            const personalKey = `${todayDateStr}:${details?.id || ''}`;
-                           const currentReg = attendanceRegistry[personalKey];
+                           const currentReg = mergedAttendanceRegistry[personalKey];
 
                            return (
                              <div key={idx} className="flex flex-col gap-2 p-3.5 bg-slate-50 border border-slate-100 rounded-2xl hover:shadow-xs transition-shadow animate-fade-in">

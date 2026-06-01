@@ -20,6 +20,8 @@ import { useSchool } from "@/context/SchoolContext";
 import { useWebsite } from "@/context/WebsiteContext";
 import * as faceapi from "@vladmandic/face-api";
 
+let globalScannerModelsLoaded = false;
+
 export default function FaceScanner({ onExit }: { onExit?: () => void }) {
   const { students, teachers, saveAttendanceRecord, attendanceMap } =
     useSchool();
@@ -77,9 +79,14 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
   // Load FaceAPI Models from CDN
   useEffect(() => {
     const loadModels = async () => {
+      if (globalScannerModelsLoaded) {
+        setModelsLoaded(true);
+        return;
+      }
       try {
         const MODEL_URL = "https://vladmandic.github.io/face-api/model/";
         await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        globalScannerModelsLoaded = true;
         setModelsLoaded(true);
       } catch (err) {
         console.error("Failed to load face-api models:", err);
