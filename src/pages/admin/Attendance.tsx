@@ -99,6 +99,7 @@ export default function Attendance() {
   const [monitorStatusFilter, setMonitorStatusFilter] = useState<"All" | "Present" | "Absent" | "Late">("All");
   const [monitorCategoryFilter, setMonitorCategoryFilter] = useState<"All" | "Student" | "Teacher">("All");
   const [monitorClassFilter, setMonitorClassFilter] = useState<string>("");
+  const [monitorTeacherFilter, setMonitorTeacherFilter] = useState<string>("");
 
   const [attendanceData, setAttendanceData] = useState(initialMockAttendance);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -353,6 +354,8 @@ export default function Attendance() {
     const studentData = students
       .filter((s) => {
         if (monitorCategoryFilter !== "All" && monitorCategoryFilter !== "Student") return false;
+        // If a teacher filter is active, we hide students when showing "All" category
+        if (monitorTeacherFilter && monitorCategoryFilter === "All") return false;
         const matchesClass = monitorClassFilter ? s.class === monitorClassFilter : true;
         const matchesSearch = searchQuery
           ? s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -384,6 +387,8 @@ export default function Attendance() {
     const teacherData = teachers
       .filter((t) => {
         if (monitorCategoryFilter !== "All" && monitorCategoryFilter !== "Teacher") return false;
+        const matchesTeacher = monitorTeacherFilter ? t.id === monitorTeacherFilter : true;
+        if (!matchesTeacher) return false;
         const matchesSearch = searchQuery
           ? t.name.toLowerCase().includes(searchQuery.toLowerCase())
           : true;
@@ -410,7 +415,7 @@ export default function Attendance() {
       });
 
     return [...studentData, ...teacherData];
-  }, [students, teachers, monitorClassFilter, searchQuery, attendanceMap, date, monitorStatusFilter, monitorCategoryFilter]);
+  }, [students, teachers, monitorClassFilter, monitorTeacherFilter, searchQuery, attendanceMap, date, monitorStatusFilter, monitorCategoryFilter]);
 
   const exportAttendanceDetails = () => {
     let csvHeader = "";
@@ -2396,19 +2401,19 @@ export default function Attendance() {
         {activeTab === "absent-manager" && (
           <div className="space-y-6 animate-fade-in bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-inner">
              {/* Header */}
-             <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 bg-white p-6 rounded-2xl border border-slate-200">
-                <div className="space-y-4">
+             <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 bg-white p-6 rounded-2xl border border-slate-200">
+                <div className="space-y-4 flex-1">
                    <div>
                       <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                          <ScanFace className="w-6 h-6 text-indigo-500" />
                          Live Attendance Monitor (रीयल-टाइम मॉनिटर)
                       </h3>
                       <p className="text-sm text-slate-500 mt-1">
-                         Showing real-time attendance groups for {format(new Date(date), "MMMM dd, yyyy")}. Watch this update automatically as scans occur.
+                         View date-wise, class-wise, and teacher-wise attendance history and records. Watch results filter instantly.
                       </p>
                    </div>
                    
-                   {/* Category & Class Filters */}
+                   {/* Category & Class/Teacher Filters */}
                    <div className="flex items-center gap-3 flex-wrap">
                       <div className="flex bg-slate-100 p-1 rounded-xl">
                          {(["All", "Student", "Teacher"] as const).map((cat) => (
@@ -2417,6 +2422,7 @@ export default function Attendance() {
                                onClick={() => {
                                   setMonitorCategoryFilter(cat);
                                   if (cat !== "Student" && cat !== "All") setMonitorClassFilter("");
+                                  if (cat !== "Teacher" && cat !== "All") setMonitorTeacherFilter("");
                                }}
                                className={cn(
                                   "px-3 py-1.5 text-xs font-bold rounded-lg transition-colors",
@@ -2442,17 +2448,31 @@ export default function Attendance() {
                             ))}
                          </select>
                       )}
+
+                      {(monitorCategoryFilter === "All" || monitorCategoryFilter === "Teacher") && (
+                         <select
+                            value={monitorTeacherFilter}
+                            onChange={(e) => setMonitorTeacherFilter(e.target.value)}
+                            className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-300 max-w-[180px]"
+                         >
+                            <option value="">All Teachers</option>
+                            {teachers.map((t) => (
+                               <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                         </select>
+                      )}
                    </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-wrap">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 lg:self-end flex-wrap">
+                   {/* Status Filter */}
                    <div className="flex bg-slate-100 p-1 rounded-xl">
                       {(["All", "Present", "Absent", "Late"] as const).map((status) => (
                          <button
                             key={status}
                             onClick={() => setMonitorStatusFilter(status)}
                             className={cn(
-                               "px-4 py-1.5 text-sm font-bold rounded-lg transition-colors",
+                               "px-3 py-1 text-xs font-bold rounded-lg transition-colors",
                                monitorStatusFilter === status
                                   ? status === "Absent" ? "bg-rose-500 text-white shadow-sm"
                                   : status === "Present" ? "bg-emerald-500 text-white shadow-sm"
@@ -2465,23 +2485,32 @@ export default function Attendance() {
                          </button>
                       ))}
                    </div>
-                   <div className="flex items-center gap-3 bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-100 text-indigo-700 text-sm">
-                      <Clock className="w-5 h-5 text-indigo-500" />
-                      <span>Date key: <strong className="font-mono">{date}</strong></span>
+
+                   {/* Date picker for history lookup */}
+                   <div className="flex items-center gap-1.5 bg-indigo-50/70 p-1.5 px-3 rounded-xl border border-indigo-100 text-indigo-700 text-xs font-extrabold shadow-xs">
+                      <CalendarIcon className="w-4 h-4 text-indigo-500 shrink-0" />
+                      <span>Date:</span>
+                      <input
+                         type="date"
+                         value={date}
+                         onChange={(e) => setDate(e.target.value)}
+                         className="bg-transparent border-none text-indigo-900 font-extrabold outline-none cursor-pointer focus:ring-0 p-0 text-xs w-28 font-mono"
+                      />
                    </div>
-                   <div className="flex flex-col sm:flex-row gap-2">
+
+                   <div className="flex gap-1.5">
                      <button
                        onClick={printMonitorList}
-                       className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-colors shadow-sm cursor-pointer"
+                       className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors shadow-sm cursor-pointer"
                      >
-                       <Printer className="w-4 h-4" />
+                       <Printer className="w-3.5 h-3.5" />
                        Print List
                      </button>
                      <button
                        onClick={exportMonitorList}
-                       className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-100 transition-colors shadow-sm cursor-pointer"
+                       className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-colors shadow-sm cursor-pointer"
                      >
-                       <FileSpreadsheet className="w-4 h-4" />
+                       <FileSpreadsheet className="w-3.5 h-3.5" />
                        Download Excel
                      </button>
                    </div>
