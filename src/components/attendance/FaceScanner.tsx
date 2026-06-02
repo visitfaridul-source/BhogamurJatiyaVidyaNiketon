@@ -24,6 +24,24 @@ import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
 
 let globalScannerModelsLoaded = false;
 
+const fetchImageWithTimeout = (url: string, timeoutMs: number = 2500): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Timeout loading image after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    faceapi.fetchImage(url)
+      .then((img) => {
+        clearTimeout(timer);
+        resolve(img);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+};
+
 export default function FaceScanner({ onExit }: { onExit?: () => void }) {
   const { students, teachers, saveAttendanceRecord, attendanceMap } =
     useSchool();
@@ -63,6 +81,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
     latestFaceMatcher.current = faceMatcher;
   }, [faceMatcher]);
   const [isFaceMatcherLoading, setIsFaceMatcherLoading] = useState(false);
+  const [loaderMessage, setLoaderMessage] = useState("Loading face descriptor dictionaries...");
   
   const latestStudents = useRef(students);
   const latestTeachers = useRef(teachers);
@@ -309,56 +328,66 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
       const cache = getDescriptorCache();
       let cacheUpdated = false;
 
-      for (const person of allPeople) {
-        // Priority 1: Camera-trained descriptor from local storage
-        const cameraCacheKey = `camera_${person.id}`;
-        if (cache[cameraCacheKey]) {
-          try {
-            const floatArray = new Float32Array(cache[cameraCacheKey]);
-            labeledFaceDescriptors.push(
-              new faceapi.LabeledFaceDescriptors(person.id, [floatArray])
-            );
-            continue;
-          } catch (err) {
-            console.warn(`Failed to reload camera-trained face descriptor for ${person.name}`, err);
-          }
-        }
-
-        // Priority 2: Valid photoUrl (Firebase Storage or direct URI, NOT placeholders)
-        if (
-          person.photoUrl && 
-          !person.photoUrl.includes('dicebear') && 
-          !person.photoUrl.includes('unsplash') && 
-          !person.photoUrl.includes('ui-avatars')
-        ) {
-          const cacheKey = `${person.id}:${person.photoUrl}`;
-          if (cache[cacheKey]) {
-            try {
-              const floatArray = new Float32Array(cache[cacheKey]);
-              labeledFaceDescriptors.push(
-                new faceapi.LabeledFaceDescriptors(person.id, [floatArray])
-              );
-              continue;
-            } catch (err) {
-              console.warn(`Failed to reload cached face descriptors for ${person.name}, re-detecting...`, err);
+      // Group people into parallel processing batches of 6 to prevent freezing while maintaining high speed
+      const batchSize = 6;
+      for (let i = 0; i < allPeople.length; i += batchSize) {
+        const currentProcessed = Math.min(i + batchSize, allPeople.length);
+        setLoaderMessage(`Building face dictionaries (${currentProcessed}/${allPeople.length})...`);
+        const batch = allPeople.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async (person) => {
+            // Priority 1: Camera-trained descriptor from local storage
+            const cameraCacheKey = `camera_${person.id}`;
+            if (cache[cameraCacheKey]) {
+              try {
+                const floatArray = new Float32Array(cache[cameraCacheKey]);
+                labeledFaceDescriptors.push(
+                  new faceapi.LabeledFaceDescriptors(person.id, [floatArray])
+                );
+                return;
+              } catch (err) {
+                console.warn(`Failed to reload camera-trained face descriptor for ${person.name}`, err);
+              }
             }
-          }
 
-          try {
-            const img = await faceapi.fetchImage(person.photoUrl);
-            const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-            
-            if (detection) {
-              labeledFaceDescriptors.push(
-                new faceapi.LabeledFaceDescriptors(person.id, [detection.descriptor])
-              );
-              cache[cacheKey] = Array.from(detection.descriptor);
-              cacheUpdated = true;
+            // Priority 2: Valid photoUrl (Firebase Storage or direct URI, NOT placeholders)
+            if (
+              person.photoUrl && 
+              !person.photoUrl.includes('dicebear') && 
+              !person.photoUrl.includes('unsplash') && 
+              !person.photoUrl.includes('ui-avatars')
+            ) {
+              const cacheKey = `${person.id}:${person.photoUrl}`;
+              if (cache[cacheKey]) {
+                try {
+                  const floatArray = new Float32Array(cache[cacheKey]);
+                  labeledFaceDescriptors.push(
+                    new faceapi.LabeledFaceDescriptors(person.id, [floatArray])
+                  );
+                  return;
+                } catch (err) {
+                  console.warn(`Failed to reload cached face descriptors for ${person.name}, re-detecting...`, err);
+                }
+              }
+
+              try {
+                // Fetch image with max 2500ms timeout to avoid hanging forever
+                const img = await fetchImageWithTimeout(person.photoUrl, 2500);
+                const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+                
+                if (detection) {
+                  labeledFaceDescriptors.push(
+                    new faceapi.LabeledFaceDescriptors(person.id, [detection.descriptor])
+                  );
+                  cache[cacheKey] = Array.from(detection.descriptor);
+                  cacheUpdated = true;
+                }
+              } catch (e) {
+                console.error(`Error processing image for ${person.name}`, e);
+              }
             }
-          } catch (e) {
-            console.error(`Error processing image for ${person.name}`, e);
-          }
-        }
+          })
+        );
       }
 
       if (cacheUpdated) {
@@ -826,7 +855,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
                     <Loader2 className="w-12 h-12 animate-spin relative z-10 text-indigo-500" />
                   </div>
                   <p className="font-extrabold mt-6 tracking-widest uppercase text-sm">Initializing Neural Net</p>
-                  <p className="text-xs text-indigo-400/60 mt-2 font-mono">Loading face descriptor dictionaries...</p>
+                  <p className="text-xs text-indigo-400/60 mt-2 font-mono">{loaderMessage}</p>
                 </div>
               ) : (
                 <>

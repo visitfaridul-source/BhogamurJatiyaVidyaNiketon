@@ -62,6 +62,24 @@ const saveDescriptorCache = (cache: Record<string, number[]>) => {
 
 let globalModelsLoaded = false;
 
+const fetchImageWithTimeout = (url: string, timeoutMs: number = 2500): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Timeout loading image after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    faceapi.fetchImage(url)
+      .then((img) => {
+        clearTimeout(timer);
+        resolve(img);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+};
+
 export default function FaceRecognitionAttendance() {
   const {
     students,
@@ -279,50 +297,59 @@ export default function FaceRecognitionAttendance() {
       const cache = getDescriptorCache();
       let cacheUpdated = false;
 
-      for (const person of allPeople) {
-        if (
-          person.photoUrl &&
-          !person.photoUrl.includes("dicebear") &&
-          !person.photoUrl.includes("unsplash") &&
-          !person.photoUrl.includes("ui-avatars")
-        ) {
-          const cacheKey = `${person.id}:${person.photoUrl}`;
-          if (cache[cacheKey]) {
-            try {
-              const floatArray = new Float32Array(cache[cacheKey]);
-              labeledFaceDescriptors.push(
-                new faceapi.LabeledFaceDescriptors(person.name, [floatArray]),
-              );
-              continue;
-            } catch (err) {
-              console.warn(
-                `Failed to reload cached face descriptors for ${person.name}, re-detecting...`,
-                err,
-              );
-            }
-          }
+      // Group allPeople into small parallel batches of 6 for high speed without blocking
+      const batchSize = 6;
+      for (let i = 0; i < allPeople.length; i += batchSize) {
+        const currentProcessed = Math.min(i + batchSize, allPeople.length);
+        setLoadingText(`Building face dictionaries (${currentProcessed}/${allPeople.length})...`);
+        const batch = allPeople.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async (person) => {
+            if (
+              person.photoUrl &&
+              !person.photoUrl.includes("dicebear") &&
+              !person.photoUrl.includes("unsplash") &&
+              !person.photoUrl.includes("ui-avatars")
+            ) {
+              const cacheKey = `${person.id}:${person.photoUrl}`;
+              if (cache[cacheKey]) {
+                try {
+                  const floatArray = new Float32Array(cache[cacheKey]);
+                  labeledFaceDescriptors.push(
+                    new faceapi.LabeledFaceDescriptors(person.name, [floatArray]),
+                  );
+                  return;
+                } catch (err) {
+                  console.warn(
+                    `Failed to reload cached face descriptors for ${person.name}, re-detecting...`,
+                    err,
+                  );
+                }
+              }
 
-          try {
-            // Load image
-            const img = await faceapi.fetchImage(person.photoUrl);
-            const detection = await faceapi
-              .detectSingleFace(img)
-              .withFaceLandmarks()
-              .withFaceDescriptor();
+              try {
+                // Fetch image with max 2500ms timeout
+                const img = await fetchImageWithTimeout(person.photoUrl, 2500);
+                const detection = await faceapi
+                  .detectSingleFace(img)
+                  .withFaceLandmarks()
+                  .withFaceDescriptor();
 
-            if (detection) {
-              labeledFaceDescriptors.push(
-                new faceapi.LabeledFaceDescriptors(person.name, [
-                  detection.descriptor,
-                ]),
-              );
-              cache[cacheKey] = Array.from(detection.descriptor);
-              cacheUpdated = true;
+                if (detection) {
+                  labeledFaceDescriptors.push(
+                    new faceapi.LabeledFaceDescriptors(person.name, [
+                      detection.descriptor,
+                    ]),
+                  );
+                  cache[cacheKey] = Array.from(detection.descriptor);
+                  cacheUpdated = true;
+                }
+              } catch (e) {
+                console.error(`Error processing image for ${person.name}`, e);
+              }
             }
-          } catch (e) {
-            console.error(`Error processing image for ${person.name}`, e);
-          }
-        }
+          })
+        );
       }
 
       if (cacheUpdated) {
