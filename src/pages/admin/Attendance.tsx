@@ -554,6 +554,40 @@ export default function Attendance() {
     document.body.removeChild(link);
   };
 
+  const exportMonitorList = () => {
+    let csvHeader = "ID/Roll,Name,Type,Group/Class,Status,In Time,Out Time,Remarks\n";
+    let csvRows: string[] = [];
+
+    if (currentMonitorData.length === 0) {
+      alert("No data available to export for the current filters.");
+      return;
+    }
+
+    currentMonitorData.forEach((member) => {
+      const record = attendanceMap[`${date}:${member.id}`];
+      const status = getCalculatedStatus(record, date);
+      const inTime = record?.inTime || "";
+      const outTime = record?.outTime || "";
+      const remarks = record?.remarks || "";
+
+      csvRows.push(
+        `"${member.roll || member.id}","${member.name}","${member.type}","${member.details}","${status}","${inTime}","${outTime}","${remarks}"`
+      );
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + csvHeader + csvRows.join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute(
+      "download",
+      `Live_Monitor_List_${monitorStatusFilter}_${date}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const printClassList = () => {
     let htmlContent = `
       <html>
@@ -2451,6 +2485,13 @@ export default function Attendance() {
                       <Clock className="w-5 h-5 text-indigo-500" />
                       <span>Date key: <strong className="font-mono">{date}</strong></span>
                    </div>
+                   <button
+                     onClick={exportMonitorList}
+                     className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-100 transition-colors shadow-sm cursor-pointer"
+                   >
+                     <FileSpreadsheet className="w-4 h-4" />
+                     Download List
+                   </button>
                 </div>
              </div>
 
