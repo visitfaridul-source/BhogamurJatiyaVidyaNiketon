@@ -98,6 +98,7 @@ export default function Attendance() {
   const [viewMode, setViewMode] = useState<"detailed" | "summary" | "class-overview">("detailed");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAbsenteesOnly, setShowAbsenteesOnly] = useState(false);
+  const [monitorStatusFilter, setMonitorStatusFilter] = useState<"All" | "Present" | "Absent" | "Late">("All");
 
   const [attendanceData, setAttendanceData] = useState(initialMockAttendance);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -362,9 +363,9 @@ export default function Attendance() {
     });
   }, [attendanceData, searchQuery]);
 
-  const currentAbsentees = useMemo(() => {
+  const currentMonitorData = useMemo(() => {
     // 1. Students
-    const studentAbsentees = students
+    const studentData = students
       .filter((s) => {
         const matchesClass = selectedClass ? s.class === selectedClass : true;
         const matchesSection = selectedSection ? s.section === selectedSection : true;
@@ -375,7 +376,10 @@ export default function Attendance() {
         if (!matchesClass || !matchesSection || !matchesSearch) return false;
         
         const record = attendanceMap[`${date}:${s.id}`];
-        return getCalculatedStatus(record, date) === "Absent";
+        const status = getCalculatedStatus(record, date);
+        if (monitorStatusFilter !== "All" && status !== monitorStatusFilter) return false;
+        
+        return true;
       })
       .map(s => {
         const record = attendanceMap[`${date}:${s.id}`];
@@ -384,6 +388,7 @@ export default function Attendance() {
           name: s.name,
           type: "Student" as const,
           details: `${s.class} - Sec ${s.section || 'A'}`,
+          groupByKey: s.class, // For grouping students by class
           photoUrl: s.avatar || "",
           roll: s.roll || "",
           record
@@ -391,7 +396,7 @@ export default function Attendance() {
       });
 
     // 2. Teachers
-    const teacherAbsentees = teachers
+    const teacherData = teachers
       .filter((t) => {
         const matchesSearch = searchQuery
           ? t.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -399,7 +404,10 @@ export default function Attendance() {
         if (!matchesSearch) return false;
 
         const record = attendanceMap[`${date}:${t.id}`];
-        return getCalculatedStatus(record, date) === "Absent";
+        const status = getCalculatedStatus(record, date);
+        if (monitorStatusFilter !== "All" && status !== monitorStatusFilter) return false;
+        
+        return true;
       })
       .map(t => {
         const record = attendanceMap[`${date}:${t.id}`];
@@ -408,6 +416,7 @@ export default function Attendance() {
           name: t.name,
           type: "Teacher" as const,
           details: t.subject || "Educator",
+          groupByKey: "Teachers",
           photoUrl: t.avatar || t.photoUrl || "",
           roll: "",
           record
@@ -415,7 +424,7 @@ export default function Attendance() {
       });
 
     // 3. Other Staff
-    const staffAbsentees = (settings.staffMembers || [])
+    const staffData = (settings.staffMembers || [])
       .filter((st: any) => {
         const matchesSearch = searchQuery
           ? st.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -423,7 +432,10 @@ export default function Attendance() {
         if (!matchesSearch) return false;
 
         const record = attendanceMap[`${date}:${st.id}`];
-        return getCalculatedStatus(record, date) === "Absent";
+        const status = getCalculatedStatus(record, date);
+        if (monitorStatusFilter !== "All" && status !== monitorStatusFilter) return false;
+
+        return true;
       })
       .map((st: any) => {
         const record = attendanceMap[`${date}:${st.id}`];
@@ -432,14 +444,15 @@ export default function Attendance() {
           name: st.name,
           type: "Other Staff" as const,
           details: st.role || "Staff Members",
+          groupByKey: "Other Staff",
           photoUrl: st.imageUrl || "",
           roll: "",
           record
         };
       });
 
-    return [...studentAbsentees, ...teacherAbsentees, ...staffAbsentees];
-  }, [students, teachers, settings.staffMembers, selectedClass, selectedSection, searchQuery, attendanceMap, date]);
+    return [...studentData, ...teacherData, ...staffData];
+  }, [students, teachers, settings.staffMembers, selectedClass, selectedSection, searchQuery, attendanceMap, date, monitorStatusFilter]);
 
   const exportAttendanceDetails = () => {
     let csvHeader = "";
@@ -1173,7 +1186,7 @@ export default function Attendance() {
           active={activeTab === "absent-manager"}
           onClick={() => setActiveTab("absent-manager")}
           icon={UserX}
-          label="Absentee Manager"
+          label="Live Monitor"
         />
       </div>
 
@@ -2407,129 +2420,215 @@ export default function Attendance() {
              <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200">
                 <div>
                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                      <UserX className="w-6 h-6 text-rose-500" />
-                      Absentee Manager (अनुपस्थित सूची प्रबंधक)
+                      <ScanFace className="w-6 h-6 text-indigo-500" />
+                      Live Attendance Monitor (रीयल-टाइम मॉनिटर)
                    </h3>
                    <p className="text-sm text-slate-500 mt-1">
-                      Showing all individuals who are calculated as <span className="text-rose-500 font-semibold bg-rose-50 px-2 py-0.5 rounded-full text-xs">Absent</span> on {format(new Date(date), "MMMM dd, yyyy")}. Easily toggle or shift their attendance status here.
+                      Showing real-time attendance groups for {format(new Date(date), "MMMM dd, yyyy")}. Watch this update automatically as scans occur.
                    </p>
                 </div>
-                <div className="flex items-center gap-3 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 text-indigo-700 text-sm">
-                   <Clock className="w-5 h-5 text-indigo-500" />
-                   <span>Selected Date key: <strong className="font-mono">{date}</strong></span>
+                <div className="flex items-center gap-4 flex-wrap">
+                   <div className="flex bg-slate-100 p-1 rounded-xl">
+                      {(["All", "Present", "Absent", "Late"] as const).map((status) => (
+                         <button
+                            key={status}
+                            onClick={() => setMonitorStatusFilter(status)}
+                            className={cn(
+                               "px-4 py-1.5 text-sm font-bold rounded-lg transition-colors",
+                               monitorStatusFilter === status
+                                  ? status === "Absent" ? "bg-rose-500 text-white shadow-sm"
+                                  : status === "Present" ? "bg-emerald-500 text-white shadow-sm"
+                                  : status === "Late" ? "bg-amber-500 text-white shadow-sm"
+                                  : "bg-indigo-600 text-white shadow-sm"
+                                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-200"
+                            )}
+                         >
+                            {status}
+                         </button>
+                      ))}
+                   </div>
+                   <div className="flex items-center gap-3 bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-100 text-indigo-700 text-sm">
+                      <Clock className="w-5 h-5 text-indigo-500" />
+                      <span>Date key: <strong className="font-mono">{date}</strong></span>
+                   </div>
                 </div>
              </div>
 
-             {/* Absent Grid */}
-             {currentAbsentees.length === 0 ? (
-                <div className="text-center py-16 bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-                   <div className="mx-auto w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center border border-emerald-100">
-                      <CheckCircle className="w-8 h-8" />
-                   </div>
-                   <h4 className="font-bold text-lg text-slate-800">Zero Absentees / All Logged!</h4>
-                   <p className="text-sm text-slate-500 max-w-sm mx-auto">
-                      All matching members are registered as Present, Late, or there are no student profiles under the current class filter. Or, you can change the target filters in the top row.
-                   </p>
-                </div>
-             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                   {currentAbsentees.map((member) => {
-                      const fallbackAvatar = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(member.name)}`;
-                      const avatar = member.photoUrl && !member.photoUrl.includes("dicebear") && !member.photoUrl.includes("unsplash") ? member.photoUrl : fallbackAvatar;
-                      const typeColors = {
-                         "Student": "bg-blue-50 text-blue-700 border-blue-100",
-                         "Teacher": "bg-indigo-50 text-indigo-700 border-indigo-100",
-                         "Other Staff": "bg-violet-50 text-violet-700 border-violet-100"
-                      };
+             {/* Monitor List (Grouped) */}
+             {(() => {
+                // Group the data by groupByKey
+                const groupedData = currentMonitorData.reduce<Record<string, typeof currentMonitorData>>((acc, member) => {
+                   const key = member.groupByKey || "Other";
+                   if (!acc[key]) acc[key] = [];
+                   acc[key].push(member);
+                   return acc;
+                }, {});
 
-                      return (
-                         <div key={member.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group">
-                            <div className="flex items-start gap-4">
-                               <img 
-                                  src={avatar} 
-                                  referrerPolicy="no-referrer"
-                                  onError={(e) => { (e.target as HTMLImageElement).src = fallbackAvatar; }}
-                                  alt={member.name} 
-                                  className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 object-cover"
-                               />
-                               <div className="space-y-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                     <span className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border ${typeColors[member.type]}`}>
-                                        {member.type}
-                                     </span>
-                                     {member.roll && (
-                                        <span className="text-[10px] font-mono text-slate-500 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">
-                                           Roll: {member.roll}
-                                        </span>
-                                     )}
-                                  </div>
-                                  <h4 className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
-                                     {member.name}
-                                  </h4>
-                                  <p className="text-xs text-slate-500 font-medium">
-                                     {member.details}
-                                  </p>
-                               </div>
+                const groupKeys = Object.keys(groupedData).sort();
+
+                if (groupKeys.length === 0) {
+                   return (
+                      <div className="text-center py-16 bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+                         <div className="mx-auto w-16 h-16 bg-slate-50 text-slate-500 rounded-full flex items-center justify-center border border-slate-200">
+                            <UserX className="w-8 h-8" />
+                         </div>
+                         <h4 className="font-bold text-lg text-slate-800">No Members Match the Filter</h4>
+                         <p className="text-sm text-slate-500 max-w-sm mx-auto">
+                            No profiles found matching current filters. Try changing your class selection, search query, or status flag above.
+                         </p>
+                      </div>
+                   );
+                }
+
+                return (
+                   <div className="space-y-8">
+                      {groupKeys.map((group) => (
+                         <div key={group} className="space-y-4">
+                            <div className="flex items-center gap-3">
+                               <h4 className="text-lg font-black text-slate-800 bg-white px-4 py-1.5 rounded-xl border border-slate-200 shadow-sm">
+                                  {group}
+                               </h4>
+                               <div className="h-px bg-slate-200 flex-1"></div>
+                               <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg border">
+                                  {groupedData[group].length} Members
+                               </span>
                             </div>
 
-                            {/* Manual Adjustment Actions */}
-                            <div className="mt-5 pt-4 border-t border-slate-100">
-                               <div className="text-xs text-slate-400 font-semibold mb-2 uppercase tracking-wide">
-                                  Shift Attendance Status To:
-                               </div>
-                               <div className="grid grid-cols-3 gap-2">
-                                  <button
-                                     onClick={() => {
-                                        saveAttendanceRecord(member.id, date, {
-                                           status: "Present",
-                                           inTime: "09:00",
-                                           remarks: "Shifted to Present manually via Absentee Manager"
-                                        }).catch(console.error);
-                                     }}
-                                     className="py-1.5 px-2 bg-emerald-50 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 rounded-xl border border-emerald-100 transition-colors flex flex-col items-center gap-1"
-                                  >
-                                     <CheckCircle className="w-4 h-4 text-emerald-600" />
-                                     Present
-                                  </button>
-                                  <button
-                                     onClick={() => {
-                                        saveAttendanceRecord(member.id, date, {
-                                           status: "Late",
-                                           inTime: "10:15",
-                                           remarks: "Shifted to Late manually via Absentee Manager"
-                                        }).catch(console.error);
-                                     }}
-                                     className="py-1.5 px-2 bg-amber-50 text-[11px] font-bold text-amber-700 hover:bg-amber-100 rounded-xl border border-amber-100 transition-colors flex flex-col items-center gap-1"
-                                  >
-                                     <Clock className="w-4 h-4 text-amber-600" />
-                                     Late
-                                  </button>
-                                  <button
-                                     onClick={() => {
-                                        // Trigger standard edit modal for detailed configurations
-                                        const record = attendanceMap[`${date}:${member.id}`];
-                                        openEditModal(record || {
-                                           id: `${date}:${member.id}`,
-                                           date,
-                                           memberId: member.id,
-                                           status: "Absent",
-                                           remarks: "",
-                                           class: member.type === "Student" ? (member as any).class : "",
-                                           section: member.type === "Student" ? (member as any).section : ""
-                                        });
-                                     }}
-                                     className="py-1.5 px-2 bg-slate-50 text-[11px] font-bold text-slate-700 hover:bg-slate-150 rounded-xl border border-slate-200/60 transition-colors flex flex-col items-center gap-1"
-                                  >
-                                     <Edit2 className="w-4 h-4 text-slate-500" />
-                                     Custom Detail
-                                  </button>
-                               </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                               {groupedData[group].map((member) => {
+                                  const fallbackAvatar = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(member.name)}`;
+                                  const avatar = member.photoUrl && !member.photoUrl.includes("dicebear") && !member.photoUrl.includes("unsplash") ? member.photoUrl : fallbackAvatar;
+                                  
+                                  const currentStatus = getCalculatedStatus(member.record, date);
+                                  const statusColors = {
+                                     "Present": "bg-emerald-50 text-emerald-700 border-emerald-200",
+                                     "Late": "bg-amber-50 text-amber-700 border-amber-200",
+                                     "Absent": "bg-rose-50 text-rose-700 border-rose-200",
+                                     "Holiday": "bg-blue-50 text-blue-700 border-blue-200",
+                                  } as any;
+
+                                  const typeColors = {
+                                     "Student": "bg-slate-100 text-slate-600 border-slate-200",
+                                     "Teacher": "bg-indigo-50 text-indigo-700 border-indigo-100",
+                                     "Other Staff": "bg-violet-50 text-violet-700 border-violet-100"
+                                  } as any;
+
+                                  return (
+                                     <div key={member.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group">
+                                        <div className="flex items-start justify-between gap-4 mb-3">
+                                           <div className="flex items-start gap-4 flex-1">
+                                              <img 
+                                                 src={avatar} 
+                                                 referrerPolicy="no-referrer"
+                                                 onError={(e) => { (e.target as HTMLImageElement).src = fallbackAvatar; }}
+                                                 alt={member.name} 
+                                                 className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 object-cover shrink-0"
+                                              />
+                                              <div className="min-w-0">
+                                                 <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                    <span className={`text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded-md border ${typeColors[member.type]}`}>
+                                                       {member.type}
+                                                    </span>
+                                                    {member.roll && (
+                                                       <span className="text-[9px] font-mono text-slate-500 font-bold bg-slate-50 border px-1.5 py-0.5 rounded-md">
+                                                          R: {member.roll}
+                                                       </span>
+                                                    )}
+                                                 </div>
+                                                 <h4 className="font-bold text-slate-800 text-sm truncate group-hover:text-indigo-600 transition-colors">
+                                                    {member.name}
+                                                 </h4>
+                                                 <p className="text-[11px] text-slate-500 font-medium truncate">
+                                                    {member.details}
+                                                 </p>
+                                              </div>
+                                           </div>
+                                           <div className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border shrink-0 ${statusColors[currentStatus] || "bg-slate-50 text-slate-600 border-slate-200"}`}>
+                                              {currentStatus || "UNKNOWN"}
+                                           </div>
+                                        </div>
+
+                                        {/* Status Details */}
+                                        {(member.record?.inTime || member.record?.outTime || member.record?.remarks) && (
+                                           <div className="mb-4 bg-slate-50 rounded-xl p-2.5 border border-slate-100 flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                                              {member.record?.inTime && (
+                                                 <span className="text-[10px] text-slate-600 flex items-center gap-1 font-mono">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> In: {member.record.inTime}
+                                                 </span>
+                                              )}
+                                              {member.record?.outTime && (
+                                                 <span className="text-[10px] text-slate-600 flex items-center gap-1 font-mono">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span> Out: {member.record.outTime}
+                                                 </span>
+                                              )}
+                                           </div>
+                                        )}
+                                        {!member.record?.inTime && !member.record?.outTime && (
+                                            <div className="mb-4 h-[1px]"></div>
+                                        )}
+
+                                        {/* Manual Adjustment Actions */}
+                                        <div className="pt-3 border-t border-slate-100">
+                                           <div className="text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wider flex justify-between">
+                                              Quick Shift
+                                              <span className="text-[8px] bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded tracking-normal">Manual</span>
+                                           </div>
+                                           <div className="grid grid-cols-3 gap-2">
+                                              <button
+                                                 onClick={() => {
+                                                    saveAttendanceRecord(member.id, date, {
+                                                       status: "Present",
+                                                       inTime: "09:00",
+                                                       remarks: "Manually marked via Live Monitor"
+                                                    }).catch(console.error);
+                                                 }}
+                                                 className="py-1.5 px-1 bg-emerald-50 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 rounded-lg border border-emerald-100 transition-colors flex flex-col items-center gap-1"
+                                              >
+                                                 <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                                 Present
+                                              </button>
+                                              <button
+                                                 onClick={() => {
+                                                    saveAttendanceRecord(member.id, date, {
+                                                       status: "Late",
+                                                       inTime: "10:15",
+                                                       remarks: "Manually marked via Live Monitor"
+                                                    }).catch(console.error);
+                                                 }}
+                                                 className="py-1.5 px-1 bg-amber-50 text-[10px] font-bold text-amber-700 hover:bg-amber-100 hover:border-amber-300 rounded-lg border border-amber-100 transition-colors flex flex-col items-center gap-1"
+                                              >
+                                                 <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                                 Late
+                                              </button>
+                                              <button
+                                                 onClick={() => {
+                                                    const record = attendanceMap[`${date}:${member.id}`];
+                                                    openEditModal(record || {
+                                                       id: `${date}:${member.id}`,
+                                                       date,
+                                                       memberId: member.id,
+                                                       status: "Absent",
+                                                       remarks: "",
+                                                       class: member.type === "Student" ? (member as any).class : "",
+                                                       section: member.type === "Student" ? (member as any).section : ""
+                                                    });
+                                                 }}
+                                                 className="py-1.5 px-1 bg-slate-50 text-[10px] font-bold text-slate-700 hover:bg-slate-150 hover:border-slate-300 rounded-lg border border-slate-200/60 transition-colors flex flex-col items-center gap-1"
+                                              >
+                                                 <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                                                 Detail
+                                              </button>
+                                           </div>
+                                        </div>
+                                     </div>
+                                  );
+                               })}
                             </div>
                          </div>
-                      );
-                   })}
-                </div>
-             )}
+                      ))}
+                   </div>
+                );
+             })()}
           </div>
         )}
       </div>

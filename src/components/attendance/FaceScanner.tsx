@@ -538,8 +538,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
                }
             }
 
-            const curRegIds = latestRegisteredFaceIds.current;
-            const isRegistered = targetCandidate && curRegIds.includes(targetCandidate.id);
+            const isRegistered = !!targetCandidate; // Treat as registered if Face Matcher confidently mapped them to an ID
 
             const now = new Date();
             const scanTimeStr = now.toLocaleTimeString([], {
@@ -549,7 +548,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
             });
             const curScannerMode = latestScannerMode.current;
 
-            if (!targetCandidate || !isRegistered) {
+            if (!targetCandidate) {
               const faceData = {
                 id: "unknown",
                 name: targetCandidate ? `${targetCandidate.name} (Unregistered)` : "Unknown Person / Outer Guest",
