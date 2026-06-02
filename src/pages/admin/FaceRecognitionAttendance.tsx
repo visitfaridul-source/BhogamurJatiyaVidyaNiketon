@@ -48,6 +48,7 @@ export default function FaceRecognitionAttendance() {
   const [loadingText, setLoadingText] = useState('Loading models...');
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
   
   const [recognizedPeople, setRecognizedPeople] = useState<Set<string>>(new Set());
 
@@ -213,7 +214,7 @@ export default function FaceRecognitionAttendance() {
     if (!isModelsLoaded || isFaceMatcherLoading || !isCameraActive) return;
 
     const startVideo = () => {
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode } })
         .then((stream) => {
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
@@ -234,7 +235,7 @@ export default function FaceRecognitionAttendance() {
          tracks.forEach(track => track.stop());
        }
     };
-  }, [isModelsLoaded, isFaceMatcherLoading, isCameraActive]);
+  }, [isModelsLoaded, isFaceMatcherLoading, isCameraActive, facingMode]);
 
   // Core logging actions
   const handleCheckIn = (personId: string, name: string) => {
@@ -755,15 +756,26 @@ export default function FaceRecognitionAttendance() {
 
                   {/* Feed container */}
                   <div className="relative w-full overflow-hidden bg-slate-950 rounded-2xl shadow-inner mx-auto flex justify-center items-center min-h-[300px] md:min-h-[420px]">
+                    {/* Camera switch toggle button */}
+                    {isCameraActive && !isSimulatingFaceScan && (
+                      <button
+                        onClick={() => setFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
+                        className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-xl text-xs font-bold border border-slate-700 shadow-md backdrop-blur-xs transition-all cursor-pointer scale-100 active:scale-95"
+                        title="Switch Camera (Front/Back)"
+                      >
+                        <RefreshCcw className="w-3.5 h-3.5" />
+                        <span>{facingMode === 'user' ? 'Front Cam' : 'Back Cam'}</span>
+                      </button>
+                    )}
                     <video 
                       ref={videoRef} 
                       autoPlay 
                       muted 
                       playsInline
                       onPlay={handleVideoPlay}
-                      className="w-full h-auto object-cover max-h-[500px] rounded-2xl transform -scale-x-100"
+                      className={`w-full h-auto object-cover max-h-[500px] rounded-2xl transform ${facingMode === 'user' ? '-scale-x-100' : ''}`}
                     />
-                    <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full transform -scale-x-100" />
+                    <canvas ref={canvasRef} className={`absolute top-0 left-0 w-full h-full transform ${facingMode === 'user' ? '-scale-x-100' : ''}`} />
                     
                     {!videoRef.current?.srcObject && !isSimulatingFaceScan && (
                        <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-slate-900 p-8">
