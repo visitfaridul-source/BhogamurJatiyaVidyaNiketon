@@ -217,7 +217,7 @@ export default function FaceRecognitionAttendance() {
     if (!isModelsLoaded || isFaceMatcherLoading || !isCameraActive) return;
 
     const startVideo = () => {
-      navigator.mediaDevices.getUserMedia({ video: true })
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
         .then((stream) => {
           if (videoRef.current) {
             videoRef.current.srcObject = stream;

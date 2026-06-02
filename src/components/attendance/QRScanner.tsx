@@ -27,7 +27,18 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     // Initialize Scanner when component mounts
     scannerRef.current = new Html5QrcodeScanner(
       "qr-reader",
-      { fps: 10, qrbox: { width: 250, height: 250 } },
+      { 
+        fps: 10, 
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+          const qrboxSize = Math.floor(minEdgeSize * 0.7);
+          return { width: qrboxSize, height: qrboxSize };
+        },
+        rememberLastUsedCamera: true,
+        videoConstraints: {
+          facingMode: "environment"
+        }
+      },
       false
     );
 

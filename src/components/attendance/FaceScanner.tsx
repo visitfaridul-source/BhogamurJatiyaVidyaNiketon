@@ -404,7 +404,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
     if (isScanning && modelsLoaded && videoRef.current) {
       const constraints = selectedDeviceId 
         ? { video: { deviceId: { exact: selectedDeviceId } } } 
-        : { video: true };
+        : { video: { facingMode: 'environment' } };
 
       navigator.mediaDevices
         .getUserMedia(constraints)
@@ -1344,7 +1344,7 @@ function RegisterFaceModal({
     if (step === "scan" && !scanError) {
       const startCamera = async () => {
         try {
-          localStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
           if (videoRef.current) {
             videoRef.current.srcObject = localStream;
             await videoRef.current.play();
