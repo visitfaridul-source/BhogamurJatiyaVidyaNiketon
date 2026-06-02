@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as faceapi from '@vladmandic/face-api';
 import { useSchool } from '../../context/SchoolContext';
 import { useWebsite } from '../../context/WebsiteContext';
+import { useAuth } from '../../context/AuthContext';
 import { Camera, CheckCircle2, User, RefreshCcw, X, Volume2, VolumeX, Clock, Search, LogOut, Check, ArrowRight, ShieldAlert, FileText, HeartHandshake } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -38,6 +39,7 @@ let globalModelsLoaded = false;
 export default function FaceRecognitionAttendance() {
   const { students, teachers, saveAttendanceRecord, attendanceMap } = useSchool();
   const { settings } = useWebsite();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -50,6 +52,34 @@ export default function FaceRecognitionAttendance() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
   
+  const [override24h, setOverride24h] = useState<boolean>(() => {
+    return localStorage.getItem('bhogamur_attendance_24h_override') === 'true';
+  });
+  const [currentIsthHour, setCurrentIstHour] = useState<number>(() => {
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istTime = new Date(utc + (3600000 * 5.5));
+    return istTime.getHours();
+  });
+  const [istTimeString, setIstTimeString] = useState<string>('');
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+      const istTime = new Date(utc + (3600000 * 5.5));
+      setCurrentIstHour(istTime.getHours());
+      setIstTimeString(istTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const isAllowedToScan = useMemo(() => {
+    return (currentIsthHour >= 7 && currentIsthHour < 16) || override24h;
+  }, [currentIsthHour, override24h]);
+
   const [recognizedPeople, setRecognizedPeople] = useState<Set<string>>(new Set());
 
   // Persistent daily manual attendance registry
@@ -211,7 +241,12 @@ export default function FaceRecognitionAttendance() {
 
   // Start video stream
   useEffect(() => {
-    if (!isModelsLoaded || isFaceMatcherLoading || !isCameraActive) return;
+    if (!isModelsLoaded || isFaceMatcherLoading || !isCameraActive || !isAllowedToScan) {
+      if (isCameraActive && !isAllowedToScan) {
+        setIsCameraActive(false);
+      }
+      return;
+    }
 
     const startVideo = () => {
       navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode } })
@@ -235,7 +270,7 @@ export default function FaceRecognitionAttendance() {
          tracks.forEach(track => track.stop());
        }
     };
-  }, [isModelsLoaded, isFaceMatcherLoading, isCameraActive, facingMode]);
+  }, [isModelsLoaded, isFaceMatcherLoading, isCameraActive, facingMode, isAllowedToScan]);
 
   // Core logging actions
   const handleCheckIn = (personId: string, name: string) => {
@@ -613,6 +648,33 @@ export default function FaceRecognitionAttendance() {
                  ))}
                </div>
 
+               {/* 24-Hour Override Toggle Option (Super Admin Controls) */}
+               <div className="flex flex-col sm:flex-row items-center justify-between bg-slate-100/50 border border-slate-200/60 rounded-2xl p-3 px-4 max-w-sm mx-auto shadow-xs gap-3">
+                 <div className="flex items-center gap-2.5">
+                   <Clock className={`w-4 h-4 ${override24h ? 'text-indigo-600 animate-pulse' : 'text-slate-400'}`} />
+                   <div className="text-left">
+                     <p className="text-[11px] font-extrabold text-slate-800 uppercase tracking-widest">24-Hour Attendance (24 घंटे चालू)</p>
+                     <p className="text-[9px] text-slate-500 font-bold uppercase">
+                       {user?.role === 'Super Admin' ? '⚡ Super Admin Bypass' : '🔒 Super Admin Option Only'}
+                     </p>
+                   </div>
+                 </div>
+                 <label className="relative inline-flex items-center cursor-pointer select-none">
+                   <input 
+                     type="checkbox" 
+                     disabled={user?.role !== 'Super Admin'}
+                     checked={override24h}
+                     onChange={(e) => {
+                       const val = e.target.checked;
+                       setOverride24h(val);
+                       localStorage.setItem('bhogamur_attendance_24h_override', String(val));
+                     }}
+                     className="sr-only peer" 
+                   />
+                   <div className={`w-11 h-6 bg-slate-205 rounded-full peer peer-focus:outline-none after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-650 peer-checked:after:translate-x-full peer-checked:after:border-white ${user?.role !== 'Super Admin' ? 'opacity-50 cursor-not-allowed' : ''}`}></div>
+                 </label>
+               </div>
+
                {/* Toast System Actions alerts */}
                {actionSuccess && (
                  <div className="bg-emerald-500/10 text-emerald-800 border border-emerald-500/30 px-5 py-4 rounded-2xl font-bold text-sm shadow-xs flex items-center gap-3 animate-fade-in">
@@ -717,7 +779,45 @@ export default function FaceRecognitionAttendance() {
                ) : null}
 
                {/* CAMERA STREAM VERIFICATION MODULE / FEED */}
-               <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-6 flex flex-col items-center relative min-h-[400px]">
+               <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-6 flex flex-col items-center relative min-h-[400px] w-full">
+                  
+                  {!isAllowedToScan ? (
+                    <div className="w-full flex flex-col items-center justify-center text-center py-12 px-6 min-h-[350px] animate-fade-in z-10">
+                      <div className="w-16 h-16 bg-rose-50 border border-rose-100 rounded-3xl flex items-center justify-center text-rose-500 mb-5 shadow-xs">
+                        <Clock className="w-8 h-8 animate-pulse" />
+                      </div>
+                      <h3 className="text-xl font-extrabold text-slate-800 font-sans tracking-tight">Attendance Offline / छुट्टी का समय</h3>
+                      <p className="text-slate-500 text-sm max-w-md mt-2.5 leading-relaxed">
+                        School attendance is configured to run daily from <span className="text-emerald-600 font-bold">07:00 AM</span> to <span className="text-rose-600 font-bold">04:00 PM</span> (Indian Standard Time). Outside these hours, registration is locked.
+                      </p>
+                      <div className="mt-5 px-5 py-2.5 bg-slate-900 border border-slate-850 rounded-2xl text-emerald-400 font-mono text-sm tracking-widest shadow-inner flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                        <span>IST CLOCK: {istTimeString || 'Calculating...'}</span>
+                      </div>
+                      
+                      {user?.role === 'Super Admin' ? (
+                        <div className="w-full max-w-xs bg-indigo-50/50 p-4 border border-indigo-100 rounded-2xl mt-8">
+                          <p className="text-[10px] text-indigo-800 font-extrabold uppercase tracking-widest mb-3">🛠️ Super Admin Bypass Panel</p>
+                          <button
+                            onClick={() => {
+                              setOverride24h(true);
+                              localStorage.setItem('bhogamur_attendance_24h_override', 'true');
+                            }}
+                            className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer border-none"
+                          >
+                            <Check className="w-4 h-4" />
+                            <span>Force Open 24h Attendance</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="mt-8 flex items-center gap-2 p-3 bg-amber-50/60 border border-amber-100 rounded-xl text-xs font-medium text-amber-700 max-w-xs text-left">
+                          <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500" />
+                           <span>Only Super Admins can override this schedule lock. Please contact your administrator.</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
                   
                   {/* Simulation Overlay Banner */}
                   {isSimulatingFaceScan && (
@@ -810,6 +910,8 @@ export default function FaceRecognitionAttendance() {
                     </span>
                     <span>Date: <time className="text-slate-800">{todayDateStr}</time></span>
                   </div>
+                </>
+              )}
                </div>
             </div>
 
