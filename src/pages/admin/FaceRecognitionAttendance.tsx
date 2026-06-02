@@ -765,6 +765,7 @@ export default function FaceRecognitionAttendance() {
                       ref={videoRef} 
                       autoPlay 
                       muted 
+                      playsInline
                       onPlay={handleVideoPlay}
                       className="w-full h-auto object-cover max-h-[500px] rounded-2xl transform -scale-x-100"
                     />

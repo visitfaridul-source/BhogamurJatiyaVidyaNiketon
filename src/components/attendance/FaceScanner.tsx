@@ -401,9 +401,9 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
     let stream: MediaStream | null = null;
     setCameraError("");
 
-    if (isScanning && modelsLoaded && videoRef.current) {
+    if (isScanning && !isRegisterModalOpen && modelsLoaded && videoRef.current) {
       const constraints = selectedDeviceId 
-        ? { video: { deviceId: { exact: selectedDeviceId } } } 
+        ? { video: { deviceId: { ideal: selectedDeviceId } } } 
         : { video: { facingMode: 'environment' } };
 
       navigator.mediaDevices
@@ -446,7 +446,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
         wakeLockRef.current.release().catch(() => {});
       }
     };
-  }, [isScanning, modelsLoaded, selectedDeviceId]);
+  }, [isScanning, modelsLoaded, selectedDeviceId, isRegisterModalOpen]);
 
    
 

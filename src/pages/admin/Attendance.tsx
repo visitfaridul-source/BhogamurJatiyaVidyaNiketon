@@ -77,7 +77,7 @@ export default function Attendance() {
   const { settings } = useWebsite();
   const { user } = useAuth();
   const [memberType, setMemberType] = useState<
-    "Student" | "Staff"
+    "Student" | "Teacher"
   >("Student");
 
   useEffect(() => {
@@ -85,7 +85,7 @@ export default function Attendance() {
       if (user.attendanceScope === "Only Students") {
         setMemberType("Student");
       } else if (user.attendanceScope === "Teachers" || user.attendanceScope === "Staff") {
-        setMemberType("Staff");
+        setMemberType("Teacher");
       }
     }
   }, [user]);
@@ -97,7 +97,7 @@ export default function Attendance() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAbsenteesOnly, setShowAbsenteesOnly] = useState(false);
   const [monitorStatusFilter, setMonitorStatusFilter] = useState<"All" | "Present" | "Absent" | "Late">("All");
-  const [monitorCategoryFilter, setMonitorCategoryFilter] = useState<"All" | "Student" | "Staff">("All");
+  const [monitorCategoryFilter, setMonitorCategoryFilter] = useState<"All" | "Student" | "Teacher">("All");
   const [monitorClassFilter, setMonitorClassFilter] = useState<string>("");
 
   const [attendanceData, setAttendanceData] = useState(initialMockAttendance);
@@ -318,28 +318,22 @@ export default function Attendance() {
     });
   }, [students, selectedClass, selectedSection, searchQuery, showAbsenteesOnly, attendanceMap, date]);
 
-  const combinedStaff = useMemo(() => {
-    const t = teachers.map(t => ({...t, displayType: 'Teacher', displayDetails: t.subject || "Educator"}));
-    const s = (settings.staffMembers || []).map((st: any) => ({...st, displayType: 'Other Staff', displayDetails: st.role || "Staff Members"}));
-    return [...t, ...s];
-  }, [teachers, settings.staffMembers]);
-
-  const filteredCombinedStaff = useMemo(() => {
-    return combinedStaff.filter((m) => {
+  const filteredTeachers = useMemo(() => {
+    return teachers.filter((t) => {
       const matchesSearch = searchQuery
-        ? m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          m.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (m.displayDetails &&
-            m.displayDetails.toLowerCase().includes(searchQuery.toLowerCase()))
+        ? t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (t.subject &&
+            t.subject.toLowerCase().includes(searchQuery.toLowerCase()))
         : true;
       let matchesAbsent = true;
       if (showAbsenteesOnly) {
-         const record = attendanceMap[`${date}:${m.id}`];
+         const record = attendanceMap[`${date}:${t.id}`];
          matchesAbsent = getCalculatedStatus(record, date) === "Absent";
       }
       return matchesSearch && matchesAbsent;
     });
-  }, [combinedStaff, searchQuery, showAbsenteesOnly, attendanceMap, date]);
+  }, [teachers, searchQuery, showAbsenteesOnly, attendanceMap, date]);
 
   const filteredAttendanceData = useMemo(() => {
     return attendanceData.filter((record) => {
@@ -385,37 +379,37 @@ export default function Attendance() {
         };
       });
 
-    // 2. Staff (Combined Teachers & Other Staff)
-    const staffData = combinedStaff
-      .filter((member) => {
-        if (monitorCategoryFilter !== "All" && monitorCategoryFilter !== "Staff") return false;
+    // 2. Teachers
+    const teacherData = teachers
+      .filter((t) => {
+        if (monitorCategoryFilter !== "All" && monitorCategoryFilter !== "Teacher") return false;
         const matchesSearch = searchQuery
-          ? member.name.toLowerCase().includes(searchQuery.toLowerCase())
+          ? t.name.toLowerCase().includes(searchQuery.toLowerCase())
           : true;
         if (!matchesSearch) return false;
 
-        const record = attendanceMap[`${date}:${member.id}`];
+        const record = attendanceMap[`${date}:${t.id}`];
         const status = getCalculatedStatus(record, date);
         if (monitorStatusFilter !== "All" && status !== monitorStatusFilter) return false;
         
         return true;
       })
-      .map(member => {
-        const record = attendanceMap[`${date}:${member.id}`];
+      .map(t => {
+        const record = attendanceMap[`${date}:${t.id}`];
         return {
-          id: member.id,
-          name: member.name,
-          type: "Staff" as const,
-          details: member.displayType + " - " + member.displayDetails,
-          groupByKey: "Faculty & Staff",
-          photoUrl: member.avatar || member.imageUrl || "",
+          id: t.id,
+          name: t.name,
+          type: "Teacher" as const,
+          details: t.subject || "Educator",
+          groupByKey: "Teachers",
+          photoUrl: t.avatar || t.photoUrl || "",
           roll: "",
           record
         };
       });
 
-    return [...studentData, ...staffData];
-  }, [students, teachers, settings.staffMembers, monitorClassFilter, searchQuery, attendanceMap, date, monitorStatusFilter, monitorCategoryFilter]);
+    return [...studentData, ...teacherData];
+  }, [students, teachers, monitorClassFilter, searchQuery, attendanceMap, date, monitorStatusFilter, monitorCategoryFilter]);
 
   const exportAttendanceDetails = () => {
     let csvHeader = "";
@@ -799,7 +793,7 @@ export default function Attendance() {
     }
   };
 
-  const printMonthlyRegister = (monthVal: number, yearVal: number, teacherName: string, classVal: string, sectionVal: string, targetType: "Student" | "Staff") => {
+  const printMonthlyRegister = (monthVal: number, yearVal: number, teacherName: string, classVal: string, sectionVal: string, targetType: "Student" | "Teacher") => {
     const totalDays = new Date(yearVal, monthVal + 1, 0).getDate();
     const weekdayShorts = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
     
@@ -833,8 +827,8 @@ export default function Attendance() {
       });
       titleSubject = `Class: ${classVal}${sectionVal ? ' - Section ' + sectionVal : ''}`;
     } else {
-      membersList = [...combinedStaff].sort((a, b) => a.name.localeCompare(b.name));
-      titleSubject = "Faculty & Staff";
+      membersList = [...teachers].sort((a, b) => a.name.localeCompare(b.name));
+      titleSubject = "Faculty / Teachers";
     }
 
     let tableRowsHtml = "";
@@ -1172,7 +1166,7 @@ export default function Attendance() {
     }
   };
 
-  const exportMonthlyRegisterCSV = (monthVal: number, yearVal: number, teacherName: string, classVal: string, sectionVal: string, targetType: "Student" | "Staff") => {
+  const exportMonthlyRegisterCSV = (monthVal: number, yearVal: number, teacherName: string, classVal: string, sectionVal: string, targetType: "Student" | "Teacher") => {
     const totalDays = new Date(yearVal, monthVal + 1, 0).getDate();
     const weekdayShorts = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
     
@@ -1198,10 +1192,10 @@ export default function Attendance() {
     if (targetType === "Student") {
         csvContent += `Category / Subject,Class ${classVal}${sectionVal ? ' - Section ' + sectionVal : ''}\n\n`;
     } else {
-        csvContent += `Category / Subject,Faculty & Staff\n\n`;
+        csvContent += `Category / Subject,Faculty & Teachers\n\n`;
     }
 
-    const row1 = [targetType === "Student" ? "Roll No" : "ID", targetType === "Student" ? "Student Name" : "Staff Name"];
+    const row1 = [targetType === "Student" ? "Roll No" : "ID", targetType === "Student" ? "Student Name" : "Teacher Name"];
     daysArray.forEach(d => row1.push(String(d.num)));
     row1.push("Total Present", "Total Absent", "Total Late");
     csvContent += row1.map(cell => `"${cell}"`).join(",") + "\n";
@@ -1216,7 +1210,7 @@ export default function Attendance() {
       membersList = students.filter((s) => s.class === classVal && (!sectionVal || s.section === sectionVal));
       membersList.sort((a, b) => (parseInt(a.roll) || 999) - (parseInt(b.roll) || 999));
     } else {
-      membersList = [...combinedStaff].sort((a,b) => a.name.localeCompare(b.name));
+      membersList = [...teachers].sort((a,b) => a.name.localeCompare(b.name));
     }
 
     membersList.forEach((member, index) => {
@@ -1531,8 +1525,8 @@ export default function Attendance() {
 
               {(() => {
                 const canShowStudents = !user?.attendanceScope || user.attendanceScope === "All" || user.attendanceScope === "Only Students";
-                const canShowStaff = !user?.attendanceScope || user.attendanceScope === "All" || user.attendanceScope === "Teachers" || user.attendanceScope === "Staff";
-                const columnsCount = [canShowStudents, canShowStaff].filter(Boolean).length;
+                const canShowTeachers = !user?.attendanceScope || user.attendanceScope === "All" || user.attendanceScope === "Teachers";
+                const columnsCount = [canShowStudents, canShowTeachers].filter(Boolean).length;
 
                 return (
                   <div className={cn(
@@ -1582,18 +1576,18 @@ export default function Attendance() {
                       </button>
                     )}
 
-                    {/* Faculty & Staff Card */}
-                    {canShowStaff && (
+                    {/* Faculty & Teachers Card */}
+                    {canShowTeachers && (
                       <button
                         type="button"
                         onClick={() => {
-                          setMemberType("Staff");
+                          setMemberType("Teacher");
                           setViewMode("detailed");
                           setSelectedClass("");
                         }}
                         className={cn(
                           "flex flex-col text-left p-6 rounded-3xl border transition-all duration-300 relative overflow-hidden cursor-pointer group",
-                          memberType === "Staff"
+                          memberType === "Teacher"
                             ? "bg-purple-50/50 border-purple-300 shadow-md ring-2 ring-purple-500/10"
                             : "bg-white border-slate-200/85 hover:border-purple-200 hover:bg-slate-50/50 hover:shadow-xs"
                         )}
@@ -1601,26 +1595,26 @@ export default function Attendance() {
                         <div className="flex justify-between items-start w-full gap-3">
                           <div className={cn(
                             "w-11 h-11 rounded-2xl flex items-center justify-center transition-colors",
-                            memberType === "Staff" ? "bg-purple-600 text-white" : "bg-slate-100 text-slate-500 group-hover:bg-purple-55 group-hover:text-purple-600"
+                            memberType === "Teacher" ? "bg-purple-600 text-white" : "bg-slate-100 text-slate-500 group-hover:bg-purple-55 group-hover:text-purple-600"
                           )}>
                             <Briefcase className="w-5 h-5" />
                           </div>
                           <span className={cn(
                             "text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider",
-                            memberType === "Staff" ? "bg-purple-600 text-white" : "bg-slate-100 text-slate-600"
+                            memberType === "Teacher" ? "bg-purple-600 text-white" : "bg-slate-100 text-slate-600"
                           )}>
-                            {combinedStaff.length} Members
+                            {teachers.length} Members
                           </span>
                         </div>
                         <div className="mt-5">
                           <h4 className="font-extrabold text-[15px] text-slate-800 tracking-tight flex items-center gap-1.5">
-                            Faculty & Staff <span className="text-xs text-slate-400 font-medium">(शिक्षक और कर्मचारी)</span>
+                            Teacher Faculty <span className="text-xs text-slate-400 font-medium">(शिक्षक प्रभाग)</span>
                           </h4>
                           <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                            School educators, coordinators and support staff. Check checking-in details, delays, and generate landscape ledger cards.
+                            School educators and instructors. Check checking-in details, delays, and generate landscape ledger cards.
                           </p>
                         </div>
-                        {memberType === "Staff" && (
+                        {memberType === "Teacher" && (
                           <div className="absolute right-4 bottom-4 w-1.5 h-1.5 bg-purple-600 rounded-full"></div>
                         )}
                       </button>
@@ -1643,14 +1637,14 @@ export default function Attendance() {
                           "text-[9px] font-black tracking-widest uppercase px-2.5 py-1 rounded-full border",
                           memberType === "Student" ? "bg-indigo-50 text-indigo-700 border-indigo-150" : "bg-purple-50 text-purple-700 border-purple-150"
                        )}>
-                          ACTIVE CATEGORY: {memberType === "Staff" ? "TEACHERS & STAFF" : "STUDENTS"}
+                          ACTIVE CATEGORY: {memberType === "Teacher" ? "TEACHERS ONLY" : "STUDENTS"}
                        </span>
                        <h3 className="text-base font-black text-slate-800 mt-1.5 tracking-tight">
                           {memberType === "Student" && "Academic Classroom Registers (कक्षावार छात्र रजिस्टर)"}
-                          {memberType === "Staff" && "Institutional Staff Records (कर्मचारी उपस्थिति विवरण)"}
+                          {memberType === "Teacher" && "Institutional Teacher Records (शिक्षक उपस्थिति विवरण)"}
                        </h3>
                     </div>
-                    {memberType === "Staff" && (
+                    {memberType === "Teacher" && (
                        <div className="flex bg-slate-100 p-1 rounded-xl whitespace-nowrap self-start sm:self-center gap-1">
                           <button
                             type="button"
@@ -1662,7 +1656,7 @@ export default function Attendance() {
                                 : "text-slate-500 hover:text-slate-800",
                             )}
                           >
-                            👥 Staff Register ({combinedStaff.length})
+                            👥 Teacher Register ({teachers.length})
                           </button>
                           <button
                             type="button"
@@ -1778,9 +1772,7 @@ export default function Attendance() {
                         placeholder={
                           memberType === "Student"
                             ? "Search students or summaries..."
-                            : memberType === "Teacher"
-                              ? "Search teachers register..."
-                              : "Search helper staff registry..."
+                            : "Search teachers register..."
                         }
                         className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-55/10 focus:border-slate-400 transition-all font-medium placeholder:text-slate-400"
                         value={searchQuery}
@@ -1917,7 +1909,7 @@ export default function Attendance() {
                           {memberType === "Student" ? "Roll No" : "ID"}
                         </th>
                         <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">
-                          {memberType === "Student" ? "Student Name" : "Staff Name"}
+                          {memberType === "Student" ? "Student Name" : "Teacher Name"}
                         </th>
                         <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">
                           {memberType === "Student" ? "Class / Section" : "Role / Subject"}
@@ -2110,47 +2102,46 @@ export default function Attendance() {
                             );
                           })
                         )
-                      ) : memberType === "Staff" ? (
-                        filteredCombinedStaff.length === 0 ? (
+                      ) : memberType === "Teacher" ? (
+                        filteredTeachers.length === 0 ? (
                           <tr>
                             <td
                               colSpan={6}
                               className="px-6 py-10 text-center font-medium text-slate-400"
                             >
-                              No staff members found matching your criteria.
+                              No teachers found matching your criteria.
                             </td>
                           </tr>
                         ) : (
-                          filteredCombinedStaff.map((staff) => {
+                          filteredTeachers.map((teacher) => {
                             const record =
-                              attendanceMap[`${date}:${staff.id}`];
+                              attendanceMap[`${date}:${teacher.id}`];
                             const status = getCalculatedStatus(record, date);
                             const remarks = record?.remarks || "";
                             return (
                               <tr
-                                key={staff.id}
+                                key={teacher.id}
                                 className="hover:bg-slate-50 transition-colors group"
                               >
                                 <td className="px-6 py-4 font-bold text-slate-900">
-                                  {staff.id || "-"}
+                                  {teacher.id || "-"}
                                 </td>
                                 <td className="px-6 py-4 font-bold text-slate-800 flex items-center gap-3">
                                   <img
                                     src={
-                                      staff.avatar || staff.imageUrl ||
-                                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(staff.name)}`
+                                      teacher.avatar || teacher.photoUrl ||
+                                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(teacher.name)}`
                                     }
                                     alt="avatar"
                                     className="w-8 h-8 rounded-full border border-slate-200 bg-white"
                                     referrerPolicy="no-referrer"
                                   />
                                   <span>
-                                    {staff.name}
-                                    <span className="block text-[10px] text-slate-400 uppercase tracking-wider">{staff.displayType}</span>
+                                    {teacher.name}
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 font-bold text-slate-600">
-                                  {staff.displayDetails}
+                                  {teacher.subject || "Educator"}
                                 </td>
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-1">
@@ -2158,7 +2149,7 @@ export default function Attendance() {
                                       type="button"
                                       onClick={() =>
                                         handleUpdateAttendanceStatus(
-                                          staff.id,
+                                          teacher.id,
                                           "Present",
                                         )
                                       }
@@ -2175,7 +2166,7 @@ export default function Attendance() {
                                       type="button"
                                       onClick={() =>
                                         handleUpdateAttendanceStatus(
-                                          staff.id,
+                                          teacher.id,
                                           "Absent",
                                         )
                                       }
@@ -2192,7 +2183,7 @@ export default function Attendance() {
                                       type="button"
                                       onClick={() =>
                                         handleUpdateAttendanceStatus(
-                                          staff.id,
+                                          teacher.id,
                                           "Late",
                                         )
                                       }
@@ -2228,7 +2219,7 @@ export default function Attendance() {
                                     }
                                     onChange={(e) =>
                                       handleUpdateInTime(
-                                        staff.id,
+                                        teacher.id,
                                         e.target.value,
                                       )
                                     }
@@ -2251,7 +2242,7 @@ export default function Attendance() {
                                     }
                                     onChange={(e) =>
                                       handleUpdateOutTime(
-                                        staff.id,
+                                        teacher.id,
                                         e.target.value,
                                       )
                                     }
@@ -2412,7 +2403,7 @@ export default function Attendance() {
                    {/* Category & Class Filters */}
                    <div className="flex items-center gap-3 flex-wrap">
                       <div className="flex bg-slate-100 p-1 rounded-xl">
-                         {(["All", "Student", "Staff"] as const).map((cat) => (
+                         {(["All", "Student", "Teacher"] as const).map((cat) => (
                             <button
                                key={cat}
                                onClick={() => {
@@ -2753,10 +2744,10 @@ export default function Attendance() {
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <div>
                 <h3 className="font-bold text-xl text-slate-800">
-                  {memberType === "Staff" ? "Staff Monthly Register (Payroll/Salary)" : "Generate Monthly Register"}
+                  {memberType === "Teacher" ? "Teacher Monthly Register (Payroll/Salary)" : "Generate Monthly Register"}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {memberType === "Staff" ? "Custom landscape sheet to calculate present days & calculate salary" : "Design & print school-standard landscape sheets"}
+                  {memberType === "Teacher" ? "Custom landscape sheet to calculate present days & calculate salary" : "Design & print school-standard landscape sheets"}
                 </p>
               </div>
               <button
@@ -2777,7 +2768,7 @@ export default function Attendance() {
                   <span className="underline decoration-indigo-300 decoration-2 underline-offset-2">
                     {memberType === "Student"
                       ? "Students of selected class"
-                      : "All School Faculty & Staff"}
+                      : "All School Faculty & Teachers"}
                   </span>
                 </div>
               </div>
