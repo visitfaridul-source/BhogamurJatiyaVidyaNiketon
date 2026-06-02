@@ -85,7 +85,7 @@ export default function FaceRecognitionAttendance() {
   // UI state for dual-mode logging
   const [scanMode, setScanMode] = useState<'check-in' | 'early-out'>('check-in');
   const [scanTargetGroup, setScanTargetGroup] = useState<'Student' | 'Staff'>('Student');
-  const [selectedPerson, setSelectedPerson] = useState<{ id: string; name: string; type: 'Student' | 'Teacher' | 'Other Staff'; details: string; photoUrl: string } | null>(null);
+  const [selectedPerson, setSelectedPerson] = useState<{ id: string; name: string; type: 'Student' | 'Teacher'; details: string; photoUrl: string } | null>(null);
   const [selectedReason, setSelectedReason] = useState('Illness');
   const [customReason, setCustomReason] = useState('');
   const [checkoutTime, setCheckoutTime] = useState('');
@@ -95,22 +95,19 @@ export default function FaceRecognitionAttendance() {
   const [simulationProgress, setSimulationProgress] = useState(0);
 
   // Search results for manual checkout lookup
-  const [memberTypeFilter, setMemberTypeFilter] = useState<'Student' | 'Teacher' | 'Other Staff'>('Student');
+  const [memberTypeFilter, setMemberTypeFilter] = useState<'Student' | 'Teacher'>('Student');
 
   // Create a memoized lookup map of all individuals in the school
   const personMap = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; type: 'Student' | 'Teacher' | 'Other Staff'; details: string; photoUrl: string }>();
+    const map = new Map<string, { id: string; name: string; type: 'Student' | 'Teacher'; details: string; photoUrl: string }>();
     students.forEach(s => {
       map.set(s.name, { id: s.id, name: s.name, type: 'Student', details: `${s.class} - ${s.section || 'A'}`, photoUrl: s.avatar || '' });
     });
     teachers.forEach(t => {
       map.set(t.name, { id: t.id, name: t.name, type: 'Teacher', details: t.subject || 'Educator', photoUrl: t.avatar || '' });
     });
-    (settings.staffMembers || []).forEach((st: any) => {
-      map.set(st.name, { id: st.id, name: st.name, type: 'Other Staff', details: st.role || 'Staff', photoUrl: st.imageUrl || '' });
-    });
     return map;
-  }, [students, teachers, settings.staffMembers]);
+  }, [students, teachers]);
 
   // Load models on mount
   useEffect(() => {
@@ -147,11 +144,10 @@ export default function FaceRecognitionAttendance() {
       setLoadingText('Processing profiles...');
       const labeledFaceDescriptors: faceapi.LabeledFaceDescriptors[] = [];
 
-      // Combine students, teachers, and other staff
+      // Combine students and teachers
       const allPeople = [
         ...students.map(s => ({ id: s.id, name: s.name, type: 'Student', photoUrl: (s as any).photoUrl })),
-        ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher', photoUrl: (t as any).photoUrl })),
-        ...(settings.staffMembers || []).map((st: any) => ({ id: st.id, name: st.name, type: 'Other Staff', photoUrl: st.imageUrl }))
+        ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher', photoUrl: (t as any).photoUrl }))
       ];
 
       const cache = getDescriptorCache();
@@ -210,7 +206,7 @@ export default function FaceRecognitionAttendance() {
     };
 
     createFaceMatcher();
-  }, [isModelsLoaded, students, teachers, settings.staffMembers]);
+  }, [isModelsLoaded, students, teachers]);
 
   // Start video stream
   useEffect(() => {
@@ -356,7 +352,7 @@ export default function FaceRecognitionAttendance() {
   };
 
   // Trigger mock/simulated scanning for manual dropdown selection
-  const handleSimulateScan = (person: { id: string; name: string; type: 'Student' | 'Teacher' | 'Other Staff'; details: string; photoUrl: string }) => {
+  const handleSimulateScan = (person: { id: string; name: string; type: 'Student' | 'Teacher'; details: string; photoUrl: string }) => {
     setIsSimulatingFaceScan(true);
     setSimulationProgress(0);
     
@@ -389,12 +385,11 @@ export default function FaceRecognitionAttendance() {
 
   // Get lists of logged profiles for today
   const todayRecords = useMemo(() => {
-    const list: Array<{ id: string; name: string; type: 'Student' | 'Teacher' | 'Other Staff'; details: string; photoUrl: string; inTime?: string; outTime?: string; earlyOutReason?: string }> = [];
+    const list: Array<{ id: string; name: string; type: 'Student' | 'Teacher'; details: string; photoUrl: string; inTime?: string; outTime?: string; earlyOutReason?: string }> = [];
     
     const allPeople = [
       ...students.map(s => ({ id: s.id, name: s.name, type: 'Student' as const, details: `${s.class} - ${s.section || 'A'}`, photoUrl: s.avatar || '' })),
-      ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher' as const, details: t.subject || 'Educator', photoUrl: t.avatar || t.photoUrl || '' })),
-      ...(settings.staffMembers || []).map((st: any) => ({ id: st.id, name: st.name, type: 'Other Staff' as const, details: st.role || 'Staff', photoUrl: st.imageUrl || '' }))
+      ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher' as const, details: t.subject || 'Educator', photoUrl: t.avatar || t.photoUrl || '' }))
     ];
 
     allPeople.forEach(p => {
@@ -411,7 +406,7 @@ export default function FaceRecognitionAttendance() {
     });
 
     return list;
-  }, [students, teachers, settings.staffMembers, mergedAttendanceRegistry, todayDateStr]);
+  }, [students, teachers, mergedAttendanceRegistry, todayDateStr]);
 
   const checkInLogs = useMemo(() => todayRecords.filter(r => r.inTime), [todayRecords]);
   const earlyOutLogs = useMemo(() => todayRecords.filter(r => r.outTime), [todayRecords]);
@@ -420,8 +415,7 @@ export default function FaceRecognitionAttendance() {
   const filteredSchoolMembers = useMemo(() => {
     const allPeople = [
       ...students.map(s => ({ id: s.id, name: s.name, type: 'Student' as const, details: `${s.class} / Section ${s.section || 'A'}`, photoUrl: s.avatar || '' })),
-      ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher' as const, details: t.subject || 'Educator', photoUrl: t.avatar || t.photoUrl || '' })),
-      ...(settings.staffMembers || []).map((st: any) => ({ id: st.id, name: st.name, type: 'Other Staff' as const, details: st.role || 'Staff', photoUrl: st.imageUrl || '' }))
+      ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher' as const, details: t.subject || 'Educator', photoUrl: t.avatar || t.photoUrl || '' }))
     ];
 
     return allPeople.filter(p => {
@@ -430,7 +424,7 @@ export default function FaceRecognitionAttendance() {
       const matchesType = p.type === memberTypeFilter;
       return matchesSearch && matchesType;
     });
-  }, [students, teachers, settings.staffMembers, searchQuery, memberTypeFilter]);
+  }, [students, teachers, searchQuery, memberTypeFilter]);
 
   // Store the interval ID to avoid memory leaks
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -942,7 +936,7 @@ export default function FaceRecognitionAttendance() {
                     </div>
 
                     {/* Member type filter toggle */}
-                    <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl mb-4 text-[9px] font-black uppercase text-center">
+                    <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl mb-4 text-[9px] font-black uppercase text-center">
                       <button
                         onClick={() => setMemberTypeFilter('Student')}
                         className={`py-1.5 rounded-lg transition-all ${
@@ -958,14 +952,6 @@ export default function FaceRecognitionAttendance() {
                         }`}
                       >
                         Teachers
-                      </button>
-                      <button
-                        onClick={() => setMemberTypeFilter('Other Staff')}
-                        className={`py-1.5 rounded-lg transition-all ${
-                          memberTypeFilter === 'Other Staff' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        Staff
                       </button>
                     </div>
 

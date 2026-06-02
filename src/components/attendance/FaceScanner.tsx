@@ -30,7 +30,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
   const { settings } = useWebsite();
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [attendanceCategory, setAttendanceCategory] = useState<
-    "All" | "Students" | "Teachers" | "Other Staff"
+    "All" | "Students" | "Teachers"
   >("All");
   const [scannerMode, setScannerMode] = useState<"Entry" | "Exit">("Entry");
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -303,8 +303,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
 
       const allPeople = [
         ...students.map(s => ({ id: s.id, name: s.name, type: 'Student', photoUrl: s.avatar || '' })),
-        ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher', photoUrl: t.avatar || '' })),
-        ...(settings.staffMembers || []).map((st: any) => ({ id: st.id, name: st.name, type: 'Other Staff', photoUrl: st.imageUrl || '' }))
+        ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher', photoUrl: t.avatar || '' }))
       ];
 
       const cache = getDescriptorCache();
@@ -375,7 +374,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
     };
 
     createFaceMatcher();
-  }, [modelsLoaded, students, teachers, settings.staffMembers, cacheVersion]);
+  }, [modelsLoaded, students, teachers, cacheVersion]);
 
   // Pre-fetch camera permissions on mounting and list all video devices instantly
   useEffect(() => {
@@ -494,20 +493,6 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
                   `https://api.dicebear.com/7.x/avataaars/svg?seed=${t.name}`,
               })),
             );
-            
-            const currentStaff = latestStaff.current;
-            candidates.push(
-              ...currentStaff.map((st: any) => ({
-                id: st.id,
-                name: st.name,
-                class: st.role || "Institution Staff",
-                roll: "Staff",
-                type: "Other Staff",
-                photo:
-                  st.imageUrl ||
-                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${st.name}`,
-              })),
-            );
 
             const curCategory = latestCategory.current;
 
@@ -528,8 +513,6 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
                     if (currentSelectedClass && targetCandidate.class !== currentSelectedClass) isValidCategory = false;
                   } else if (curCategory === "Teachers") {
                     if (targetCandidate.type !== "Teacher") isValidCategory = false;
-                  } else if (curCategory === "Other Staff") {
-                    if (targetCandidate.type !== "Other Staff") isValidCategory = false;
                   }
                   
                   if (!isValidCategory) {
@@ -1164,7 +1147,7 @@ function RegisterFaceModal({
   const { settings } = useWebsite();
   const [step, setStep] = useState<"info" | "scan" | "success">("info");
   const [memberType, setMemberType] = useState<
-    "Student" | "Teacher" | "Other Staff"
+    "Student" | "Teacher"
   >("Student");
   const [formData, setFormData] = useState({
     name: "",
@@ -1225,24 +1208,8 @@ function RegisterFaceModal({
       } else {
         setIsVerified(false);
       }
-    } else {
-      const staffList = settings.staffMembers || [];
-      const staff = staffList.find(
-        (st: any) => st.id.toLowerCase() === searchId,
-      );
-      if (staff) {
-        setFormData((prev) => ({
-          ...prev,
-          name: staff.name,
-          roleOrSubject: staff.role || "Institution Staff",
-        }));
-        setIsVerified(true);
-        setSearchError("");
-      } else {
-        setIsVerified(false);
-      }
     }
-  }, [formData.id, memberType, students, teachers, settings.staffMembers]);
+  }, [formData.id, memberType, students, teachers]);
 
   const searchMember = () => {
     if (!formData.id) return;
@@ -1277,22 +1244,6 @@ function RegisterFaceModal({
           setIsVerified(true);
         } else {
           setSearchError("Teacher not found with this ID");
-          setIsVerified(false);
-        }
-      } else {
-        const staffList = settings.staffMembers || [];
-        const staff = staffList.find(
-          (st: any) => st.id.toLowerCase() === searchId,
-        );
-        if (staff) {
-          setFormData((prev) => ({
-            ...prev,
-            name: staff.name,
-            roleOrSubject: staff.role || "Institution Staff",
-          }));
-          setIsVerified(true);
-        } else {
-          setSearchError("Staff member not found with this ID");
           setIsVerified(false);
         }
       }
@@ -1412,8 +1363,6 @@ function RegisterFaceModal({
           <p className="text-sm text-slate-500 mt-1">
             {memberType === "Student" && "Add a new student to the system"}
             {memberType === "Teacher" && "Add a new teacher to the system"}
-            {memberType === "Other Staff" &&
-              "Add a new staff member to the system"}
           </p>
         </div>
 
@@ -1422,20 +1371,20 @@ function RegisterFaceModal({
             <div className="space-y-4">
               {/* Member Type Selection Tabs */}
               <div className="flex bg-slate-100 p-1 rounded-2xl">
-                {(["Student", "Teacher", "Other Staff"] as const).map(
+                {(["Student", "Teacher"] as const).map(
                   (type) => (
                     <button
                       key={type}
                       type="button"
                       onClick={() => setMemberType(type)}
                       className={cn(
-                        "flex-1 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all",
+                        "flex-1 py-1.5 text-xs sm:text-sm font-bold rounded-xl transition-all",
                         memberType === type
                           ? "bg-white text-slate-950 shadow-sm"
                           : "text-slate-500 hover:text-slate-800",
                       )}
                     >
-                      {type === "Other Staff" ? "Other Staff" : type + "s"}
+                      {type + "s"}
                     </button>
                   ),
                 )}
