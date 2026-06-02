@@ -69,7 +69,7 @@ const initialMockAttendance = [
   },
 ];
 
-type ActiveTab = "overview" | "qr" | "face" | "absent-manager";
+type ActiveTab = "overview" | "qr" | "face" | "absent-manager" | "monthly-ledger";
 
 export default function Attendance() {
   const { students, teachers, attendanceMap, saveAttendanceRecord } =
@@ -110,6 +110,7 @@ export default function Attendance() {
   const [registerTeacher, setRegisterTeacher] = useState<string>("");
   const [registerClass, setRegisterClass] = useState<string>(selectedClass || "Class 10");
   const [registerSection, setRegisterSection] = useState<string>("");
+  const [registerTargetType, setRegisterTargetType] = useState<"Student" | "Teacher">("Student");
 
   const availableRegisterSections = useMemo(() => {
     if (!registerClass) return [];
@@ -1303,6 +1304,7 @@ export default function Attendance() {
               if (teachers.length > 0 && !registerTeacher) {
                 setRegisterTeacher(teachers[0].name);
               }
+              setRegisterTargetType(memberType === "Teacher" ? "Teacher" : "Student");
               setIsMonthlyModalOpen(true);
             }}
             className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-100 transition-colors shadow-sm cursor-pointer"
@@ -1361,6 +1363,12 @@ export default function Attendance() {
           onClick={() => setActiveTab("absent-manager")}
           icon={UserX}
           label="Live Monitor"
+        />
+        <TabButton
+          active={activeTab === "monthly-ledger"}
+          onClick={() => setActiveTab("monthly-ledger")}
+          icon={CalendarIcon}
+          label="Monthly Register Ledger"
         />
       </div>
 
@@ -2657,6 +2665,319 @@ export default function Attendance() {
              })()}
           </div>
         )}
+
+        {activeTab === "monthly-ledger" && (() => {
+          const totalDays = new Date(registerYear, registerMonth + 1, 0).getDate();
+          const weekdayShorts = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+          
+          const daysArray = [];
+          for (let d = 1; d <= totalDays; d++) {
+            const curDate = new Date(registerYear, registerMonth, d);
+            daysArray.push({
+              dayNum: d,
+              dayName: weekdayShorts[curDate.getDay()],
+              dateStr: `${registerYear}-${String(registerMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+            });
+          }
+
+          let membersList: any[] = [];
+          if (registerTargetType === "Student") {
+            membersList = students.filter((s) => s.class === registerClass && (!registerSection || s.section === registerSection));
+            membersList.sort((a, b) => {
+              const rA = parseInt(a.roll) || 999;
+              const rB = parseInt(b.roll) || 999;
+              if (rA !== rB) return rA - rB;
+              return a.name.localeCompare(b.name);
+            });
+          } else {
+            membersList = [...teachers].sort((a, b) => a.name.localeCompare(b.name));
+          }
+
+          return (
+            <div className="space-y-6 animate-fade-in">
+              {/* Interactive Filters Panel */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                      <CalendarIcon className="w-5 h-5 text-indigo-500" />
+                      Monthly Register Ledger (मासिक उपस्थिति रजिस्टर)
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      View, filter, edit custom class/staff lists, and export official printable ledgers.
+                    </p>
+                  </div>
+                  
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={() => {
+                        exportMonthlyRegisterCSV(
+                          registerMonth,
+                          registerYear,
+                          registerTeacher,
+                          registerClass,
+                          registerSection,
+                          registerTargetType
+                        );
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                      <span>Download CSV</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        printMonthlyRegister(
+                          registerMonth,
+                          registerYear,
+                          registerTeacher,
+                          registerClass,
+                          registerSection,
+                          registerTargetType
+                        );
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs font-bold text-white transition-colors shadow-sm cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>Print Landscape PDF</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 pt-2 border-t border-slate-100">
+                  {/* Target Selector */}
+                  <div>
+                    <label className="block text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">
+                      Type
+                    </label>
+                    <select
+                      value={registerTargetType}
+                      onChange={(e) => setRegisterTargetType(e.target.value as "Student" | "Teacher")}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="Student">Students</option>
+                      <option value="Teacher">Teachers / Faculty</option>
+                    </select>
+                  </div>
+
+                  {/* Month Selector */}
+                  <div>
+                    <label className="block text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">
+                      Month
+                    </label>
+                    <select
+                      value={registerMonth}
+                      onChange={(e) => setRegisterMonth(parseInt(e.target.value, 10))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                    >
+                      {[
+                        "January", "February", "March", "April", "May", "June",
+                        "July", "August", "September", "October", "November", "December"
+                      ].map((m, idx) => (
+                        <option key={idx} value={idx}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Year Selector */}
+                  <div>
+                    <label className="block text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">
+                      Year
+                    </label>
+                    <select
+                      value={registerYear}
+                      onChange={(e) => setRegisterYear(parseInt(e.target.value, 10))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                    >
+                      {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map((y) => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Class (Only if student) */}
+                  {registerTargetType === "Student" ? (
+                    <>
+                      <div>
+                        <label className="block text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">
+                          Class
+                        </label>
+                        <select
+                          value={registerClass}
+                          onChange={(e) => {
+                            setRegisterClass(e.target.value);
+                            setRegisterSection("");
+                          }}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                        >
+                          {classes.map((cls) => (
+                            <option key={cls} value={cls}>{cls}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">
+                          Section
+                        </label>
+                        <select
+                          value={registerSection}
+                          onChange={(e) => setRegisterSection(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                        >
+                          <option value="">All Sections</option>
+                          {availableRegisterSections.map((sec) => (
+                            <option key={sec} value={sec}>{sec}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="col-span-2 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-xl p-2.5 self-end text-center">
+                      📊 Showing All Registered Faculty & Staff Members
+                    </div>
+                  )}
+
+                  {/* Custom Teacher Name */}
+                  <div>
+                    <label className="block text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">
+                      Teacher Name / Header
+                    </label>
+                    <input
+                      type="text"
+                      value={registerTeacher}
+                      onChange={(e) => setRegisterTeacher(e.target.value)}
+                      placeholder="Teacher Name"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Ledger Grid Card */}
+              <div className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-xs">
+                {membersList.length === 0 ? (
+                  <div className="p-12 text-center text-slate-500 space-y-2">
+                    <Users className="w-10 h-10 text-slate-300 mx-auto" />
+                    <p className="font-bold text-sm">No members found for the selected criteria.</p>
+                    <p className="text-xs text-slate-400">Please choose another class, section or category.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-w-full">
+                    <table className="w-full table-auto border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="px-4 py-3 text-left text-[11px] font-black text-slate-400 uppercase tracking-wider sticky left-0 bg-slate-50 z-10 border-r border-slate-200 min-w-[140px]">
+                            {registerTargetType === "Student" ? "Student Name" : "Teacher Name"}
+                          </th>
+                          <th className="px-3 py-3 text-center text-[11px] font-black text-slate-400 uppercase tracking-wider border-r border-slate-200 min-w-[60px]">
+                            {registerTargetType === "Student" ? "Roll" : "ID"}
+                          </th>
+                          {daysArray.map((day) => (
+                            <th
+                              key={day.dayNum}
+                              className={cn(
+                                "px-2 py-3 text-center text-[10px] font-bold border-r border-slate-150 min-w-[34px]",
+                                day.dayName === "Su" ? "bg-rose-50/70 text-rose-600" : "text-slate-600"
+                              )}
+                            >
+                              <span className="block font-extrabold">{day.dayNum}</span>
+                              <span className="block text-[8px] uppercase font-black text-slate-400 tracking-tight mt-0.5">{day.dayName}</span>
+                            </th>
+                          ))}
+                          <th className="px-3 py-3 text-center text-[10px] font-black text-emerald-600 uppercase tracking-wider bg-emerald-50/50 border-l border-slate-200 min-w-[40px]">P</th>
+                          <th className="px-3 py-3 text-center text-[10px] font-black text-rose-600 uppercase tracking-wider bg-rose-50/50 border-l border-slate-150 min-w-[40px]">A</th>
+                          <th className="px-3 py-3 text-center text-[10px] font-black text-amber-600 uppercase tracking-wider bg-amber-50/50 border-l border-slate-150 min-w-[40px]">L</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {membersList.map((member, index) => {
+                          let presentCount = 0;
+                          let absentCount = 0;
+                          let lateCount = 0;
+
+                          return (
+                            <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
+                              {/* Name Column */}
+                              <td className="px-4 py-2.5 text-xs font-bold text-slate-800 bg-white sticky left-0 z-10 border-r border-slate-150 shadow-[1px_0_0_rgba(226,232,240,0.8)]">
+                                <p className="line-clamp-1">{member.name}</p>
+                                {registerTargetType === "Student" && member.section && (
+                                  <p className="text-[9px] text-slate-400 font-extrabold uppercase mt-0.5">Sec {member.section}</p>
+                                )}
+                                {registerTargetType === "Teacher" && member.subject && (
+                                  <p className="text-[9px] text-indigo-500 font-extrabold uppercase mt-0.5">{member.subject}</p>
+                                )}
+                              </td>
+                              {/* Roll/ID Column */}
+                              <td className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500 border-r border-slate-150">
+                                {registerTargetType === "Student" ? (member.roll || index + 1) : member.id}
+                              </td>
+                              {/* Days Columns */}
+                              {daysArray.map((day) => {
+                                const record = attendanceMap[`${day.dateStr}:${member.id}`];
+                                let symbol = "";
+                                let cellColorClass = "text-slate-300";
+
+                                if (record && record.status) {
+                                  if (record.status === "Present") {
+                                    symbol = "P";
+                                    presentCount++;
+                                    cellColorClass = "bg-emerald-50 text-emerald-700 font-black border border-emerald-100 rounded-md";
+                                  } else if (record.status === "Absent") {
+                                    symbol = "A";
+                                    absentCount++;
+                                    cellColorClass = "bg-rose-50 text-rose-700 font-black border border-rose-100 rounded-md";
+                                  } else if (record.status === "Late") {
+                                    symbol = "L";
+                                    lateCount++;
+                                    cellColorClass = "bg-amber-50 text-amber-700 font-black border border-amber-100 rounded-md";
+                                  }
+                                } else if (day.dayName === "Su") {
+                                  symbol = "Su";
+                                  cellColorClass = "bg-slate-50 text-slate-400/70 border border-slate-100 rounded-md";
+                                }
+
+                                return (
+                                  <td
+                                    key={day.dayNum}
+                                    className={cn(
+                                      "p-1 text-center text-[10px] border-r border-slate-100",
+                                      day.dayName === "Su" && !symbol ? "bg-rose-50/20" : ""
+                                    )}
+                                  >
+                                    {symbol ? (
+                                      <span className={cn("inline-flex w-7 h-7 items-center justify-center text-center text-[10px] leading-none transition-all", cellColorClass)}>
+                                        {symbol}
+                                      </span>
+                                    ) : (
+                                      <span className="inline-block w-1.5 h-1.5 bg-slate-200 rounded-full"></span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                              {/* Present Total */}
+                              <td className="px-3 py-2.5 text-center text-xs font-black text-emerald-700 bg-emerald-50/40 border-l border-slate-200">
+                                {presentCount}
+                              </td>
+                              {/* Absent Total */}
+                              <td className="px-3 py-2.5 text-center text-xs font-black text-rose-700 bg-rose-50/40 border-l border-slate-150">
+                                {absentCount}
+                              </td>
+                              {/* Late Total */}
+                              <td className="px-3 py-2.5 text-center text-xs font-black text-amber-700 bg-amber-50/40 border-l border-slate-150">
+                                {lateCount}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {isEditModalOpen && editRecord && (
@@ -2744,10 +3065,10 @@ export default function Attendance() {
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <div>
                 <h3 className="font-bold text-xl text-slate-800">
-                  {memberType === "Teacher" ? "Teacher Monthly Register (Payroll/Salary)" : "Generate Monthly Register"}
+                  {registerTargetType === "Teacher" ? "Teacher Monthly Register (Payroll/Salary)" : "Generate Monthly Register"}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {memberType === "Teacher" ? "Custom landscape sheet to calculate present days & calculate salary" : "Design & print school-standard landscape sheets"}
+                  {registerTargetType === "Teacher" ? "Custom landscape sheet to calculate present days & view teaching hours" : "Design & print school-standard landscape sheets"}
                 </p>
               </div>
               <button
@@ -2760,14 +3081,29 @@ export default function Attendance() {
 
             {/* Body */}
             <div className="p-6 space-y-4">
+              {/* Target Selector Dropdown */}
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-1.5">
+                  Register For
+                </label>
+                <select
+                  value={registerTargetType}
+                  onChange={(e) => setRegisterTargetType(e.target.value as "Student" | "Teacher")}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  <option value="Student">Students (Class-wise Register)</option>
+                  <option value="Teacher">Teachers & Faculty (Staff Register)</option>
+                </select>
+              </div>
+
               {/* Category Picker Info */}
               <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start gap-2.5 text-xs text-indigo-800 font-semibold leading-relaxed">
                 <CheckCircle className="w-4 h-4 shrink-0 text-indigo-600 mt-0.5" />
                 <div>
                   Currently generating for:{" "}
                   <span className="underline decoration-indigo-300 decoration-2 underline-offset-2">
-                    {memberType === "Student"
-                      ? "Students of selected class"
+                    {registerTargetType === "Student"
+                      ? `Students of ${registerClass}${registerSection ? " Section " + registerSection : " (All Sections)"}`
                       : "All School Faculty & Teachers"}
                   </span>
                 </div>
@@ -2812,8 +3148,8 @@ export default function Attendance() {
                 </div>
               </div>
 
-              {/* Class and Section selection (only if memberType is Student) */}
-              {memberType === "Student" && (
+              {/* Class and Section selection (only if registerTargetType is Student) */}
+              {registerTargetType === "Student" && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
@@ -2897,19 +3233,29 @@ export default function Attendance() {
               </button>
               <button
                 onClick={() => {
+                  setIsMonthlyModalOpen(false);
+                  setActiveTab("monthly-ledger");
+                }}
+                className="px-5 py-2.5 bg-white border border-orange-200 text-orange-700 font-bold rounded-xl hover:bg-orange-100 transition-colors shadow-sm cursor-pointer text-xs sm:text-sm text-center flex items-center justify-center gap-1.5"
+              >
+                <Users className="w-4 h-4 text-orange-600" />
+                <span>View Interactive Ledger</span>
+              </button>
+              <button
+                onClick={() => {
                   exportMonthlyRegisterCSV(
                     registerMonth,
                     registerYear,
                     registerTeacher,
                     registerClass,
                     registerSection,
-                    memberType
+                    registerTargetType
                   );
                 }}
                 className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs sm:text-sm"
               >
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span>Export CSV Matrix</span>
+                <span>CSV Download</span>
               </button>
               <button
                 onClick={() => {
@@ -2919,13 +3265,13 @@ export default function Attendance() {
                     registerTeacher,
                     registerClass,
                     registerSection,
-                    memberType
+                    registerTargetType
                   );
                 }}
                 className="px-6 py-2.5 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs sm:text-sm text-center"
               >
                 <Printer className="w-4 h-4" />
-                <span>Print Landscape / Save PDF</span>
+                <span>Print Ledger</span>
               </button>
             </div>
           </div>
