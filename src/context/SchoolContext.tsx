@@ -142,6 +142,7 @@ interface SchoolContextType {
   };
   attendanceMap: Record<string, { status: 'Present' | 'Absent' | 'Late'; remarks: string; inTime?: string; outTime?: string; earlyOutReason?: string }>;
   saveAttendanceRecord: (memberId: string, date: string, fields: { status?: 'Present' | 'Absent' | 'Late'; remarks?: string; inTime?: string; outTime?: string; earlyOutReason?: string }) => Promise<void>;
+  deleteAttendanceRecord: (memberId: string, date: string) => Promise<void>;
   feesTransactions: any[];
   saveFeeTransaction: (tx: any) => Promise<void>;
   deleteFeeTransaction: (id: string) => Promise<void>;
@@ -833,6 +834,16 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const deleteAttendanceRecord = async (memberId: string, date: string) => {
+    try {
+      const docId = `${date}_${memberId}`;
+      const docRef = doc(db, 'attendance', docId);
+      await deleteDoc(docRef);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `attendance/${date}_${memberId}`);
+    }
+  };
+
   const saveFeeTransaction = async (tx: any) => {
     try {
       const docRef = doc(db, 'fees', tx.id);
@@ -948,7 +959,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       resetFirestoreToMock,
       firestoreDbEmpty,
       dbStats,
-      attendanceMap, saveAttendanceRecord,
+      attendanceMap, saveAttendanceRecord, deleteAttendanceRecord,
       feesTransactions, saveFeeTransaction, deleteFeeTransaction,
       schoolEvents, saveSchoolEvent, deleteSchoolEvent
     }}>
