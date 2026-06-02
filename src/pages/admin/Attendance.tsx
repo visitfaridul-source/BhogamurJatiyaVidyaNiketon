@@ -99,6 +99,8 @@ export default function Attendance() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAbsenteesOnly, setShowAbsenteesOnly] = useState(false);
   const [monitorStatusFilter, setMonitorStatusFilter] = useState<"All" | "Present" | "Absent" | "Late">("All");
+  const [monitorCategoryFilter, setMonitorCategoryFilter] = useState<"All" | "Student" | "Teacher" | "Other Staff">("All");
+  const [monitorClassFilter, setMonitorClassFilter] = useState<string>("");
 
   const [attendanceData, setAttendanceData] = useState(initialMockAttendance);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -367,13 +369,13 @@ export default function Attendance() {
     // 1. Students
     const studentData = students
       .filter((s) => {
-        const matchesClass = selectedClass ? s.class === selectedClass : true;
-        const matchesSection = selectedSection ? s.section === selectedSection : true;
+        if (monitorCategoryFilter !== "All" && monitorCategoryFilter !== "Student") return false;
+        const matchesClass = monitorClassFilter ? s.class === monitorClassFilter : true;
         const matchesSearch = searchQuery
           ? s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
             s.id.toLowerCase().includes(searchQuery.toLowerCase())
           : true;
-        if (!matchesClass || !matchesSection || !matchesSearch) return false;
+        if (!matchesClass || !matchesSearch) return false;
         
         const record = attendanceMap[`${date}:${s.id}`];
         const status = getCalculatedStatus(record, date);
@@ -398,6 +400,7 @@ export default function Attendance() {
     // 2. Teachers
     const teacherData = teachers
       .filter((t) => {
+        if (monitorCategoryFilter !== "All" && monitorCategoryFilter !== "Teacher") return false;
         const matchesSearch = searchQuery
           ? t.name.toLowerCase().includes(searchQuery.toLowerCase())
           : true;
@@ -426,6 +429,7 @@ export default function Attendance() {
     // 3. Other Staff
     const staffData = (settings.staffMembers || [])
       .filter((st: any) => {
+        if (monitorCategoryFilter !== "All" && monitorCategoryFilter !== "Other Staff") return false;
         const matchesSearch = searchQuery
           ? st.name.toLowerCase().includes(searchQuery.toLowerCase())
           : true;
@@ -452,7 +456,7 @@ export default function Attendance() {
       });
 
     return [...studentData, ...teacherData, ...staffData];
-  }, [students, teachers, settings.staffMembers, selectedClass, selectedSection, searchQuery, attendanceMap, date, monitorStatusFilter]);
+  }, [students, teachers, settings.staffMembers, monitorClassFilter, searchQuery, attendanceMap, date, monitorStatusFilter, monitorCategoryFilter]);
 
   const exportAttendanceDetails = () => {
     let csvHeader = "";
@@ -2451,17 +2455,56 @@ export default function Attendance() {
         {activeTab === "absent-manager" && (
           <div className="space-y-6 animate-fade-in bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-inner">
              {/* Header */}
-             <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200">
-                <div>
-                   <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                      <ScanFace className="w-6 h-6 text-indigo-500" />
-                      Live Attendance Monitor (रीयल-टाइम मॉनिटर)
-                   </h3>
-                   <p className="text-sm text-slate-500 mt-1">
-                      Showing real-time attendance groups for {format(new Date(date), "MMMM dd, yyyy")}. Watch this update automatically as scans occur.
-                   </p>
+             <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 bg-white p-6 rounded-2xl border border-slate-200">
+                <div className="space-y-4">
+                   <div>
+                      <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                         <ScanFace className="w-6 h-6 text-indigo-500" />
+                         Live Attendance Monitor (रीयल-टाइम मॉनिटर)
+                      </h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                         Showing real-time attendance groups for {format(new Date(date), "MMMM dd, yyyy")}. Watch this update automatically as scans occur.
+                      </p>
+                   </div>
+                   
+                   {/* Category & Class Filters */}
+                   <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex bg-slate-100 p-1 rounded-xl">
+                         {(["All", "Student", "Teacher", "Other Staff"] as const).map((cat) => (
+                            <button
+                               key={cat}
+                               onClick={() => {
+                                  setMonitorCategoryFilter(cat);
+                                  if (cat !== "Student" && cat !== "All") setMonitorClassFilter("");
+                               }}
+                               className={cn(
+                                  "px-3 py-1.5 text-xs font-bold rounded-lg transition-colors",
+                                  monitorCategoryFilter === cat
+                                     ? "bg-white text-slate-800 shadow-sm border border-slate-200"
+                                     : "text-slate-500 hover:text-slate-700"
+                               )}
+                            >
+                               {cat}
+                            </button>
+                         ))}
+                      </div>
+
+                      {(monitorCategoryFilter === "All" || monitorCategoryFilter === "Student") && (
+                         <select
+                            value={monitorClassFilter}
+                            onChange={(e) => setMonitorClassFilter(e.target.value)}
+                            className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-300"
+                         >
+                            <option value="">All Classes</option>
+                            {classes.map((cls) => (
+                               <option key={cls} value={cls}>{cls}</option>
+                            ))}
+                         </select>
+                      )}
+                   </div>
                 </div>
-                <div className="flex items-center gap-4 flex-wrap">
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-wrap">
                    <div className="flex bg-slate-100 p-1 rounded-xl">
                       {(["All", "Present", "Absent", "Late"] as const).map((status) => (
                          <button
