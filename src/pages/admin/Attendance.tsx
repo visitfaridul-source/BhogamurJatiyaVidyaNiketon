@@ -1189,6 +1189,397 @@ export default function Attendance() {
     }
   };
 
+  const printMonthlyEarlyOutRegister = (monthVal: number, yearVal: number, teacherName: string, classVal: string, sectionVal: string, targetType: "Student" | "Teacher") => {
+    const totalDays = new Date(yearVal, monthVal + 1, 0).getDate();
+    const weekdayShorts = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+    
+    const daysArray = [];
+    for (let d = 1; d <= totalDays; d++) {
+      const curDate = new Date(yearVal, monthVal, d);
+      daysArray.push({
+        dayNum: d,
+        dayName: weekdayShorts[curDate.getDay()],
+        dateStr: `${yearVal}-${String(monthVal + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      });
+    }
+
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const monthName = monthNames[monthVal];
+
+    let membersList: any[] = [];
+    let titleSubject = "";
+    if (targetType === "Student") {
+      membersList = students.filter((s) => s.class === classVal && (!sectionVal || s.section === sectionVal));
+      membersList.sort((a, b) => {
+        const rA = parseInt(a.roll) || 999;
+        const rB = parseInt(b.roll) || 999;
+        if (rA !== rB) return rA - rB;
+        return a.name.localeCompare(b.name);
+      });
+      titleSubject = `Class: ${classVal}${sectionVal ? ' - Section ' + sectionVal : ''}`;
+    } else {
+      membersList = [...teachers].sort((a, b) => a.name.localeCompare(b.name));
+      titleSubject = "Faculty / Teachers";
+    }
+
+    const earlyOutEvents: {
+      date: string;
+      id: string;
+      name: string;
+      rollOrId: string | number;
+      outTime: string;
+      reason: string;
+    }[] = [];
+
+    membersList.forEach((member, index) => {
+      const displayRollOrId = targetType === "Student" ? (member.roll || index + 1) : (member.id || index + 1);
+      
+      daysArray.forEach((day) => {
+        const record = attendanceMap[`${day.dateStr}:${member.id}`];
+        if (record) {
+          const isEarly = record.status === "EARLY LEAVE" || !!record.earlyOutReason || (record.outTime && record.outTime < "14:30");
+          if (isEarly) {
+            earlyOutEvents.push({
+              date: day.dateStr,
+              id: member.id,
+              name: member.name,
+              rollOrId: displayRollOrId,
+              outTime: record.outTime || "Before 02:30 PM",
+              reason: record.earlyOutReason || record.remarks || "Early Departure"
+            });
+          }
+        }
+      });
+    });
+
+    let tableRowsHtml = "";
+    if (earlyOutEvents.length === 0) {
+      tableRowsHtml = `
+        <tr>
+          <td colspan="5" style="padding: 30px; text-align: center; color: #64748b; font-size: 13px; font-weight: bold;">
+            🎉 No Early Out records registered for this month!
+          </td>
+        </tr>
+      `;
+    } else {
+      earlyOutEvents.sort((a, b) => a.date.localeCompare(b.date));
+      earlyOutEvents.forEach((ev) => {
+        tableRowsHtml += `
+          <tr>
+            <td style="font-weight: 700; color: #0f172a; padding: 10px 8px;">${ev.date}</td>
+            <td style="font-weight: 700; background-color: #f8fafc; padding: 10px 8px;">${ev.rollOrId}</td>
+            <td style="text-align: left; font-weight: 600; padding: 10px 8px; color: #1e293b;">${ev.name}</td>
+            <td style="font-weight: bold; color: #0f766e; padding: 10px 8px;">${ev.outTime}</td>
+            <td style="text-align: left; padding: 10px 8px; color: #475569; font-style: italic;">${ev.reason}</td>
+          </tr>
+        `;
+      });
+    }
+
+    const displaySchoolName = settings.schoolName || "Bhogamur Jatiya Vidya Niketon";
+    const logoImgUrl = settings.logoUrl || "";
+
+    let htmlContent = `
+      <html>
+        <head>
+          <title>Monthly Early Out Report - ${monthName} ${yearVal}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+            @media print {
+              @page {
+                size: portrait;
+                margin: 10mm 15mm 10mm 15mm;
+              }
+              body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                color: #000;
+              }
+              .no-print {
+                display: none !important;
+              }
+            }
+            body {
+              font-family: 'Inter', -apple-system, sans-serif;
+              font-size: 11px;
+              margin: 0;
+              padding: 20px;
+              color: #1e293b;
+              background-color: #fff;
+            }
+            .header-container {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 25px;
+              border-bottom: 3px solid #0f766e;
+              padding-bottom: 15px;
+            }
+            .school-title {
+              font-size: 24px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin: 0;
+              color: #0f172a;
+            }
+            .register-subtitle {
+              font-size: 15px;
+              font-weight: 700;
+              margin: 4px 0 0 0;
+              color: #0f766e;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .meta-info {
+              font-size: 11px;
+              font-weight: 700;
+              display: flex;
+              gap: 15px;
+              margin-top: 10px;
+            }
+            .meta-info-item {
+              padding: 5px 12px;
+              border-radius: 6px;
+              border: 1px solid #ccfbf1;
+              background-color: #f0fdfa;
+              color: #115e59;
+            }
+            .meta-info-item span {
+              color: #0d9488;
+              font-weight: 600;
+              margin-right: 6px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 15px;
+              border: 1px solid #cbd5e1;
+            }
+            th, td {
+              border: 1px solid #cbd5e1;
+              padding: 8px 10px;
+              text-align: center;
+              font-size: 11px;
+              line-height: 1.4;
+            }
+            th {
+              background-color: #f1f5f9;
+              font-weight: 700;
+              color: #334155;
+              text-transform: uppercase;
+              font-size: 10px;
+              border-bottom: 2px solid #cbd5e1;
+            }
+            .footer-sign {
+              display: flex;
+              justify-content: space-between;
+              margin-top: 60px;
+              padding: 0 40px;
+            }
+            .signature-box {
+              border-top: 1px solid #475569;
+              width: 200px;
+              text-align: center;
+              padding-top: 8px;
+              font-size: 11px;
+              font-weight: 600;
+              color: #334155;
+            }
+            .print-btn-bar {
+              background: #f1f5f9;
+              padding: 12px 20px;
+              border-bottom: 2px solid #cbd5e1;
+              display: flex;
+              gap: 12px;
+              justify-content: flex-end;
+              align-items: center;
+              font-family: sans-serif;
+              border-radius: 8px;
+              margin-bottom: 20px;
+            }
+            .action-btn {
+              background: #0d9488;
+              color: white;
+              border: none;
+              padding: 8px 16px;
+              border-radius: 8px;
+              font-size: 12.5px;
+              font-weight: bold;
+              cursor: pointer;
+              box-shadow: 0 2px 4px rgba(13, 148, 136, 0.2);
+              transition: all 0.2s;
+            }
+            .action-btn:hover {
+              background: #0f766e;
+              transform: translateY(-1px);
+            }
+            .close-btn {
+              background: white;
+              color: #475569;
+              border: 1px solid #cbd5e1;
+              box-shadow: none;
+            }
+            .close-btn:hover {
+              background: #e2e8f0;
+              color: #0f172a;
+            }
+            tr:nth-child(even) {
+              background-color: #fcfdfd;
+            }
+            tr:hover {
+              background-color: #f0fdfa;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-btn-bar no-print">
+            <span style="font-size: 13px; color: #0d9488; margin-right: auto; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+              🚪 Monthly Early Out (शीघ्र प्रस्थान/छुट्टी) Report 
+            </span>
+            <button class="action-btn close-btn" onclick="window.close()">Close</button>
+            <button class="action-btn" onclick="window.print()">Print Report / Save as PDF</button>
+          </div>
+          
+          <div class="header-container">
+            <div>
+              <h1 class="school-title">${displaySchoolName}</h1>
+              <h2 class="register-subtitle">Monthly Early Out Register Report</h2>
+              
+              <div class="meta-info">
+                <div class="meta-info-item"><span>Month:</span>${monthName} ${yearVal}</div>
+                ${targetType === "Teacher" ? "" : `<div class="meta-info-item"><span>T. Name:</span>${teacherName || "N/A"}</div>`}
+                <div class="meta-info-item"><span>Category / Section:</span>${titleSubject}</div>
+              </div>
+            </div>
+            ${logoImgUrl ? `<img src="${logoImgUrl}" alt="School Logo" style="height: 52px; object-fit: contain; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));" onerror="this.style.display='none'" />` : ''}
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 15%">Date (दिनांक)</th>
+                <th style="width: 12%">${targetType === "Student" ? "Roll No" : "ID"}</th>
+                <th style="width: 25%">Name (नाम)</th>
+                <th style="width: 15%">Out Time (जाने का समय)</th>
+                <th>Reason / Remarks (कारण / टिप्पणी)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRowsHtml}
+            </tbody>
+          </table>
+
+          <div class="footer-sign">
+            <div class="signature-box">Verified By Signature</div>
+            <div class="signature-box">Principal / Auth. Signature</div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(htmlContent);
+      win.document.close();
+      setTimeout(() => {
+        win.print();
+      }, 500);
+    }
+  };
+
+  const exportMonthlyEarlyOutCSV = (monthVal: number, yearVal: number, teacherName: string, classVal: string, sectionVal: string, targetType: "Student" | "Teacher") => {
+    const totalDays = new Date(yearVal, monthVal + 1, 0).getDate();
+    const weekdayShorts = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+    
+    const daysArray = [];
+    for (let d = 1; d <= totalDays; d++) {
+      const curDate = new Date(yearVal, monthVal, d);
+      daysArray.push({
+        num: d,
+        day: weekdayShorts[curDate.getDay()],
+        dateStr: `${yearVal}-${String(monthVal + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      });
+    }
+
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const monthName = monthNames[monthVal];
+
+    let csvContent = `MONTHLY EARLY OUT REPORT (शीघ्र प्रस्थान सूची) - ${monthName.toUpperCase()} ${yearVal}\n`;
+    csvContent += `School Name,${settings.schoolName || "Bhogamur Jatiya Vidya Niketon"}\n`;
+    csvContent += `T. Name,${teacherName || "N/A"}\n`;
+    if (targetType === "Student") {
+        csvContent += `Category / Subject,Class ${classVal}${sectionVal ? ' - Section ' + sectionVal : ''}\n\n`;
+    } else {
+        csvContent += `Category / Subject,Faculty & Teachers\n\n`;
+    }
+
+    csvContent += `"Date (दिनांक)","${targetType === "Student" ? "Roll No" : "ID"}","Name (नाम)","Out Time (जाने का समय)","Reason / Remarks (कारण)"\n`;
+
+    let membersList: any[] = [];
+    if (targetType === "Student") {
+      membersList = students.filter((s) => s.class === classVal && (!sectionVal || s.section === sectionVal));
+      membersList.sort((a, b) => (parseInt(a.roll) || 999) - (parseInt(b.roll) || 999));
+    } else {
+      membersList = [...teachers].sort((a,b) => a.name.localeCompare(b.name));
+    }
+
+    const earlyOutEvents: {
+      date: string;
+      rollOrId: string | number;
+      name: string;
+      outTime: string;
+      reason: string;
+    }[] = [];
+
+    membersList.forEach((member, index) => {
+      const displayRollOrId = targetType === "Student" ? (member.roll || index + 1) : (member.id || index + 1);
+      
+      daysArray.forEach((day) => {
+        const record = attendanceMap[`${day.dateStr}:${member.id}`];
+        if (record) {
+          const isEarly = record.status === "EARLY LEAVE" || !!record.earlyOutReason || (record.outTime && record.outTime < "14:30");
+          if (isEarly) {
+            earlyOutEvents.push({
+              date: day.dateStr,
+              rollOrId: displayRollOrId,
+              name: member.name,
+              outTime: record.outTime || "Before 02:30 PM",
+              reason: record.earlyOutReason || record.remarks || "Early Departure"
+            });
+          }
+        }
+      });
+    });
+
+    if (earlyOutEvents.length === 0) {
+      csvContent += `"No early leave records found for this period"\n`;
+    } else {
+      earlyOutEvents.sort((a, b) => a.date.localeCompare(b.date));
+      earlyOutEvents.forEach((ev) => {
+        csvContent += `"${ev.date}","${ev.rollOrId}","${ev.name}","${ev.outTime}","${ev.reason}"\n`;
+      });
+    }
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const encodedUri = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute(
+      "download",
+      `Monthly_EarlyOuts_${monthName}_${yearVal}_${targetType === "Student" ? classVal : targetType}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const exportMonthlyRegisterCSV = (monthVal: number, yearVal: number, teacherName: string, classVal: string, sectionVal: string, targetType: "Student" | "Teacher") => {
     const totalDays = new Date(yearVal, monthVal + 1, 0).getDate();
     const weekdayShorts = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -2787,6 +3178,38 @@ export default function Attendance() {
                       <Printer className="w-4 h-4" />
                       <span>Print Landscape PDF</span>
                     </button>
+                    <button
+                      onClick={() => {
+                        exportMonthlyEarlyOutCSV(
+                          registerMonth,
+                          registerYear,
+                          registerTeacher,
+                          registerClass,
+                          registerSection,
+                          registerTargetType
+                        );
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-white border border-teal-200 hover:bg-teal-50 rounded-xl text-xs font-bold text-teal-700 transition-colors shadow-xs cursor-pointer"
+                    >
+                      <Download className="w-4 h-4 text-teal-600" />
+                      <span>Early Out CSV</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        printMonthlyEarlyOutRegister(
+                          registerMonth,
+                          registerYear,
+                          registerTeacher,
+                          registerClass,
+                          registerSection,
+                          registerTargetType
+                        );
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-xl text-xs font-bold text-white transition-colors shadow-sm cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4 text-white" />
+                      <span>Early Out Report</span>
+                    </button>
                   </div>
                 </div>
 
@@ -2934,6 +3357,7 @@ export default function Attendance() {
                           <th className="px-3 py-3 text-center text-[10px] font-black text-emerald-600 uppercase tracking-wider bg-emerald-50/50 border-l border-slate-200 min-w-[40px]">P</th>
                           <th className="px-3 py-3 text-center text-[10px] font-black text-rose-600 uppercase tracking-wider bg-rose-50/50 border-l border-slate-150 min-w-[40px]">A</th>
                           <th className="px-3 py-3 text-center text-[10px] font-black text-amber-600 uppercase tracking-wider bg-amber-50/50 border-l border-slate-150 min-w-[40px]">L</th>
+                          <th className="px-3 py-3 text-center text-[10px] font-black text-teal-600 uppercase tracking-wider bg-teal-50/50 border-l border-slate-150 min-w-[40px]">EO</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -2941,6 +3365,7 @@ export default function Attendance() {
                           let presentCount = 0;
                           let absentCount = 0;
                           let lateCount = 0;
+                          let earlyOutCount = 0;
 
                           return (
                             <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
@@ -2965,15 +3390,21 @@ export default function Attendance() {
                                 let cellColorClass = "text-slate-300";
 
                                 if (record && record.status) {
-                                  if (record.status === "Present") {
+                                  const isEarlyOut = record.status === "EARLY LEAVE" || !!record.earlyOutReason || (record.outTime && record.outTime < "14:30");
+                                  if (isEarlyOut) {
+                                    symbol = "E";
+                                    earlyOutCount++;
+                                    presentCount++;
+                                    cellColorClass = "bg-teal-50 text-teal-700 font-extrabold border border-teal-100 rounded-md";
+                                  } else if (record.status === "Present" || record.status === "PRESENT" || record.status === "LEFT") {
                                     symbol = "P";
                                     presentCount++;
                                     cellColorClass = "bg-emerald-50 text-emerald-700 font-black border border-emerald-100 rounded-md";
-                                  } else if (record.status === "Absent") {
+                                  } else if (record.status === "Absent" || record.status === "ABSENT") {
                                     symbol = "A";
                                     absentCount++;
                                     cellColorClass = "bg-rose-50 text-rose-700 font-black border border-rose-100 rounded-md";
-                                  } else if (record.status === "Late") {
+                                  } else if (record.status === "Late" || record.status === "LATE") {
                                     symbol = "L";
                                     lateCount++;
                                     cellColorClass = "bg-amber-50 text-amber-700 font-black border border-amber-100 rounded-md";
@@ -3012,6 +3443,10 @@ export default function Attendance() {
                               {/* Late Total */}
                               <td className="px-3 py-2.5 text-center text-xs font-black text-amber-700 bg-amber-50/40 border-l border-slate-150">
                                 {lateCount}
+                              </td>
+                              {/* Early Out Total */}
+                              <td className="px-3 py-2.5 text-center text-xs font-black text-teal-700 bg-teal-50/40 border-l border-slate-150 animate-fade-in">
+                                {earlyOutCount}
                               </td>
                             </tr>
                           );
@@ -3302,6 +3737,38 @@ export default function Attendance() {
               >
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                 <span>CSV Download</span>
+              </button>
+              <button
+                onClick={() => {
+                  exportMonthlyEarlyOutCSV(
+                    registerMonth,
+                    registerYear,
+                    registerTeacher,
+                    registerClass,
+                    registerSection,
+                    registerTargetType
+                  );
+                }}
+                className="px-5 py-2.5 bg-white border border-teal-200 text-teal-700 font-bold rounded-xl hover:bg-teal-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs sm:text-sm"
+              >
+                <Download className="w-4 h-4 text-teal-600" />
+                <span>Early Out CSV</span>
+              </button>
+              <button
+                onClick={() => {
+                  printMonthlyEarlyOutRegister(
+                    registerMonth,
+                    registerYear,
+                    registerTeacher,
+                    registerClass,
+                    registerSection,
+                    registerTargetType
+                  );
+                }}
+                className="px-5 py-2.5 bg-teal-50 border border-teal-400 text-teal-700 font-bold rounded-xl hover:bg-teal-100 transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs sm:text-sm text-center"
+              >
+                <Printer className="w-4 h-4 text-teal-600" />
+                <span>Early Out Print</span>
               </button>
               <button
                 onClick={() => {

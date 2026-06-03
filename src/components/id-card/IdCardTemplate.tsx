@@ -172,24 +172,8 @@ export default function IdCardTemplate({
               non-transferable.
             </p>
             <p>
-              2. Must be worn strictly by the{" "}
-              {member.type === "student"
-                ? "student"
-                : member.type === "teacher"
-                  ? "teacher"
-                  : "staff member"}{" "}
-              at all times within the school premises.
-            </p>
-            <p>
-              3. If found by a stranger, please drop it in the nearest post box
+              2. If found by a stranger, please drop it in the nearest post box
               or return it to the administrative office of the school.
-            </p>
-            {member.type === "student" && (
-              <p>4. Valid for the current academic session only.</p>
-            )}
-            <p>
-              {member.type === "student" ? "5." : "4."} Loss of this card must
-              be reported immediately to school authorities.
             </p>
           </div>
 
