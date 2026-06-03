@@ -78,6 +78,66 @@ const THEME_STYLES = {
   },
 };
 
+function BarcodeSVG({ value }: { value: string }) {
+  // Clean deterministic ID to Code39 horizontal barcode style rendering
+  const normalized = (value || "").toUpperCase().replace(/[^A-Z0-9-]/g, "");
+  const chars = normalized.length ? normalized : "ID-000";
+
+  const barPatterns: Record<string, string> = {
+    "0": "101001101101", "1": "110100101011", "2": "101100101011", "3": "110110010101",
+    "4": "101001101011", "5": "110100110101", "6": "101100110101", "7": "101001011011",
+    "8": "110100101101", "9": "101100101101", "A": "110101001011", "B": "101101001011",
+    "C": "110110100101", "D": "101011001011", "E": "110101100101", "F": "101101100101",
+    "G": "101010011011", "H": "110101001101", "I": "101101001101", "J": "101011001101",
+    "K": "110101010011", "L": "101101010011", "M": "110110101001", "N": "101011010011",
+    "O": "110101101001", "P": "101101101001", "Q": "101010110011", "R": "110101011001",
+    "S": "101101011001", "T": "101011011001", "U": "110010101011", "V": "100110101011",
+    "W": "110011010101", "X": "100101101011", "Y": "110010110101", "Z": "100110110101",
+    "-": "100101011011",
+  };
+
+  let binary = "100101101101"; // start code 39 guard *
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i];
+    const pattern = barPatterns[char] || barPatterns["-"];
+    binary += pattern + "0";
+  }
+  binary += "100101101101"; // end code 39 guard *
+
+  const totalSegments = binary.length;
+
+  return (
+    <div className="flex flex-col items-center justify-center w-full">
+      <svg
+        width="100%"
+        height="12"
+        viewBox={`0 0 ${totalSegments} 20`}
+        preserveAspectRatio="none"
+        className="block"
+      >
+        {binary.split("").map((bit, idx) => {
+          if (bit === "1") {
+            return (
+              <rect
+                key={idx}
+                x={idx}
+                y={0}
+                width={1.2}
+                height={20}
+                fill="#000000"
+              />
+            );
+          }
+          return null;
+        })}
+      </svg>
+      <span className="text-[5px] font-mono tracking-[1px] font-bold text-slate-800 mt-[2px] block text-center uppercase">
+        {chars}
+      </span>
+    </div>
+  );
+}
+
 export default function IdCardTemplate({
   member,
   theme = "blue",
@@ -428,8 +488,8 @@ export default function IdCardTemplate({
 
       {/* Footer Details */}
       <div className="mb-2 w-full px-3 flex justify-between items-end relative z-20 shrink-0 mt-auto">
-        <div className="p-[2px] bg-white rounded-md flex-shrink-0 shadow-sm border border-slate-200">
-          <QRCodeSVG value={qrData} size={26} level="M" includeMargin={false} />
+        <div className="px-1.5 py-1 bg-white rounded-md flex-shrink-0 shadow-xs border border-slate-200 w-[24mm] flex items-center justify-center min-h-[7mm]">
+          <BarcodeSVG value={member.id} />
         </div>
         <div className="text-right flex flex-col items-end pt-1 pb-[2px]">
           {settings.principalSignatureUrl ? (
