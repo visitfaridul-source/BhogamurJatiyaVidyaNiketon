@@ -297,6 +297,29 @@ export default function Dashboard() {
     return count;
   }, [filteredTeachers, attendanceMap]);
 
+  // Today's live teacher attendance stats breakdown
+  const todayTeacherStats = useMemo(() => {
+    let present = 0;
+    let late = 0;
+    let earlyOut = 0;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    filteredTeachers.forEach(teacher => {
+      const record = attendanceMap[`${today}:${teacher.id}`];
+      if (record) {
+        if (record.status === 'Present' || record.status === 'LEFT' || record.status === 'EARLY LEAVE') {
+          present++;
+        }
+        if (record.status === 'Late') {
+          late++;
+        }
+        if (record.status === 'EARLY LEAVE' || !!record.earlyOutReason || (record.outTime && record.outTime < '14:30')) {
+          earlyOut++;
+        }
+      }
+    });
+    return { present, late, earlyOut };
+  }, [filteredTeachers, attendanceMap]);
+
   // Dynamic Revenue Selector Chart Data
   const dynamicRevenueData = useMemo(() => {
     if (selectedChartPeriod === 'Last Year') {
@@ -554,7 +577,26 @@ export default function Dashboard() {
           trend="Active Faculty"
           trendUp={true}
           lightColors="bg-sky-50 text-sky-600 border-sky-100"
-        />
+          onClick={() => navigate('/admin/attendance', { state: { activeTab: 'absent-manager', monitorCategoryFilter: 'Teacher' } })}
+        >
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-1 flex-wrap">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold hover:bg-emerald-100 transition-colors">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Present: {todayTeacherStats.present}
+            </span>
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-bold hover:bg-amber-100 transition-colors">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              Late: {todayTeacherStats.late}
+            </span>
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-100 text-[10px] font-bold hover:bg-rose-100 transition-colors">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+              Early: {todayTeacherStats.earlyOut}
+            </span>
+          </div>
+          <div className="text-[9px] text-slate-400 text-center mt-2 font-medium">
+            (Click to view detailed list)
+          </div>
+        </StatCard>
         <StatCard 
           title="Students Absent Today" 
           value={absentStudentsCount.toLocaleString()} 
@@ -562,6 +604,7 @@ export default function Dashboard() {
           trend={absentStudentsCount > 0 ? `${absentStudentsCount} absent today` : "100% Present"}
           trendUp={absentStudentsCount === 0}
           lightColors={absentStudentsCount > 0 ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"}
+          onClick={() => navigate('/admin/attendance', { state: { activeTab: 'absent-manager', monitorCategoryFilter: 'Student', monitorStatusFilter: 'Absent' } })}
         />
         <StatCard 
           title="Teachers Absent Today" 
@@ -570,6 +613,7 @@ export default function Dashboard() {
           trend={absentTeachersCount > 0 ? `${absentTeachersCount} absent today` : "All Faculty Present"}
           trendUp={absentTeachersCount === 0}
           lightColors={absentTeachersCount > 0 ? "bg-amber-50 text-amber-600 border-amber-150" : "bg-indigo-50 text-indigo-600 border-indigo-100"}
+          onClick={() => navigate('/admin/attendance', { state: { activeTab: 'absent-manager', monitorCategoryFilter: 'Teacher', monitorStatusFilter: 'Absent' } })}
         />
       </div>
 
@@ -1110,9 +1154,12 @@ export default function Dashboard() {
 }
 
 // Compact stat card layout design
-function StatCard({ title, value, icon: Icon, trend, trendUp, lightColors }: any) {
+function StatCard({ title, value, icon: Icon, trend, trendUp, lightColors, onClick, children }: any) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 sm:p-4 group hover:-translate-y-1 transition-all duration-300 shadow-3xs hover:shadow-xs select-none">
+    <div 
+      onClick={onClick}
+      className={`relative overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 sm:p-4 group hover:-translate-y-1 transition-all duration-300 shadow-3xs hover:shadow-xs select-none ${onClick ? 'cursor-pointer active:scale-[0.98]' : ''}`}
+    >
       <div className="relative z-10 flex flex-col justify-between h-full">
         <div className="flex justify-between items-center mb-3">
           <div className={`p-2 rounded-xl border ${lightColors}`}>
@@ -1130,6 +1177,7 @@ function StatCard({ title, value, icon: Icon, trend, trendUp, lightColors }: any
           <h3 className="text-slate-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-0.5">{title}</h3>
           <p className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight leading-none">{value}</p>
         </div>
+        {children}
       </div>
     </div>
   );

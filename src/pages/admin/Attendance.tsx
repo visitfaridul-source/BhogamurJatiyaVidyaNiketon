@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense, useMemo } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Search,
   Calendar as CalendarIcon,
@@ -89,6 +90,7 @@ export default function Attendance() {
       }
     }
   }, [user]);
+  const location = useLocation();
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [selectedSection, setSelectedSection] = useState<string>("");
@@ -98,6 +100,21 @@ export default function Attendance() {
   const [showAbsenteesOnly, setShowAbsenteesOnly] = useState(false);
   const [monitorStatusFilter, setMonitorStatusFilter] = useState<"All" | "Present" | "Absent" | "Late">("All");
   const [monitorCategoryFilter, setMonitorCategoryFilter] = useState<"All" | "Student" | "Teacher">("All");
+
+  useEffect(() => {
+    if (location.state) {
+      const stateObj = location.state as any;
+      if (stateObj.activeTab) {
+        setActiveTab(stateObj.activeTab);
+      }
+      if (stateObj.monitorCategoryFilter) {
+        setMonitorCategoryFilter(stateObj.monitorCategoryFilter);
+      }
+      if (stateObj.monitorStatusFilter) {
+        setMonitorStatusFilter(stateObj.monitorStatusFilter);
+      }
+    }
+  }, [location.state]);
   const [monitorClassFilter, setMonitorClassFilter] = useState<string>("");
   const [monitorTeacherFilter, setMonitorTeacherFilter] = useState<string>("");
 
