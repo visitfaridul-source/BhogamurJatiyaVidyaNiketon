@@ -239,7 +239,7 @@ export default function IdCardTemplate({
 
           {/* QR Code Container - Made prominent ("thora boda rakho") */}
           <div className="flex flex-col items-center justify-center my-2 shrink-0">
-            <div className="p-1.5 bg-white rounded-lg shadow-sm border border-black/5">
+            <div className="p-1.5 bg-white rounded-lg shadow-sm border border-black/5 flex flex-col items-center gap-1">
               <QRCodeSVG
                 value={JSON.stringify({
                   id: member.id,
@@ -248,10 +248,13 @@ export default function IdCardTemplate({
                   class: member.class || "",
                   section: member.section || ""
                 })}
-                size={82}
+                size={80}
                 level="M"
                 includeMargin={false}
               />
+              <span className="text-[7.5px] font-mono font-bold text-slate-900 tracking-wide bg-slate-50 px-2 py-0.5 rounded border border-black/5">
+                ID No: {member.id}
+              </span>
             </div>
           </div>
 
