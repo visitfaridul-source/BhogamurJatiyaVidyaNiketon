@@ -96,13 +96,13 @@ export default function Attendance() {
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
-  const [faceScannerFilterType, setFaceScannerFilterType] = useState<"All" | "Student" | "Teacher">("All");
+  const [faceScannerFilterType, setFaceScannerFilterType] = useState<"All" | "Student" | "Teacher">("Teacher");
   const [faceScannerFilterClass, setFaceScannerFilterClass] = useState<string>("");
   const [viewMode, setViewMode] = useState<"detailed" | "summary" | "class-overview">("detailed");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAbsenteesOnly, setShowAbsenteesOnly] = useState(false);
   const [monitorStatusFilter, setMonitorStatusFilter] = useState<"All" | "Present" | "Absent" | "Late">("All");
-  const [monitorCategoryFilter, setMonitorCategoryFilter] = useState<"All" | "Student" | "Teacher">("All");
+  const [monitorCategoryFilter, setMonitorCategoryFilter] = useState<"All" | "Student" | "Teacher">("Teacher");
 
   useEffect(() => {
     if (location.state) {

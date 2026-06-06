@@ -87,7 +87,7 @@ export default function FaceScanner({
   const [cacheVersion, setCacheVersion] = useState(0);
 
   // Dictionary Optimization Filters
-  const [dictionaryFilterType, setDictionaryFilterType] = useState<"All" | "Student" | "Teacher">(initialFilterType || "All");
+  const [dictionaryFilterType, setDictionaryFilterType] = useState<"All" | "Student" | "Teacher">(initialFilterType || "Teacher");
   const [dictionaryFilterClass, setDictionaryFilterClass] = useState<string>(initialFilterClass || "");
 
   useEffect(() => {

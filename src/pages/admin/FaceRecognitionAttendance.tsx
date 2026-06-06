@@ -182,7 +182,7 @@ export default function FaceRecognitionAttendance() {
   }, []);
 
   // Dictionary Optimization Filters
-  const [dictionaryFilterType, setDictionaryFilterType] = useState<"All" | "Student" | "Teacher">("All");
+  const [dictionaryFilterType, setDictionaryFilterType] = useState<"All" | "Student" | "Teacher">("Teacher");
   const [dictionaryFilterClass, setDictionaryFilterClass] = useState<string>("");
 
   // UI state for dual-mode logging
@@ -210,7 +210,7 @@ export default function FaceRecognitionAttendance() {
   // Search results for manual checkout lookup
   const [memberTypeFilter, setMemberTypeFilter] = useState<
     "Student" | "Teacher"
-  >("Student");
+  >("Teacher");
 
   // Create a memoized lookup map of all individuals in the school
   const personMap = useMemo(() => {
@@ -672,7 +672,7 @@ export default function FaceRecognitionAttendance() {
   const [historyMonth, setHistoryMonth] = useState<string>("");
   const [historySearch, setHistorySearch] = useState<string>("");
   const [historyRole, setHistoryRole] = useState<"All" | "Student" | "Teacher">(
-    "All",
+    "Teacher",
   );
 
   // Daily auto-reset logic before 7:00 AM (Indian Standard Time)
