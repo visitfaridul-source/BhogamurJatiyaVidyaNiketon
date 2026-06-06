@@ -43,7 +43,15 @@ const fetchImageWithTimeout = (url: string, timeoutMs: number = 2500): Promise<H
   });
 };
 
-export default function FaceScanner({ onExit }: { onExit?: () => void }) {
+export default function FaceScanner({ 
+  onExit,
+  initialFilterType,
+  initialFilterClass
+}: { 
+  onExit?: () => void;
+  initialFilterType?: "All" | "Student" | "Teacher";
+  initialFilterClass?: string;
+}) {
   const { students, teachers, saveAttendanceRecord, attendanceMap } =
     useSchool();
   const { settings } = useWebsite();
@@ -79,8 +87,13 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
   const [cacheVersion, setCacheVersion] = useState(0);
 
   // Dictionary Optimization Filters
-  const [dictionaryFilterType, setDictionaryFilterType] = useState<"All" | "Student" | "Teacher">("All");
-  const [dictionaryFilterClass, setDictionaryFilterClass] = useState<string>("");
+  const [dictionaryFilterType, setDictionaryFilterType] = useState<"All" | "Student" | "Teacher">(initialFilterType || "All");
+  const [dictionaryFilterClass, setDictionaryFilterClass] = useState<string>(initialFilterClass || "");
+
+  useEffect(() => {
+    if (initialFilterType) setDictionaryFilterType(initialFilterType);
+    if (initialFilterClass !== undefined) setDictionaryFilterClass(initialFilterClass);
+  }, [initialFilterType, initialFilterClass]);
 
   useEffect(() => {
     latestFaceMatcher.current = faceMatcher;

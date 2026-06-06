@@ -23,6 +23,7 @@ import {
   Briefcase,
   Sparkles,
   ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -95,6 +96,8 @@ export default function Attendance() {
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
+  const [faceScannerFilterType, setFaceScannerFilterType] = useState<"All" | "Student" | "Teacher">("All");
+  const [faceScannerFilterClass, setFaceScannerFilterClass] = useState<string>("");
   const [viewMode, setViewMode] = useState<"detailed" | "summary" | "class-overview">("detailed");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAbsenteesOnly, setShowAbsenteesOnly] = useState(false);
@@ -1764,13 +1767,49 @@ export default function Attendance() {
           label="QR Scanner"
           disabled={settings.enableQrAttendance === false}
         />
-        <TabButton
-          active={activeTab === "face"}
-          onClick={() => setActiveTab("face")}
-          icon={ScanFace}
-          label="Face Recognition"
-          disabled={settings.enableFaceAttendance === false}
-        />
+        <div className="flex items-stretch bg-white rounded-xl">
+          <TabButton
+            active={activeTab === "face"}
+            onClick={() => setActiveTab("face")}
+            icon={ScanFace}
+            label="Face Recognition"
+            disabled={settings.enableFaceAttendance === false}
+          />
+          {activeTab === "face" && settings.enableFaceAttendance !== false && (
+            <div className="flex items-center gap-1 border-l border-slate-100 pl-1 py-1 mr-1">
+              <div className="relative">
+                <select 
+                  className="bg-slate-50 border hover:bg-slate-100 border-slate-200 text-[11px] font-bold tracking-tight text-slate-700 py-1.5 pl-2.5 pr-6 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer appearance-none transition-colors"
+                  value={faceScannerFilterType}
+                  onChange={(e) => {
+                    setFaceScannerFilterType(e.target.value as any);
+                    if (e.target.value !== "Student") setFaceScannerFilterClass("");
+                  }}
+                  title="Dictionary Filter Type"
+                >
+                  <option value="All">All Profiles</option>
+                  <option value="Student">Students Only</option>
+                  <option value="Teacher">Staff Only</option>
+                </select>
+                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2 pointer-events-none" />
+              </div>
+              {faceScannerFilterType === "Student" && (
+                <div className="relative">
+                  <select 
+                    className="bg-slate-50 border hover:bg-slate-100 border-slate-200 text-[11px] font-bold tracking-tight text-slate-700 py-1.5 pl-2.5 pr-6 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer max-w-[100px] appearance-none transition-colors"
+                    value={faceScannerFilterClass}
+                    onChange={(e) => setFaceScannerFilterClass(e.target.value)}
+                    title="Dictionary Class Filter"
+                  >
+                    <option value="">All Classes</option>
+                    {classes.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2 pointer-events-none" />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <TabButton
           active={activeTab === "absent-manager"}
           onClick={() => setActiveTab("absent-manager")}
@@ -2777,7 +2816,11 @@ export default function Attendance() {
         )}
         {activeTab === "face" && (
           settings.enableFaceAttendance !== false ? (
-            <FaceScanner onExit={() => setActiveTab("overview")} />
+            <FaceScanner 
+              onExit={() => setActiveTab("overview")} 
+              initialFilterType={faceScannerFilterType}
+              initialFilterClass={faceScannerFilterClass}
+            />
           ) : (
             <div className="bg-white rounded-[2rem] border border-slate-200 p-8 text-center max-w-2xl mx-auto my-12 shadow-sm space-y-6">
               <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto border border-rose-100">
