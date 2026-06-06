@@ -181,6 +181,10 @@ export default function FaceRecognitionAttendance() {
     return `${year}-${month}-${day}`;
   }, []);
 
+  // Dictionary Optimization Filters
+  const [dictionaryFilterType, setDictionaryFilterType] = useState<"All" | "Student" | "Teacher">("All");
+  const [dictionaryFilterClass, setDictionaryFilterClass] = useState<string>("");
+
   // UI state for dual-mode logging
   const [scanMode, setScanMode] = useState<"check-in" | "early-out">(
     "check-in",
@@ -279,20 +283,29 @@ export default function FaceRecognitionAttendance() {
       const labeledFaceDescriptors: faceapi.LabeledFaceDescriptors[] = [];
 
       // Combine students and teachers
-      const allPeople = [
+      let allPeople = [
         ...students.map((s) => ({
           id: s.id,
           name: s.name,
           type: "Student",
-          photoUrl: (s as any).photoUrl,
+          class: s.class,
+          photoUrl: (s as any).photoUrl || s.avatar,
         })),
         ...teachers.map((t) => ({
           id: t.id,
           name: t.name,
           type: "Teacher",
-          photoUrl: (t as any).photoUrl,
+          class: "",
+          photoUrl: (t as any).photoUrl || t.avatar,
         })),
       ];
+
+      if (dictionaryFilterType !== "All") {
+        allPeople = allPeople.filter(p => p.type === dictionaryFilterType);
+      }
+      if (dictionaryFilterType === "Student" && dictionaryFilterClass) {
+        allPeople = allPeople.filter(p => p.class === dictionaryFilterClass);
+      }
 
       const cache = getDescriptorCache();
       let cacheUpdated = false;
@@ -369,7 +382,7 @@ export default function FaceRecognitionAttendance() {
     };
 
     createFaceMatcher();
-  }, [isModelsLoaded, students, teachers]);
+  }, [isModelsLoaded, students, teachers, dictionaryFilterType, dictionaryFilterClass]);
 
   // Start video stream
   useEffect(() => {
@@ -1016,6 +1029,42 @@ export default function FaceRecognitionAttendance() {
         >
           <X className="w-4 h-4" /> Close Panel
         </button>
+      </div>
+
+      {/* Dictionary Building Optimizer Options */}
+      <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-xs flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-blue-600" />
+          <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">Dictionary Optimizer:</span>
+        </div>
+        <select 
+          className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 py-2 px-3 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+          value={dictionaryFilterType}
+          onChange={(e) => {
+            setDictionaryFilterType(e.target.value as any);
+            if (e.target.value !== "Student") setDictionaryFilterClass("");
+          }}
+        >
+          <option value="All">All Profiles (Student + Staff)</option>
+          <option value="Student">Students Only</option>
+          <option value="Teacher">Staff Only</option>
+        </select>
+
+        {dictionaryFilterType === "Student" && (
+          <select 
+            className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 py-2 px-3 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+            value={dictionaryFilterClass}
+            onChange={(e) => setDictionaryFilterClass(e.target.value)}
+          >
+            <option value="">All Classes</option>
+            {["Nursery", "LKG", "UKG", "Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"].map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        )}
+        <span className="text-[10px] text-slate-400 font-medium ml-auto">
+          Applies instantly to facial scanning models for faster detection
+        </span>
       </div>
 
       {!isModelsLoaded || isFaceMatcherLoading ? (
