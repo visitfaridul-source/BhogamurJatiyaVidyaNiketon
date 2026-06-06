@@ -13,6 +13,7 @@ import {
   Loader2,
   Volume2,
   VolumeX,
+  Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
@@ -76,6 +77,10 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
   const [faceMatcher, setFaceMatcher] = useState<faceapi.FaceMatcher | null>(null);
   const latestFaceMatcher = useRef<faceapi.FaceMatcher | null>(null);
   const [cacheVersion, setCacheVersion] = useState(0);
+
+  // Dictionary Optimization Filters
+  const [dictionaryFilterType, setDictionaryFilterType] = useState<"All" | "Student" | "Teacher">("All");
+  const [dictionaryFilterClass, setDictionaryFilterClass] = useState<string>("");
 
   useEffect(() => {
     latestFaceMatcher.current = faceMatcher;
@@ -320,10 +325,17 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
       setIsFaceMatcherLoading(true);
       const labeledFaceDescriptors: faceapi.LabeledFaceDescriptors[] = [];
 
-      const allPeople = [
-        ...students.map(s => ({ id: s.id, name: s.name, type: 'Student', photoUrl: s.avatar || '' })),
-        ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher', photoUrl: t.avatar || '' }))
+      let allPeople = [
+        ...students.map(s => ({ id: s.id, name: s.name, type: 'Student', class: s.class, photoUrl: s.avatar || '' })),
+        ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher', class: '', photoUrl: t.avatar || '' }))
       ];
+
+      if (dictionaryFilterType !== "All") {
+        allPeople = allPeople.filter(p => p.type === dictionaryFilterType);
+      }
+      if (dictionaryFilterType === "Student" && dictionaryFilterClass) {
+        allPeople = allPeople.filter(p => p.class === dictionaryFilterClass);
+      }
 
       const cache = getDescriptorCache();
       let cacheUpdated = false;
@@ -403,7 +415,7 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
     };
 
     createFaceMatcher();
-  }, [modelsLoaded, students, teachers, cacheVersion]);
+  }, [modelsLoaded, students, teachers, cacheVersion, dictionaryFilterType, dictionaryFilterClass]);
 
   // Pre-fetch camera permissions on mounting and list all video devices instantly
   useEffect(() => {
@@ -757,85 +769,123 @@ export default function FaceScanner({ onExit }: { onExit?: () => void }) {
         <div className="bg-slate-900 rounded-[2rem] border border-slate-800 shadow-2xl overflow-hidden relative">
           
           {/* Top Control Bar */}
-          <div className="p-4 sm:p-6 pb-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-20">
-            <div>
-              <h2 className="text-2xl font-black text-white flex items-center gap-3 tracking-tight">
-                <div className="p-2 bg-indigo-500/20 rounded-xl">
-                  <ScanFace className="w-6 h-6 text-indigo-400" />
+          <div className="p-4 sm:p-6 pb-0 flex flex-col gap-4 relative z-20">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-black text-white flex items-center gap-3 tracking-tight">
+                  <div className="p-2 bg-indigo-500/20 rounded-xl">
+                    <ScanFace className="w-6 h-6 text-indigo-400" />
+                  </div>
+                  Live Face Scanner
+                </h2>
+                <div className="flex items-center gap-3 mt-2 text-sm">
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Sensors Active
+                  </span>
+                  <span className="text-slate-400 font-mono text-xs">AI VERIFICATION ENGINE</span>
                 </div>
-                Live Face Scanner
-              </h2>
-              <div className="flex items-center gap-3 mt-2 text-sm">
-                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  Sensors Active
-                </span>
-                <span className="text-slate-400 font-mono text-xs">AI VERIFICATION ENGINE</span>
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-3 p-1.5 bg-slate-800/80 backdrop-blur rounded-2xl border border-slate-700/50">
+                <div className="flex rounded-xl overflow-hidden bg-slate-900">
+                  <button
+                    onClick={() => setScannerMode("Entry")}
+                    className={cn(
+                      "px-5 py-2 text-sm font-bold transition-all",
+                      scannerMode === "Entry"
+                        ? "bg-indigo-500 text-white shadow-lg"
+                        : "text-slate-400 hover:text-white hover:bg-slate-800",
+                    )}
+                  >
+                    Entry Mode
+                  </button>
+                  <button
+                    onClick={() => setScannerMode("Exit")}
+                    className={cn(
+                      "px-5 py-2 text-sm font-bold transition-all",
+                      scannerMode === "Exit"
+                        ? "bg-indigo-500 text-white shadow-lg"
+                        : "text-slate-400 hover:text-white hover:bg-slate-800",
+                    )}
+                  >
+                    Exit Mode
+                  </button>
+                </div>
+
+                <div className="h-6 w-px bg-slate-700 mx-1"></div>
+
+                <button
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  className={cn(
+                    "p-2.5 rounded-xl transition-all border",
+                    soundEnabled 
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" 
+                      : "bg-slate-800 text-slate-500 border-slate-700 hover:bg-slate-700"
+                  )}
+                  title={soundEnabled ? "Mute Output" : "Enable Audio"}
+                >
+                  {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
+
+                <button
+                  onClick={() => setIsScanning(!isScanning)}
+                  className={cn(
+                    "px-6 py-2.5 rounded-xl text-sm font-black transition-all shadow-lg flex items-center gap-2",
+                    isScanning
+                      ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/25"
+                      : "bg-indigo-500 hover:bg-indigo-600 text-white shadow-indigo-500/25",
+                  )}
+                >
+                  {isScanning ? "🛑 Hault Scanner" : "▶️ Initialize Lens"}
+                </button>
+                
+                {onExit && (
+                  <button
+                    onClick={onExit}
+                    className="p-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700 transition-all font-bold"
+                    title="Close Screen"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
               </div>
             </div>
-            
-            <div className="flex flex-wrap items-center gap-3 p-1.5 bg-slate-800/80 backdrop-blur rounded-2xl border border-slate-700/50">
-              <div className="flex rounded-xl overflow-hidden bg-slate-900">
-                <button
-                  onClick={() => setScannerMode("Entry")}
-                  className={cn(
-                    "px-5 py-2 text-sm font-bold transition-all",
-                    scannerMode === "Entry"
-                      ? "bg-indigo-500 text-white shadow-lg"
-                      : "text-slate-400 hover:text-white hover:bg-slate-800",
-                  )}
-                >
-                  Entry Mode
-                </button>
-                <button
-                  onClick={() => setScannerMode("Exit")}
-                  className={cn(
-                    "px-5 py-2 text-sm font-bold transition-all",
-                    scannerMode === "Exit"
-                      ? "bg-indigo-500 text-white shadow-lg"
-                      : "text-slate-400 hover:text-white hover:bg-slate-800",
-                  )}
-                >
-                  Exit Mode
-                </button>
-              </div>
 
-              <div className="h-6 w-px bg-slate-700 mx-1"></div>
-
-              <button
-                onClick={() => setSoundEnabled(!soundEnabled)}
-                className={cn(
-                  "p-2.5 rounded-xl transition-all border",
-                  soundEnabled 
-                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" 
-                    : "bg-slate-800 text-slate-500 border-slate-700 hover:bg-slate-700"
-                )}
-                title={soundEnabled ? "Mute Output" : "Enable Audio"}
+            {/* Dictionary Building Optimizer Options */}
+            <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700 shadow-xs flex flex-wrap items-center gap-3">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-indigo-400" />
+                Dictionary Optimizer:
+              </span>
+              <select 
+                className="bg-slate-900 border border-slate-700 text-xs font-bold text-slate-200 py-1.5 px-3 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                value={dictionaryFilterType}
+                onChange={(e) => {
+                  setDictionaryFilterType(e.target.value as any);
+                  if (e.target.value !== "Student") setDictionaryFilterClass("");
+                }}
               >
-                {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-              </button>
+                <option value="All">All Profiles (Student + Staff)</option>
+                <option value="Student">Students Only</option>
+                <option value="Teacher">Staff Only</option>
+              </select>
 
-              <button
-                onClick={() => setIsScanning(!isScanning)}
-                className={cn(
-                  "px-6 py-2.5 rounded-xl text-sm font-black transition-all shadow-lg flex items-center gap-2",
-                  isScanning
-                    ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/25"
-                    : "bg-indigo-500 hover:bg-indigo-600 text-white shadow-indigo-500/25",
-                )}
-              >
-                {isScanning ? "🛑 Hault Scanner" : "▶️ Initialize Lens"}
-              </button>
-              
-              {onExit && (
-                <button
-                  onClick={onExit}
-                  className="p-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700 transition-all font-bold"
-                  title="Close Screen"
+              {dictionaryFilterType === "Student" && (
+                <select 
+                  className="bg-slate-900 border border-slate-700 text-xs font-bold text-slate-200 py-1.5 px-3 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={dictionaryFilterClass}
+                  onChange={(e) => setDictionaryFilterClass(e.target.value)}
                 >
-                  <X className="w-5 h-5" />
-                </button>
+                  <option value="">All Classes</option>
+                  {["Nursery", "LKG", "UKG", "Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
               )}
+              <span className="text-[10px] text-slate-400 font-medium ml-auto hidden sm:block">
+                Applies instantly to facial scanning models for faster detection
+              </span>
             </div>
           </div>
 
