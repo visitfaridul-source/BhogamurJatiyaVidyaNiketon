@@ -370,7 +370,7 @@ export default function FaceRecognitionAttendance() {
       }
 
       if (labeledFaceDescriptors.length > 0) {
-        setFaceMatcher(new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6));
+        setFaceMatcher(new faceapi.FaceMatcher(labeledFaceDescriptors, 0.42));
         setLoadingText("");
       } else {
         setFaceMatcher(null);

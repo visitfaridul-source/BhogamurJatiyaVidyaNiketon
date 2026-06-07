@@ -420,7 +420,7 @@ export default function FaceScanner({
       }
 
       if (labeledFaceDescriptors.length > 0) {
-        setFaceMatcher(new faceapi.FaceMatcher(labeledFaceDescriptors, 0.60));
+        setFaceMatcher(new faceapi.FaceMatcher(labeledFaceDescriptors, 0.42));
       } else {
         setFaceMatcher(null);
       }
