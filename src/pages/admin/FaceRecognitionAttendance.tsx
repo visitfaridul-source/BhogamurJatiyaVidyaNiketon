@@ -105,6 +105,8 @@ export default function FaceRecognitionAttendance() {
   const [facingMode, setFacingMode] = useState<"user" | "environment">(
     "environment",
   );
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
 
   const [override24h, setOverride24h] = useState<boolean>(() => {
     return localStorage.getItem("bhogamur_attendance_24h_override") === "true";
@@ -244,6 +246,31 @@ export default function FaceRecognitionAttendance() {
     });
     return map;
   }, [students, teachers]);
+
+  const updateDeviceList = async () => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoInputs = devices.filter((device) => device.kind === "videoinput");
+        setVideoDevices(videoInputs);
+        if (videoInputs.length > 0) {
+          const savedCamera = localStorage.getItem("bhogamur_selected_camera_id");
+          if (savedCamera && videoInputs.some(v => v.deviceId === savedCamera)) {
+            setSelectedDeviceId(savedCamera);
+          } else {
+            // If none saved or invalid, use first available
+            setSelectedDeviceId((prev) => prev || videoInputs[0].deviceId);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("enumerateDevices failed:", err);
+    }
+  };
+
+  useEffect(() => {
+    updateDeviceList();
+  }, []);
 
   // Load models on mount
   useEffect(() => {
@@ -399,12 +426,18 @@ export default function FaceRecognitionAttendance() {
     }
 
     const startVideo = () => {
+      const constraints = selectedDeviceId
+        ? { video: { deviceId: { ideal: selectedDeviceId } } }
+        : { video: { facingMode: facingMode } };
+
       navigator.mediaDevices
-        .getUserMedia({ video: { facingMode: facingMode } })
+        .getUserMedia(constraints)
         .then((stream) => {
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
           }
+          // Update device list after permission is granted to get device labels
+          updateDeviceList();
         })
         .catch((err) => {
           console.error("Error accessing webcam", err);
@@ -427,6 +460,7 @@ export default function FaceRecognitionAttendance() {
     isCameraActive,
     facingMode,
     isAllowedToScan,
+    selectedDeviceId,
   ]);
 
   // Core logging actions
@@ -1411,22 +1445,45 @@ export default function FaceRecognitionAttendance() {
 
                   {/* Feed container */}
                   <div className="relative w-full overflow-hidden bg-slate-950 rounded-2xl shadow-inner mx-auto flex justify-center items-center min-h-[300px] md:min-h-[420px]">
-                    {/* Camera switch toggle button */}
+                    {/* Camera switch & dropdown selector buttons */}
                     {isCameraActive && !isSimulatingFaceScan && (
-                      <button
-                        onClick={() =>
-                          setFacingMode((prev) =>
-                            prev === "user" ? "environment" : "user",
-                          )
-                        }
-                        className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-xl text-xs font-bold border border-slate-700 shadow-md backdrop-blur-xs transition-all cursor-pointer scale-100 active:scale-95"
-                        title="Switch Camera (Front/Back)"
-                      >
-                        <RefreshCcw className="w-3.5 h-3.5" />
-                        <span>
-                          {facingMode === "user" ? "Front Cam" : "Back Cam"}
-                        </span>
-                      </button>
+                      <>
+                        {videoDevices.length > 0 && (
+                          <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-xl text-xs font-bold border border-slate-700 shadow-md backdrop-blur-xs transition-all">
+                            <Camera className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                            <select
+                              className="bg-transparent border-none text-white text-xs font-bold outline-none cursor-pointer max-w-[130px] md:max-w-[185px] appearance-none"
+                              value={selectedDeviceId}
+                              onChange={(e) => {
+                                setSelectedDeviceId(e.target.value);
+                                localStorage.setItem("bhogamur_selected_camera_id", e.target.value);
+                              }}
+                              title="Select Camera Input"
+                            >
+                              {videoDevices.map((device, idx) => (
+                                <option key={device.deviceId || idx} value={device.deviceId} className="bg-slate-900 text-white">
+                                  {device.label || `Camera Device ${idx + 1}`}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        
+                        <button
+                          onClick={() =>
+                            setFacingMode((prev) =>
+                              prev === "user" ? "environment" : "user",
+                            )
+                          }
+                          className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-xl text-xs font-bold border border-slate-700 shadow-md backdrop-blur-xs transition-all cursor-pointer scale-100 active:scale-95"
+                          title="Switch Camera (Front/Back)"
+                        >
+                          <RefreshCcw className="w-3.5 h-3.5" />
+                          <span>
+                            {facingMode === "user" ? "Front Cam" : "Back Cam"}
+                          </span>
+                        </button>
+                      </>
                     )}
                     <video
                       ref={videoRef}
