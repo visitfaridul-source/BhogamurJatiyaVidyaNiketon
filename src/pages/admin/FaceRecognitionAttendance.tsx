@@ -1040,6 +1040,41 @@ export default function FaceRecognitionAttendance() {
 
               // Handle live face match
               handlePersonRecognized(result.label);
+            } else {
+              // Sound warning for unrecognized/unregistered or wrong category face scans
+              if (soundEnabled) {
+                const unregisteredAudioKey = "unregistered_admin_sound_cooldown";
+                const lastUnregTime = lastSpeechTimes.current[unregisteredAudioKey] || 0;
+                const nowMs = Date.now();
+                if (nowMs - lastUnregTime > 6000) {
+                  lastSpeechTimes.current[unregisteredAudioKey] = nowMs;
+                  try {
+                    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+                    if (AudioCtx) {
+                      const ctx = new AudioCtx();
+                      const osc = ctx.createOscillator();
+                      const gain = ctx.createGain();
+                      osc.type = "sawtooth";
+                      osc.frequency.setValueAtTime(140, ctx.currentTime); // low buzz warn
+                      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.45);
+                      osc.connect(gain);
+                      gain.connect(ctx.destination);
+                      osc.start();
+                      osc.stop(ctx.currentTime + 0.45);
+                    }
+                    if ("speechSynthesis" in window) {
+                      window.speechSynthesis.cancel();
+                      const utterance = new SpeechSynthesisUtterance("Face not registered!");
+                      utterance.rate = 1.05;
+                      utterance.pitch = 0.95;
+                      window.speechSynthesis.speak(utterance);
+                    }
+                  } catch (e) {
+                    console.log("Warning audio failed:", e);
+                  }
+                }
+              }
             }
           });
         }

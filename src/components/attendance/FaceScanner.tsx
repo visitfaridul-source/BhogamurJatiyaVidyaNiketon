@@ -592,10 +592,10 @@ export default function FaceScanner({
             if (!targetCandidate) {
               const faceData = {
                 id: "unknown",
-                name: targetCandidate ? `${targetCandidate.name} (Unregistered)` : "Unknown Person / Outer Guest",
-                class: targetCandidate ? targetCandidate.class : "Outer Guest",
+                name: "Unknown Person / Outer Guest",
+                class: "Outer Guest",
                 roll: "-",
-                type: targetCandidate ? targetCandidate.type : "Unknown",
+                type: "Unknown",
                 confidence: 0,
                 photo: "https://api.dicebear.com/7.x/bottts/svg?seed=unknown",
               };
@@ -619,29 +619,17 @@ export default function FaceScanner({
               }, 4000);
 
               if (latestSoundEnabled.current) {
-                playWebAudioSound("warning");
-                speakVoice("Face not registered! Admission declined.");
+                const unregisteredAudioKey = "unregistered_sound_cooldown";
+                const lastUnregTime = lastSpeechTimes.current[unregisteredAudioKey] || 0;
+                const nowMs = Date.now();
+                if (nowMs - lastUnregTime > 6000) {
+                  lastSpeechTimes.current[unregisteredAudioKey] = nowMs;
+                  playWebAudioSound("warning");
+                  speakVoice("Face not registered!");
+                }
               }
 
-              setLogs((prev) => {
-                const isRecentDuplicate = prev
-                  .slice(0, 5)
-                  .some((l) => l.id === "unknown" && l.status === "UNREGISTERED");
-
-                if (!isRecentDuplicate) {
-                  return [
-                    {
-                      ...faceData,
-                      time: scanTimeStr,
-                      mode: curScannerMode,
-                      status: "UNREGISTERED",
-                      device: "This Device",
-                    },
-                    ...prev.slice(0, 49),
-                  ];
-                }
-                return prev;
-              });
+              // Do NOT add unregistered faces to the session ledger logs!
               return;
             }
 
