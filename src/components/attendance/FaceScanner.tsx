@@ -101,6 +101,10 @@ export default function FaceScanner({
   const [isFaceMatcherLoading, setIsFaceMatcherLoading] = useState(false);
   const [loaderMessage, setLoaderMessage] = useState("Loading face descriptor dictionaries...");
   
+  // Cache tracking to prevent redundant Firestore writes & speech synthesis loops for duplicates
+  const lastWriteTimes = useRef<Record<string, number>>({});
+  const lastSpeechTimes = useRef<Record<string, number>>({});
+  
   const latestStudents = useRef(students);
   const latestTeachers = useRef(teachers);
 
@@ -658,10 +662,15 @@ export default function FaceScanner({
             const recordKey = `${todayDate}:${matchedPerson.id}`;
             const currentRecord = latestAttendance.current[recordKey];
 
+            const writeKey = `${todayDate}:${matchedPerson.id}:${curScannerMode}`;
+            const lastWriteTime = lastWriteTimes.current[writeKey] || 0;
+            const nowMs = Date.now();
+            const isRecentWrite = (nowMs - lastWriteTime) < 25000; // 25 seconds in-memory write cooldown
+
             let hasAlreadyScanned = false;
-            if (curScannerMode === "Entry" && currentRecord?.inTime) {
+            if (curScannerMode === "Entry" && (currentRecord?.inTime || isRecentWrite)) {
               hasAlreadyScanned = true;
-            } else if (curScannerMode === "Exit" && currentRecord?.outTime) {
+            } else if (curScannerMode === "Exit" && (currentRecord?.outTime || isRecentWrite)) {
               hasAlreadyScanned = true;
             }
 
@@ -672,6 +681,11 @@ export default function FaceScanner({
               : (curScannerMode === "Entry"
                 ? (isLate ? "LATE" : "PRESENT")
                 : (isEarlyLeave ? "EARLY LEAVE" : "LEFT"));
+
+            // Speech and alarm verbal cooldown to keep audio clear and silent on duplicates
+            const speechKey = `${matchedPerson.id}:${curScannerMode}`;
+            const lastSpeechTime = lastSpeechTimes.current[speechKey] || 0;
+            const shouldAlertVerbally = (nowMs - lastSpeechTime) > 12000; // 12 seconds audio feedback cooldown
 
             setScanResultAlert({
               id: matchedPerson.id,
@@ -687,7 +701,8 @@ export default function FaceScanner({
               setScanResultAlert(null);
             }, 4000);
 
-            if (latestSoundEnabled.current) {
+            if (latestSoundEnabled.current && shouldAlertVerbally) {
+              lastSpeechTimes.current[speechKey] = nowMs;
               if (hasAlreadyScanned) {
                 playWebAudioSound("warning");
                 speakVoice(`${matchedPerson.name}, Already Marked!`);
@@ -706,7 +721,8 @@ export default function FaceScanner({
                   (l) => l.id === matchedPerson.id && l.mode === curScannerMode,
                 );
 
-              if (!isRecentDuplicate || hasAlreadyScanned) {
+              // ONLY log if it's not a recent duplicate (either brand new scan or been a while)
+              if (!isRecentDuplicate) {
                 if (hasAlreadyScanned) {
                   return [
                     {
@@ -721,6 +737,9 @@ export default function FaceScanner({
                 }
 
                 if (curScannerMode === "Entry") {
+                  // Mark the write in local in-memory cache to prevent race triggers before DB updates
+                  lastWriteTimes.current[writeKey] = Date.now();
+
                   saveAttendanceRecord(matchedPerson.id, todayDate, {
                     status: isLate ? "Late" : "Present",
                     inTime: scanTimeStr,
@@ -739,6 +758,9 @@ export default function FaceScanner({
                     ...prev.slice(0, 49),
                   ];
                 } else {
+                  // Mark the write in local in-memory cache to prevent race triggers before DB updates
+                  lastWriteTimes.current[writeKey] = Date.now();
+
                   saveAttendanceRecord(matchedPerson.id, todayDate, {
                     outTime: scanTimeStr,
                     ...(isEarlyLeave

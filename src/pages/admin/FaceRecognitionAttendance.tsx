@@ -108,6 +108,10 @@ export default function FaceRecognitionAttendance() {
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
 
+  // Cache tracking to prevent redundant Firestore writes & speech synthesis loops for duplicates
+  const lastWriteTimes = useRef<Record<string, number>>({});
+  const lastSpeechTimes = useRef<Record<string, number>>({});
+
   const [override24h, setOverride24h] = useState<boolean>(() => {
     return localStorage.getItem("bhogamur_attendance_24h_override") === "true";
   });
@@ -466,6 +470,10 @@ export default function FaceRecognitionAttendance() {
   // Core logging actions
   const handleCheckIn = (personId: string, name: string) => {
     const key = `${todayDateStr}:${personId}`;
+    const writeKey = `${todayDateStr}:${personId}:check-in`;
+    const lastWriteTime = lastWriteTimes.current[writeKey] || 0;
+    const isRecentWrite = (Date.now() - lastWriteTime) < 25000; // 25s cooldown
+
     const now = new Date();
     const hours = String(now.getHours()).padStart(2, "0");
     const minutes = String(now.getMinutes()).padStart(2, "0");
@@ -476,10 +484,13 @@ export default function FaceRecognitionAttendance() {
       remarks: "",
     };
 
-    // Auto check-in if not already recorded for InTime
-    if (currentRecord.inTime) {
+    // Auto check-in if not already recorded for InTime or recently written
+    if (currentRecord.inTime || isRecentWrite) {
       return;
     }
+
+    // Set local cache timestamp immediately
+    lastWriteTimes.current[writeKey] = Date.now();
 
     const updated = {
       ...attendanceRegistry,
@@ -1000,17 +1011,27 @@ export default function FaceRecognitionAttendance() {
               const key = `${todayDateStr}:${person.id}`;
               const currentRecord = mergedAttendanceRegistry[key] || {};
 
-              // If checking in and already recorded, skip logic
-              if (scanMode === "check-in" && currentRecord.inTime) return;
-              // If checking out and already recorded, skip logic
-              if (scanMode === "early-out" && currentRecord.outTime) return;
+              const writeKey = `${todayDateStr}:${person.id}:${scanMode}`;
+              const lastWriteTime = lastWriteTimes.current[writeKey] || 0;
+              const isRecentWrite = (Date.now() - lastWriteTime) < 25000; // 25s write cooldown
 
-              if (soundEnabled && !recognizedPeople.has(result.label)) {
+              const speechKey = `${person.id}:${scanMode}`;
+              const lastSpeechTime = lastSpeechTimes.current[speechKey] || 0;
+              const shouldAlertVerbally = (Date.now() - lastSpeechTime) > 12000; // 12s voice cooldown
+
+              // If checking in and already recorded or recently written, skip logic
+              if (scanMode === "check-in" && (currentRecord.inTime || isRecentWrite)) return;
+              // If checking out and already recorded or recently written, skip logic
+              if (scanMode === "early-out" && (currentRecord.outTime || isRecentWrite)) return;
+
+              if (soundEnabled && shouldAlertVerbally && !recognizedPeople.has(result.label)) {
+                lastSpeechTimes.current[speechKey] = Date.now();
                 const audio = new Audio(
                   "https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3",
                 );
                 audio.play().catch((e) => console.log("Audio play failed:", e));
               }
+
               setRecognizedPeople((prev) => {
                 const newSet = new Set(prev);
                 newSet.add(result.label);
