@@ -91,7 +91,12 @@ export default function FaceScanner({
   const [dictionaryFilterClass, setDictionaryFilterClass] = useState<string>(initialFilterClass || "");
 
   useEffect(() => {
-    if (initialFilterType) setDictionaryFilterType(initialFilterType);
+    if (initialFilterType) {
+      setDictionaryFilterType(initialFilterType);
+      if (initialFilterType === "Student") setAttendanceCategory("Students");
+      else if (initialFilterType === "Teacher") setAttendanceCategory("Teachers");
+      else setAttendanceCategory("All");
+    }
     if (initialFilterClass !== undefined) setDictionaryFilterClass(initialFilterClass);
   }, [initialFilterType, initialFilterClass]);
 
@@ -521,62 +526,67 @@ export default function FaceScanner({
             }),
           ).withFaceLandmarks().withFaceDescriptors();
 
-          if (detections.length > 0 && latestFaceMatcher.current) {
-            const candidates: any[] = [];
-            
-            const currentStudents = latestStudents.current;
-            candidates.push(
-              ...currentStudents.map((s) => ({
-                id: s.id,
-                name: s.name,
-                class: s.class || "N/A",
-                roll: s.roll || "-",
-                type: "Student",
-                photo:
-                  s.avatar ||
-                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.name}`,
-              })),
-            );
-            
-            const currentTeachers = latestTeachers.current;
-            candidates.push(
-              ...currentTeachers.map((t) => ({
-                id: t.id,
-                name: t.name,
-                class: t.department || t.subject || "Teaching Department",
-                roll: "Teacher",
-                type: "Teacher",
-                photo:
-                  t.avatar ||
-                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${t.name}`,
-              })),
-            );
-
-            const curCategory = latestCategory.current;
-
-            // Pick the best match from the face matching engine
-            const bestMatch = latestFaceMatcher.current.findBestMatch(detections[0].descriptor);
+          if (detections.length > 0) {
             let targetCandidate = null;
+            let bestMatchConfidence = 0;
 
-            if (bestMatch.label !== 'unknown') {
-               targetCandidate = candidates.find((c) => c.id === bestMatch.label);
-               
-               // Check category filter
-               if (targetCandidate) {
-                  const currentSelectedClass = latestSelectedClass.current;
-                  let isValidCategory = true;
-                  
-                  if (curCategory === "Students") {
-                    if (targetCandidate.type !== "Student") isValidCategory = false;
-                    if (currentSelectedClass && targetCandidate.class !== currentSelectedClass) isValidCategory = false;
-                  } else if (curCategory === "Teachers") {
-                    if (targetCandidate.type !== "Teacher") isValidCategory = false;
-                  }
-                  
-                  if (!isValidCategory) {
-                    targetCandidate = null; // Deny if wrong category selected
-                  }
-               }
+            if (latestFaceMatcher.current) {
+              const candidates: any[] = [];
+              
+              const currentStudents = latestStudents.current;
+              candidates.push(
+                ...currentStudents.map((s) => ({
+                  id: s.id,
+                  name: s.name,
+                  class: s.class || "N/A",
+                  roll: s.roll || "-",
+                  type: "Student",
+                  photo:
+                    s.avatar ||
+                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.name}`,
+                })),
+              );
+              
+              const currentTeachers = latestTeachers.current;
+              candidates.push(
+                ...currentTeachers.map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                  class: t.department || t.subject || "Teaching Department",
+                  roll: "Teacher",
+                  type: "Teacher",
+                  photo:
+                    t.avatar ||
+                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${t.name}`,
+                })),
+              );
+
+              const curCategory = latestCategory.current;
+
+              // Pick the best match from the face matching engine
+              const bestMatch = latestFaceMatcher.current.findBestMatch(detections[0].descriptor);
+              bestMatchConfidence = Math.round(detections[0].detection.score * 100);
+
+              if (bestMatch.label !== 'unknown') {
+                 targetCandidate = candidates.find((c) => c.id === bestMatch.label);
+                 
+                 // Check category filter
+                 if (targetCandidate) {
+                    const currentSelectedClass = latestSelectedClass.current;
+                    let isValidCategory = true;
+                    
+                    if (curCategory === "Students") {
+                      if (targetCandidate.type !== "Student") isValidCategory = false;
+                      if (currentSelectedClass && targetCandidate.class !== currentSelectedClass) isValidCategory = false;
+                    } else if (curCategory === "Teachers") {
+                      if (targetCandidate.type !== "Teacher") isValidCategory = false;
+                    }
+                    
+                    if (!isValidCategory) {
+                      targetCandidate = null; // Deny if wrong category selected
+                    }
+                 }
+              }
             }
 
             const isRegistered = !!targetCandidate; // Treat as registered if Face Matcher confidently mapped them to an ID
@@ -885,8 +895,12 @@ export default function FaceScanner({
                 className="bg-slate-900 border border-slate-700 text-xs font-bold text-slate-200 py-1.5 px-3 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
                 value={dictionaryFilterType}
                 onChange={(e) => {
-                  setDictionaryFilterType(e.target.value as any);
-                  if (e.target.value !== "Student") setDictionaryFilterClass("");
+                  const typeSelected = e.target.value as any;
+                  setDictionaryFilterType(typeSelected);
+                  if (typeSelected === "Student") setAttendanceCategory("Students");
+                  else if (typeSelected === "Teacher") setAttendanceCategory("Teachers");
+                  else setAttendanceCategory("All");
+                  if (typeSelected !== "Student") setDictionaryFilterClass("");
                 }}
               >
                 <option value="All">All Profiles (Student + Staff)</option>
