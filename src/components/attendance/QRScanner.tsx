@@ -245,7 +245,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     html5Qrcode.start(
       selectedCameraId,
       {
-        fps: 15,
+        fps: 30, // Higher FPS for better responsivness and scan probability
         qrbox: (viewfinderWidth, viewfinderHeight) => {
           const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.72;
           return { width: size, height: size };
@@ -379,7 +379,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       if (todayRecord && todayRecord.inTime) {
         // Already marked entry
         playBeep("warning");
-        speakVoice("Already scanned");
+        speakVoice("Duplicate for the day");
         setScannedMember({
           ...member,
           classOrSubject: classNameStr,
@@ -420,7 +420,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       if (todayRecord && todayRecord.outTime) {
         // Already checked out
         playBeep("warning");
-        speakVoice("Already scanned");
+        speakVoice("Duplicate for the day");
         setScannedMember({
           ...member,
           classOrSubject: classNameStr,
@@ -700,8 +700,8 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
                     )}>
                       {scannedMember.status === "NOT_FOUND" ? "UNKNOWN ID / NOT IN SCHOOL DATABASE" :
                        scannedMember.status === "WRONG_CLASS" ? "WRONG CLASS / WRONG DIVISION" :
-                       scannedMember.status === "ALREADY_IN" ? "ENTRY ALREADY RECORDED TODAY" :
-                       scannedMember.status === "ALREADY_OUT" ? "EXIT ALREADY RECORDED TODAY" :
+                       scannedMember.status === "ALREADY_IN" ? "DUPLICATE FOR THE DAY" :
+                       scannedMember.status === "ALREADY_OUT" ? "DUPLICATE FOR THE DAY" :
                        scannedMember.status === "Late" ? "✓ LATE CHECK-IN SAVED SUCCESS" :
                        scannedMember.status === "EARLY_LEAVE" ? "✓ EARLY LEAVE EXIT REGISTERED" :
                        "✓ ATTENDANCE RECORDED SUCCESSFULLY"}
