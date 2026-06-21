@@ -126,6 +126,35 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     }
   };
 
+  const speakVoice = (text: string) => {
+    if (!soundEnabled) return;
+    try {
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel(); // Clear speaking queue immediately
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.05;
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (e) {
+      console.warn("SpeechSynthesis utterance failed:", e);
+    }
+  };
+
+  const lastScanTimeRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    if (!isScanning) return;
+    lastScanTimeRef.current = Date.now();
+    const interval = setInterval(() => {
+      if (!scannedMember && (Date.now() - lastScanTimeRef.current > 15000)) {
+        speakVoice("Scan again");
+        lastScanTimeRef.current = Date.now();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isScanning, scannedMember, soundEnabled]);
+
   // 2. Hydrate scan history directly from database state so logs match today's actual updates
   useEffect(() => {
     const list: ScanLog[] = [];
@@ -261,6 +290,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
   // 5. core attendance verification, double lookup, and Firestore writing
   const handleScannedData = async (payload: string) => {
     const now = Date.now();
+    lastScanTimeRef.current = now; // Reset idle alarm timer on any scanned data beam hit
     const curTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); // 13:45 format
     const readableTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -313,6 +343,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     // Return if member was not found at all
     if (!member) {
       playBeep("error");
+      speakVoice("Scan again");
       setScannedMember({
         name: payloadName || parsedId,
         classOrSubject: parsedType === "teacher" ? "Faculty" : "Student Class",
@@ -327,6 +358,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     // C. Check restricted class selection
     if (selectedClass && parsedType === "student" && member.class !== selectedClass) {
       playBeep("error");
+      speakVoice("Scan again");
       setScannedMember({
         ...member,
         classOrSubject: classNameStr,
@@ -347,6 +379,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       if (todayRecord && todayRecord.inTime) {
         // Already marked entry
         playBeep("warning");
+        speakVoice("Already scanned");
         setScannedMember({
           ...member,
           classOrSubject: classNameStr,
@@ -372,6 +405,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       });
 
       playBeep("success");
+      speakVoice("Done");
       setScannedMember({
         ...member,
         classOrSubject: classNameStr,
@@ -386,6 +420,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       if (todayRecord && todayRecord.outTime) {
         // Already checked out
         playBeep("warning");
+        speakVoice("Already scanned");
         setScannedMember({
           ...member,
           classOrSubject: classNameStr,
@@ -410,6 +445,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       });
 
       playBeep("success");
+      speakVoice("Done");
       setScannedMember({
         ...member,
         classOrSubject: classNameStr,
