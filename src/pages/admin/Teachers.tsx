@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Search, Plus, Filter, MoreVertical, Mail, Phone, BookOpen, UserPlus, X, Upload, PencilLine } from 'lucide-react';
+import { Search, Plus, Filter, MoreVertical, Mail, Phone, BookOpen, UserPlus, X, Upload, PencilLine, Camera } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useSchool } from '../../context/SchoolContext';
 import { useConfirm } from '../../context/ConfirmationContext';
@@ -72,6 +72,62 @@ export default function Teachers() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Camera capture states
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+
+  const startCamera = async () => {
+    setIsCameraActive(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+      setMediaStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Camera access denied:", err);
+      setIsCameraActive(false);
+      alert("Camera access denied or not available. Please check permissions.");
+    }
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement("canvas");
+      
+      // Calculate scaled dimensions (target max width ~300px)
+      const MAX_WIDTH = 300;
+      let targetWidth = videoRef.current.videoWidth;
+      let targetHeight = videoRef.current.videoHeight;
+      
+      if (targetWidth > MAX_WIDTH) {
+        const aspectRatio = targetHeight / targetWidth;
+        targetWidth = MAX_WIDTH;
+        targetHeight = targetWidth * aspectRatio;
+      }
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0, targetWidth, targetHeight);
+        // Use 0.6 quality for lower file size (approx 20-30kb)
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+        setPhotoPreview(dataUrl);
+        stopCamera();
+      }
+    }
+  };
+
+  const stopCamera = () => {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+    }
+    setMediaStream(null);
+    setIsCameraActive(false);
+  };
+
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -85,7 +141,31 @@ export default function Teachers() {
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
+        // Compress uploaded image
+        const img = new Image();
+        img.src = reader.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 300;
+          let targetWidth = img.width;
+          let targetHeight = img.height;
+          
+          if (targetWidth > MAX_WIDTH) {
+            const aspectRatio = targetHeight / targetWidth;
+            targetWidth = MAX_WIDTH;
+            targetHeight = targetWidth * aspectRatio;
+          }
+
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+            // Use 0.6 quality for lower file size (approx 20-30kb)
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+            setPhotoPreview(dataUrl);
+          }
+        };
       };
       reader.readAsDataURL(file);
     }
@@ -276,7 +356,7 @@ export default function Teachers() {
                   <p className="text-sm text-slate-500 mt-1">{editingTeacher ? 'Update the details for the existing staff member' : 'Provide information to register a new staff member'}</p>
                </div>
                <button 
-                 onClick={() => { setIsAddTeacherModalOpen(false); setEditingTeacher(null); }} 
+                 onClick={() => { setIsAddTeacherModalOpen(false); setEditingTeacher(null); stopCamera(); }} 
                  className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
                >
                  <X className="w-6 h-6" />
@@ -296,22 +376,42 @@ export default function Teachers() {
                       <div className="flex flex-col md:flex-row gap-8">
                          {/* Photo Upload Area */}
                          <div className="flex flex-col items-center gap-4 shrink-0">
+                            <div className="flex gap-2">
+                              {!isCameraActive ? (
+                                <button type="button" onClick={startCamera} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded-md transition-colors shadow-sm border border-blue-100 text-xs font-bold flex items-center gap-1">
+                                  <Camera className="w-4 h-4" /> Camera
+                                </button>
+                              ) : (
+                                <button type="button" onClick={stopCamera} className="text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors shadow-sm border border-red-100 text-xs font-bold flex items-center gap-1">
+                                  <X className="w-4 h-4" /> Cancel
+                                </button>
+                              )}
+                            </div>
                             <div 
-                              className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer hover:border-blue-500 transition-colors"
-                              onClick={() => fileInputRef.current?.click()}
+                              className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center relative overflow-hidden group hover:border-blue-500 transition-colors shadow-sm"
+                              onClick={() => !isCameraActive && fileInputRef.current?.click()}
                             >
-                               {photoPreview ? (
-                                  <>
-                                    <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                                      <PencilLine className="w-6 h-6" />
-                                    </div>
-                                  </>
+                               {isCameraActive ? (
+                                 <>
+                                   <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover z-20 scale-x-[-1]" />
+                                   <button type="button" onClick={(e) => { e.stopPropagation(); capturePhoto(); }} className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white/90 text-blue-600 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-md z-30 hover:bg-white transition-colors flex items-center gap-1">
+                                     <Camera className="w-3 h-3" /> Snap
+                                   </button>
+                                 </>
                                ) : (
-                                  <>
-                                     <Upload className="w-6 h-6 text-slate-400 mb-2 group-hover:text-blue-500 transition-colors" />
-                                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide group-hover:text-blue-600 transition-colors">Upload Photo</span>
-                                  </>
+                                 photoPreview ? (
+                                    <>
+                                      <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer">
+                                        <PencilLine className="w-6 h-6" />
+                                      </div>
+                                    </>
+                                 ) : (
+                                    <div className="flex flex-col items-center cursor-pointer">
+                                       <Upload className="w-6 h-6 text-slate-400 mb-2 group-hover:text-blue-500 transition-colors" />
+                                       <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide group-hover:text-blue-600 transition-colors text-center leading-tight">Upload<br/>Photo</span>
+                                    </div>
+                                 )
                                )}
                             </div>
                             <input 
@@ -321,17 +421,19 @@ export default function Teachers() {
                               className="hidden" 
                               accept="image/jpeg,image/png,image/webp"
                             />
-                            <div className="w-full">
-                              <input 
-                                type="text" 
-                                placeholder="Or paste URL"
-                                value={photoPreview || ''}
-                                onChange={(e) => {
-                                  setPhotoPreview(e.target.value);
-                                }}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] focus:outline-none focus:border-blue-500 text-center"
-                              />
-                            </div>
+                            {!isCameraActive && (
+                              <div className="w-full">
+                                <input 
+                                  type="text" 
+                                  placeholder="Or paste URL"
+                                  value={photoPreview || ''}
+                                  onChange={(e) => {
+                                    setPhotoPreview(e.target.value);
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] focus:outline-none focus:border-blue-500 text-center"
+                                />
+                              </div>
+                            )}
                             <p className="text-[10px] text-slate-400 text-center uppercase tracking-wide max-w-[120px]">
                               JPG, PNG max 2MB
                             </p>

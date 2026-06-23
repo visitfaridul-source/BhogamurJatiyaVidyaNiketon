@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Plus, Filter, MoreVertical, Edit, Trash2, Download, Upload, IdCard, X, Printer, UserPlus, Image as ImageIcon, FileSpreadsheet, ClipboardList } from 'lucide-react';
+import { Search, Plus, Filter, MoreVertical, Edit, Trash2, Download, Upload, IdCard, X, Printer, UserPlus, Image as ImageIcon, FileSpreadsheet, ClipboardList, Camera } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import * as XLSX from 'xlsx';
 import { useSchool } from '../../context/SchoolContext';
@@ -87,6 +87,62 @@ export default function Students() {
   const [editingStudent, setEditingStudent] = useState<any>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Camera capture states
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+
+  const startCamera = async () => {
+    setIsCameraActive(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+      setMediaStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Camera access denied:", err);
+      setIsCameraActive(false);
+      alert("Camera access denied or not available. Please check permissions.");
+    }
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement("canvas");
+      
+      // Calculate scaled dimensions (target max width ~300px)
+      const MAX_WIDTH = 300;
+      let targetWidth = videoRef.current.videoWidth;
+      let targetHeight = videoRef.current.videoHeight;
+      
+      if (targetWidth > MAX_WIDTH) {
+        const aspectRatio = targetHeight / targetWidth;
+        targetWidth = MAX_WIDTH;
+        targetHeight = targetWidth * aspectRatio;
+      }
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0, targetWidth, targetHeight);
+        // Use 0.6 quality for lower file size (approx 20-30kb)
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+        setPhotoPreview(dataUrl);
+        stopCamera();
+      }
+    }
+  };
+
+  const stopCamera = () => {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+    }
+    setMediaStream(null);
+    setIsCameraActive(false);
+  };
 
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
 
@@ -250,7 +306,30 @@ export default function Students() {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
+        // Compress uploaded image
+        const img = new Image();
+        img.src = reader.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 300;
+          let targetWidth = img.width;
+          let targetHeight = img.height;
+          
+          if (targetWidth > MAX_WIDTH) {
+            const aspectRatio = targetHeight / targetWidth;
+            targetWidth = MAX_WIDTH;
+            targetHeight = targetWidth * aspectRatio;
+          }
+
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+            setPhotoPreview(dataUrl);
+          }
+        };
       };
       reader.readAsDataURL(file);
     }
@@ -751,7 +830,7 @@ export default function Students() {
                   <p className="text-sm text-slate-500 mt-1">{editingStudent ? 'Update the details for the existing student' : 'Fill in the details to enroll a new student into the system'}</p>
                </div>
                <button 
-                 onClick={() => { setIsAddStudentModalOpen(false); setEditingStudent(null); }} 
+                 onClick={() => { setIsAddStudentModalOpen(false); setEditingStudent(null); stopCamera(); }} 
                  className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
                >
                  <X className="w-6 h-6" />
@@ -903,34 +982,60 @@ export default function Students() {
                        
                    {/* Photo Upload */}
                    <div className="w-full lg:w-64 bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex flex-col items-center justify-center shrink-0">
-                     <label className="text-sm font-bold text-slate-700 mb-4 uppercase tracking-wider">Student Photo</label>
-                     <div className="relative group w-36 h-44 rounded-2xl border-2 border-dashed border-slate-300 bg-white overflow-hidden hover:border-blue-400 hover:bg-blue-50/50 transition-colors flex items-center justify-center cursor-pointer shadow-sm">
-                        <input 
-                          type="file" 
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
-                          accept="image/*"
-                          onChange={handlePhotoUpload}
-                        />
-                        {photoPreview ? (
-                          <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                     <label className="text-sm font-bold text-slate-700 mb-4 uppercase tracking-wider flex items-center justify-between w-full">
+                       <span>Student Photo</span>
+                       {!isCameraActive ? (
+                         <button type="button" onClick={startCamera} className="text-blue-500 hover:bg-blue-50 p-1 rounded-md transition-colors" title="Capture from Camera">
+                           <Camera className="w-4 h-4" />
+                         </button>
+                       ) : (
+                         <button type="button" onClick={stopCamera} className="text-red-500 hover:bg-red-50 p-1 rounded-md transition-colors" title="Cancel Camera">
+                           <X className="w-4 h-4" />
+                         </button>
+                       )}
+                     </label>
+                     <div className="relative group w-36 h-44 rounded-2xl border-2 border-dashed border-slate-300 bg-white overflow-hidden shadow-sm flex flex-col">
+                        {isCameraActive ? (
+                          <>
+                            <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover z-20 scale-x-[-1]" />
+                            <button type="button" onClick={capturePhoto} className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white/90 text-blue-600 px-3 py-1.5 rounded-full text-xs font-bold shadow-md z-30 hover:bg-white transition-colors flex items-center gap-1">
+                              <Camera className="w-3 h-3" /> Snap
+                            </button>
+                          </>
                         ) : (
-                          <div className="flex flex-col items-center p-4 text-center text-slate-400 group-hover:text-blue-500">
-                            <ImageIcon className="w-8 h-8 mb-2 opacity-50 group-hover:opacity-100 transition-opacity" />
-                            <span className="text-xs font-semibold">Click to upload<br/>passport size</span>
-                          </div>
+                          <>
+                            <input 
+                              type="file" 
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                              accept="image/*"
+                              onChange={handlePhotoUpload}
+                            />
+                            <div className="absolute inset-0 w-full h-full hover:border-blue-400 hover:bg-blue-50/50 transition-colors flex items-center justify-center cursor-pointer">
+                               {photoPreview ? (
+                                 <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                               ) : (
+                                 <div className="flex flex-col items-center p-4 text-center text-slate-400 group-hover:text-blue-500">
+                                   <ImageIcon className="w-8 h-8 mb-2 opacity-50 group-hover:opacity-100 transition-opacity" />
+                                   <span className="text-xs font-semibold">Click to upload<br/>passport size</span>
+                                 </div>
+                               )}
+                            </div>
+                          </>
                         )}
                      </div>
-                     <div className="mt-4 w-full">
-                        <input 
-                          type="text" 
-                          placeholder="Or paste photo URL"
-                          value={photoPreview || ''}
-                          onChange={(e) => {
-                            setPhotoPreview(e.target.value);
-                          }}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 text-center"
-                        />
-                     </div>
+                     {!isCameraActive && (
+                       <div className="mt-4 w-full">
+                          <input 
+                            type="text" 
+                            placeholder="Or paste photo URL"
+                            value={photoPreview || ''}
+                            onChange={(e) => {
+                              setPhotoPreview(e.target.value);
+                            }}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 text-center"
+                          />
+                       </div>
+                     )}
                    </div>
                  </div>
 
