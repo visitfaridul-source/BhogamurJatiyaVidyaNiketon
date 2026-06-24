@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Plus, Filter, MoreVertical, Edit, Trash2, Download, Upload, IdCard, X, Printer, UserPlus, Image as ImageIcon, FileSpreadsheet, ClipboardList, Camera } from 'lucide-react';
+import { Search, Plus, Filter, MoreVertical, Edit, Trash2, Download, Upload, IdCard, X, Printer, UserPlus, Image as ImageIcon, FileSpreadsheet, ClipboardList, Camera, RefreshCcw } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import * as XLSX from 'xlsx';
 import { useSchool } from '../../context/SchoolContext';
@@ -108,11 +108,15 @@ export default function Students() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
 
-  const startCamera = async () => {
+  const startCamera = async (mode = facingMode) => {
     setIsCameraActive(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
       setMediaStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -122,6 +126,12 @@ export default function Students() {
       setIsCameraActive(false);
       alert("Camera access denied or not available. Please check permissions.");
     }
+  };
+
+  const toggleCamera = () => {
+    const newMode = facingMode === "user" ? "environment" : "user";
+    setFacingMode(newMode);
+    startCamera(newMode);
   };
 
   const capturePhoto = () => {
@@ -1001,19 +1011,24 @@ export default function Students() {
                      <label className="text-sm font-bold text-slate-700 mb-4 uppercase tracking-wider flex items-center justify-between w-full">
                        <span>Student Photo</span>
                        {!isCameraActive ? (
-                         <button type="button" onClick={startCamera} className="text-blue-500 hover:bg-blue-50 p-1 rounded-md transition-colors" title="Capture from Camera">
+                         <button type="button" onClick={() => startCamera()} className="text-blue-500 hover:bg-blue-50 p-1 rounded-md transition-colors" title="Capture from Camera">
                            <Camera className="w-4 h-4" />
                          </button>
                        ) : (
-                         <button type="button" onClick={stopCamera} className="text-red-500 hover:bg-red-50 p-1 rounded-md transition-colors" title="Cancel Camera">
-                           <X className="w-4 h-4" />
-                         </button>
+                         <div className="flex gap-1">
+                           <button type="button" onClick={toggleCamera} className="text-blue-500 hover:bg-blue-50 p-1 rounded-md transition-colors" title="Switch Camera">
+                             <RefreshCcw className="w-4 h-4" />
+                           </button>
+                           <button type="button" onClick={stopCamera} className="text-red-500 hover:bg-red-50 p-1 rounded-md transition-colors" title="Cancel Camera">
+                             <X className="w-4 h-4" />
+                           </button>
+                         </div>
                        )}
                      </label>
                      <div className="relative group w-36 h-44 rounded-2xl border-2 border-dashed border-slate-300 bg-white overflow-hidden shadow-sm flex flex-col">
                         {isCameraActive ? (
                           <>
-                            <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover z-20 scale-x-[-1]" />
+                            <video ref={videoRef} autoPlay playsInline muted className={`absolute inset-0 w-full h-full object-cover z-20 ${facingMode === "user" ? "scale-x-[-1]" : ""}`} />
                             <button type="button" onClick={capturePhoto} className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white/90 text-blue-600 px-3 py-1.5 rounded-full text-xs font-bold shadow-md z-30 hover:bg-white transition-colors flex items-center gap-1">
                               <Camera className="w-3 h-3" /> Snap
                             </button>

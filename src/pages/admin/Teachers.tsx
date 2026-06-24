@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Search, Plus, Filter, MoreVertical, Mail, Phone, BookOpen, UserPlus, X, Upload, PencilLine, Camera } from 'lucide-react';
+import { Search, Plus, Filter, MoreVertical, Mail, Phone, BookOpen, UserPlus, X, Upload, PencilLine, Camera, RefreshCcw } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useSchool } from '../../context/SchoolContext';
 import { useConfirm } from '../../context/ConfirmationContext';
@@ -76,11 +76,15 @@ export default function Teachers() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
 
-  const startCamera = async () => {
+  const startCamera = async (mode = facingMode) => {
     setIsCameraActive(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
       setMediaStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -90,6 +94,12 @@ export default function Teachers() {
       setIsCameraActive(false);
       alert("Camera access denied or not available. Please check permissions.");
     }
+  };
+
+  const toggleCamera = () => {
+    const newMode = facingMode === "user" ? "environment" : "user";
+    setFacingMode(newMode);
+    startCamera(newMode);
   };
 
   const capturePhoto = () => {
@@ -378,13 +388,18 @@ export default function Teachers() {
                          <div className="flex flex-col items-center gap-4 shrink-0">
                             <div className="flex gap-2">
                               {!isCameraActive ? (
-                                <button type="button" onClick={startCamera} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded-md transition-colors shadow-sm border border-blue-100 text-xs font-bold flex items-center gap-1">
+                                <button type="button" onClick={() => startCamera()} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded-md transition-colors shadow-sm border border-blue-100 text-xs font-bold flex items-center gap-1">
                                   <Camera className="w-4 h-4" /> Camera
                                 </button>
                               ) : (
-                                <button type="button" onClick={stopCamera} className="text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors shadow-sm border border-red-100 text-xs font-bold flex items-center gap-1">
-                                  <X className="w-4 h-4" /> Cancel
-                                </button>
+                                <div className="flex gap-1">
+                                  <button type="button" onClick={toggleCamera} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded-md transition-colors shadow-sm border border-blue-100 text-xs font-bold flex items-center gap-1" title="Switch Camera">
+                                    <RefreshCcw className="w-4 h-4" /> Switch
+                                  </button>
+                                  <button type="button" onClick={stopCamera} className="text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors shadow-sm border border-red-100 text-xs font-bold flex items-center gap-1" title="Cancel Camera">
+                                    <X className="w-4 h-4" /> Cancel
+                                  </button>
+                                </div>
                               )}
                             </div>
                             <div 
@@ -393,7 +408,7 @@ export default function Teachers() {
                             >
                                {isCameraActive ? (
                                  <>
-                                   <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover z-20 scale-x-[-1]" />
+                                   <video ref={videoRef} autoPlay playsInline muted className={`absolute inset-0 w-full h-full object-cover z-20 ${facingMode === "user" ? "scale-x-[-1]" : ""}`} />
                                    <button type="button" onClick={(e) => { e.stopPropagation(); capturePhoto(); }} className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white/90 text-blue-600 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-md z-30 hover:bg-white transition-colors flex items-center gap-1">
                                      <Camera className="w-3 h-3" /> Snap
                                    </button>
