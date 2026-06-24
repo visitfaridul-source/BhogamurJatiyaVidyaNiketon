@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Plus, Filter, MoreVertical, Edit, Trash2, Download, Upload, IdCard, X, Printer, UserPlus, Image as ImageIcon, FileSpreadsheet, ClipboardList, Camera } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -87,6 +87,22 @@ export default function Students() {
   const [editingStudent, setEditingStudent] = useState<any>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Automatically update old students with default address
+  useEffect(() => {
+    let hasUpdates = false;
+    const updatedStudents = students.map(s => {
+      if (!s.address || s.address.trim() === '-' || s.address.trim() === '') {
+        hasUpdates = true;
+        return { ...s, address: 'NAGAON, ASSAM, 782140' };
+      }
+      return s;
+    });
+
+    if (hasUpdates) {
+      setStudents(updatedStudents);
+    }
+  }, [students, setStudents]);
 
   // Camera capture states
   const [isCameraActive, setIsCameraActive] = useState(false);
