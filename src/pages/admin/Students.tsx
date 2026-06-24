@@ -86,6 +86,7 @@ export default function Students() {
   const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<any>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [viewingPhotoUrl, setViewingPhotoUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Automatically update old students with default address
@@ -677,7 +678,10 @@ export default function Students() {
                     />
                   </td>
                   <td className="px-6 py-4">
-                    <div className="w-12 h-12 rounded-full border border-slate-200 overflow-hidden shrink-0 bg-white">
+                    <div 
+                      className="w-12 h-12 rounded-full border border-slate-200 overflow-hidden shrink-0 bg-white cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => setViewingPhotoUrl((student as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}`)}
+                    >
                        {(student as any).photoUrl ? (
                           <img src={(student as any).photoUrl} alt={student.name} className="w-full h-full object-cover" />
                        ) : (
@@ -838,6 +842,26 @@ export default function Students() {
                 }
               `}
             </style>
+          </div>
+        </div>
+      , document.body)}
+
+      {/* View Photo Modal */}
+      {viewingPhotoUrl && createPortal(
+        <div className="fixed inset-0 z-[110] bg-black/90 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setViewingPhotoUrl(null)}>
+          <div className="relative max-w-4xl max-h-[90vh] w-full flex items-center justify-center">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setViewingPhotoUrl(null); }} 
+              className="absolute -top-12 md:-top-4 md:-right-12 text-white hover:text-slate-300 p-2 transition-colors"
+            >
+              <X className="w-8 h-8" />
+            </button>
+            <img 
+              src={viewingPhotoUrl} 
+              alt="Student Photo Full" 
+              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200" 
+              onClick={(e) => e.stopPropagation()} 
+            />
           </div>
         </div>
       , document.body)}
