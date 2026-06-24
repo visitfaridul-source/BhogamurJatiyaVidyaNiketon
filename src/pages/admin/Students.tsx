@@ -1056,7 +1056,7 @@ export default function Students() {
                       </div>
                       <div className="space-y-1.5 md:col-span-2">
                         <label className="text-sm font-semibold text-slate-700">Residential Address</label>
-                        <textarea name="address" defaultValue={(editingStudent as any)?.address} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none h-20 text-sm uppercase" placeholder="Full residential street address..."></textarea>
+                        <textarea name="address" defaultValue={(editingStudent as any)?.address || "NAGAON, ASSAM, 782140"} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none h-20 text-sm uppercase" placeholder="Full residential street address..."></textarea>
                       </div>
                     </div>
                  </div>
