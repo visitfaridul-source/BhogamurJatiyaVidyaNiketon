@@ -399,16 +399,16 @@ export default function IdCardTemplate({
 
       {/* Details Area */}
       <div className="px-3 mt-1.5 space-y-0.5 relative z-20 flex-1">
-        <div className="flex items-center text-[7px] leading-snug border-b border-slate-100 pb-0.5">
-          <span className="font-bold w-[16mm] uppercase text-slate-500 shrink-0">
+        <div className="flex items-center text-[8.5px] leading-snug border-b border-slate-100 pb-0.5">
+          <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0">
             Id No.
           </span>
           <span className="font-black text-slate-800">: {member.id}</span>
         </div>
 
         {member.type === "student" && (
-          <div className="flex items-center text-[7px] leading-snug border-b border-slate-100 pb-0.5">
-            <span className="font-bold w-[16mm] uppercase text-slate-500 shrink-0">
+          <div className="flex items-center text-[8.5px] leading-snug border-b border-slate-100 pb-0.5">
+            <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0">
               Class
             </span>
             <span className="font-bold text-slate-800">
@@ -421,8 +421,8 @@ export default function IdCardTemplate({
         )}
 
         {member.type === "teacher" && (
-          <div className="flex items-center text-[7px] leading-snug border-b border-slate-100 pb-0.5">
-            <span className="font-bold w-[16mm] uppercase text-slate-500 shrink-0">
+          <div className="flex items-center text-[8.5px] leading-snug border-b border-slate-100 pb-0.5">
+            <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0">
               Subject
             </span>
             <span className="font-bold text-slate-800">
@@ -432,8 +432,8 @@ export default function IdCardTemplate({
         )}
 
         {member.type === "staff" && (
-          <div className="flex items-center text-[7px] leading-snug border-b border-slate-100 pb-0.5">
-            <span className="font-bold w-[16mm] uppercase text-slate-500 shrink-0">
+          <div className="flex items-center text-[8.5px] leading-snug border-b border-slate-100 pb-0.5">
+            <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0">
               Role
             </span>
             <span className="font-bold text-slate-800">
@@ -442,8 +442,8 @@ export default function IdCardTemplate({
           </div>
         )}
 
-        <div className="flex items-center text-[7px] leading-snug border-b border-slate-100 pb-0.5">
-          <span className="font-bold w-[16mm] uppercase text-slate-500 shrink-0">
+        <div className="flex items-center text-[8.5px] leading-snug border-b border-slate-100 pb-0.5">
+          <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0">
             D.O.B
           </span>
           <span className="font-bold text-slate-800">: {dob}</span>
@@ -451,8 +451,8 @@ export default function IdCardTemplate({
 
         {member.type === "student" && (
           <>
-            <div className="flex items-center text-[7px] leading-snug border-b border-slate-100 pb-0.5">
-              <span className="font-bold w-[16mm] uppercase text-slate-500 shrink-0 mt-[1px]">
+            <div className="flex items-center text-[8.5px] leading-snug border-b border-slate-100 pb-0.5">
+              <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0 mt-[1px]">
                 Father's Name
               </span>
               <span className="font-bold text-slate-800 leading-tight block w-full line-clamp-1">
@@ -460,8 +460,8 @@ export default function IdCardTemplate({
               </span>
             </div>
             {motherName !== "N/A" && (
-              <div className="flex items-center text-[7px] leading-snug border-b border-slate-100 pb-0.5">
-                <span className="font-bold w-[16mm] uppercase text-slate-500 shrink-0 mt-[1px]">
+              <div className="flex items-center text-[8.5px] leading-snug border-b border-slate-100 pb-0.5">
+                <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0 mt-[1px]">
                   Mother's Name
                 </span>
                 <span className="font-bold text-slate-800 leading-tight block w-full line-clamp-1">
@@ -472,15 +472,15 @@ export default function IdCardTemplate({
           </>
         )}
 
-        <div className="flex items-center text-[7px] leading-snug border-b border-slate-100 pb-0.5">
-          <span className="font-bold w-[16mm] uppercase text-slate-500 shrink-0">
+        <div className="flex items-center text-[8.5px] leading-snug border-b border-slate-100 pb-0.5">
+          <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0">
             Mobile No
           </span>
           <span className="font-bold text-slate-800">: {phone}</span>
         </div>
 
-        <div className="flex items-start text-[7px] leading-snug pt-0.5">
-          <span className="font-bold w-[16mm] uppercase text-slate-500 shrink-0 mt-[1px]">
+        <div className="flex items-start text-[8.5px] leading-snug pt-0.5">
+          <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0 mt-[1px]">
             Address
           </span>
           <span className="font-semibold text-slate-800 leading-[1.2] shrink">
