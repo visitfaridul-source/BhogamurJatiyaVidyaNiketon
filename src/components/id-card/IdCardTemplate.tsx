@@ -482,10 +482,10 @@ export default function IdCardTemplate({
         </div>
 
         <div className="flex items-start text-[8px] leading-[1.1] pt-0.5">
-          <span className="font-bold w-[21mm] uppercase text-black shrink-0">
+          <span className="font-bold uppercase text-black shrink-0">
             Address
           </span>
-          <span className="font-semibold text-black flex-1 break-words">
+          <span className="font-semibold text-black flex-1 break-words ml-1">
             : {addr}
           </span>
         </div>
