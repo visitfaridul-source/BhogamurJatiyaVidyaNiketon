@@ -263,7 +263,7 @@ export default function IdCardTemplate({
               If found, return to:
             </p>
             <p
-              className="text-[9px] font-bold font-tiro leading-tight"
+              className="text-[9px] font-bold font-fjalla uppercase leading-tight tracking-wide"
               style={{ color: styles.primary }}
             >
               {settings.idCardSchoolName ||
@@ -355,7 +355,7 @@ export default function IdCardTemplate({
       <div className="w-full pt-3 pb-1 relative z-10 flex flex-col items-center">
         <h2
           className={cn(
-            "text-[10px] font-bold tracking-wider uppercase text-white drop-shadow-md px-2 text-center leading-tight font-tiro",
+            "text-[10px] font-normal tracking-wider uppercase text-white drop-shadow-md px-2 text-center leading-tight font-fjalla",
             (settings.idCardSchoolName || settings.schoolName || "").length > 25
               ? "text-[8px]"
               : "",

@@ -1,8 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Alkatra:wght@400..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Tiro+Bangla:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Alkatra:wght@400..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Tiro+Bangla:ital@0;1&family=Fjalla+One&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-tiro: "Tiro Bangla", serif;
+  --font-fjalla: "Fjalla One", sans-serif;
   --color-primary-50: #eff6ff;
   --color-primary-100: #dbeafe;
   --color-primary-500: #3b82f6;
