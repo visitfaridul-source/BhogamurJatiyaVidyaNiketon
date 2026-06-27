@@ -160,7 +160,7 @@ export default function IdCardTemplate({
   const parentName = member.parentName || "N/A";
   const motherName = member.motherName || "N/A";
   const phone = member.phone || "N/A";
-  const addr = member.address || "N/A";
+  const addr = member.address ? member.address.replace(/(,\s*)?\b\d{6}\b/g, '') : "N/A";
 
   // Back side
   if (side === "back") {
