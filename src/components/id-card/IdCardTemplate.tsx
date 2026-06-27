@@ -162,13 +162,6 @@ export default function IdCardTemplate({
   const phone = member.phone || "N/A";
   const addr = member.address || "N/A";
 
-  const memberRoleLabel =
-    member.type === "student"
-      ? "Student Identity Card"
-      : member.type === "teacher"
-        ? "Teacher Identity Card"
-        : "Staff Identity Card";
-
   // Back side
   if (side === "back") {
     return (
@@ -365,11 +358,9 @@ export default function IdCardTemplate({
             settings.schoolName ||
             "Bhogamur Jatiya Vidya Niketon"}
         </h2>
-        <div className="bg-white/20 backdrop-blur-sm px-2 py-0.5 rounded-full mt-0.5 shadow-sm border border-white/10">
-          <p className="text-[5.5px] uppercase font-bold text-white tracking-widest">
-            {memberRoleLabel}
-          </p>
-        </div>
+        <p className="text-[7.5px] font-medium text-white/90 tracking-wide mt-0.5 drop-shadow-sm text-center px-4 leading-tight">
+          Bhogamur, Nagaon, Assam, 782140
+        </p>
       </div>
 
       {/* Profile Photo */}
