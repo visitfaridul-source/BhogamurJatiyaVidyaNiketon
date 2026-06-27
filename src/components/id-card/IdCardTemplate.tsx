@@ -491,10 +491,7 @@ export default function IdCardTemplate({
 
       {/* Footer Details */}
       <div className="mb-2 w-full px-3 flex justify-between items-end relative z-20 shrink-0 mt-auto">
-        <div className="px-1.5 py-1 bg-white rounded-md flex-shrink-0 shadow-xs border border-slate-200 w-[24mm] flex items-center justify-center min-h-[7mm]">
-          <BarcodeSVG value={member.id} />
-        </div>
-        <div className="text-right flex flex-col items-end pt-1 pb-[2px]">
+        <div className="text-right flex flex-col items-end pt-1 pb-[2px] w-full">
           {settings.principalSignatureUrl ? (
             <img
               src={settings.principalSignatureUrl}
