@@ -363,11 +363,11 @@ export default function IdCardTemplate({
         </p>
 
         {settings.logoUrl && (
-          <div className="absolute top-[20px] right-2.5 shrink-0 w-[14mm] h-[14mm] flex items-center justify-center bg-white/20 rounded-full overflow-hidden shadow-sm border border-white/30 z-30">
+          <div className="absolute top-[26px] right-2.5 shrink-0 w-[12mm] h-[12mm] flex items-center justify-center bg-white/20 rounded-full overflow-hidden shadow-sm border border-white/30 z-30">
             <img
               src={settings.logoUrl}
               alt="School Logo"
-              className="w-full h-full object-cover drop-shadow-sm scale-[1.3]"
+              className="w-full h-full object-contain p-[1.5px] drop-shadow-sm"
             />
           </div>
         )}
