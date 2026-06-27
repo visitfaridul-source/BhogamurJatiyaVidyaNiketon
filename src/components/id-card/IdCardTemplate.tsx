@@ -345,22 +345,33 @@ export default function IdCardTemplate({
       )}
 
       {/* Header */}
-      <div className="w-full pt-3 pb-1 relative z-10 flex flex-col items-center">
-        <h2
-          className={cn(
-            "text-[13px] font-normal tracking-wider uppercase text-white drop-shadow-md px-2 text-center leading-tight font-fjalla",
-            (settings.idCardSchoolName || settings.schoolName || "").length > 25
-              ? "text-[10px]"
-              : "",
-          )}
-        >
-          {settings.idCardSchoolName ||
-            settings.schoolName ||
-            "Bhogamur Jatiya Vidya Niketon"}
-        </h2>
-        <p className="text-[7.5px] font-medium text-white/90 tracking-wide mt-0.5 drop-shadow-sm text-center px-4 leading-tight">
-          Bhogamur, Nagaon, Assam, 782140
-        </p>
+      <div className="w-full pt-3 pb-1 px-3 relative z-10 flex items-center justify-between gap-1">
+        <div className="flex flex-col items-start text-left drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
+          <h2
+            className={cn(
+              "text-[12px] font-normal tracking-wider uppercase text-white leading-tight font-fjalla",
+              (settings.idCardSchoolName || settings.schoolName || "").length > 25
+                ? "text-[9px]"
+                : "",
+            )}
+          >
+            {settings.idCardSchoolName ||
+              settings.schoolName ||
+              "Bhogamur Jatiya Vidya Niketon"}
+          </h2>
+          <p className="text-[7.5px] font-medium text-white/90 tracking-wide mt-0.5 leading-tight">
+            Bhogamur, Nagaon, Assam, 782140
+          </p>
+        </div>
+        {settings.logoUrl && (
+          <div className="shrink-0 w-[11mm] h-[11mm] flex items-center justify-center bg-white/10 rounded-full p-0.5 shadow-sm border border-white/20">
+            <img
+              src={settings.logoUrl}
+              alt="School Logo"
+              className="w-full h-full object-contain drop-shadow-sm"
+            />
+          </div>
+        )}
       </div>
 
       {/* Profile Photo */}
