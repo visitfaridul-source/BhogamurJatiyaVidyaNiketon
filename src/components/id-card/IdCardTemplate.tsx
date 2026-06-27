@@ -348,10 +348,10 @@ export default function IdCardTemplate({
       <div className="w-full pt-1.5 pb-1 px-3 relative z-10 text-left drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
         <h2
           className={cn(
-            "font-bold tracking-tight uppercase text-white leading-[1.05] font-fjalla w-full whitespace-nowrap",
+            "font-bold uppercase text-white leading-[1.05] font-fjalla w-full whitespace-nowrap tracking-wide",
             (settings.idCardSchoolName || settings.schoolName || "").length > 30
-              ? "text-[11px]"
-              : "text-[13px]",
+              ? "text-[12px]"
+              : "text-[14px]",
           )}
         >
           {settings.idCardSchoolName ||
@@ -363,7 +363,7 @@ export default function IdCardTemplate({
         </p>
 
         {settings.logoUrl && (
-          <div className="absolute top-[26px] right-2.5 shrink-0 w-[12mm] h-[12mm] flex items-center justify-center bg-white/20 rounded-full overflow-hidden shadow-sm border border-white/30 z-30">
+          <div className="absolute top-[32px] right-2.5 shrink-0 w-[12mm] h-[12mm] flex items-center justify-center bg-white/20 rounded-full overflow-hidden shadow-sm border border-white/30 z-30">
             <img
               src={settings.logoUrl}
               alt="School Logo"
