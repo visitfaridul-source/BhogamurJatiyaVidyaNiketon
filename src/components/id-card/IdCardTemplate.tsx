@@ -345,13 +345,13 @@ export default function IdCardTemplate({
       )}
 
       {/* Header */}
-      <div className="w-full pt-1.5 pb-1 px-3 relative z-10 flex items-center justify-between gap-1">
-        <div className="flex flex-col items-start text-left drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
+      <div className="w-full pt-1.5 pb-1 px-3 relative z-10 flex items-start justify-between gap-1">
+        <div className="flex-1 flex flex-col items-start text-left drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
           <h2
             className={cn(
-              "text-[12px] font-bold tracking-wider uppercase text-white leading-tight font-fjalla",
+              "text-[14px] font-bold tracking-wide uppercase text-white leading-[1.05] font-fjalla w-full",
               (settings.idCardSchoolName || settings.schoolName || "").length > 25
-                ? "text-[9px]"
+                ? "text-[11px]"
                 : "",
             )}
           >
@@ -359,16 +359,16 @@ export default function IdCardTemplate({
               settings.schoolName ||
               "Bhogamur Jatiya Vidya Niketon"}
           </h2>
-          <p className="text-[8.5px] font-semibold text-white/95 tracking-wide mt-0.5 leading-tight">
+          <p className="text-[8.5px] font-semibold text-white/95 tracking-wide mt-1 leading-tight">
             Bhogamur, Nagaon, Assam, 782140
           </p>
         </div>
         {settings.logoUrl && (
-          <div className="shrink-0 w-[11mm] h-[11mm] flex items-center justify-center bg-white/10 rounded-full p-0.5 shadow-sm border border-white/20">
+          <div className="shrink-0 w-[12mm] h-[12mm] flex items-center justify-center bg-white/10 rounded-full overflow-hidden shadow-sm border border-white/20 mt-1">
             <img
               src={settings.logoUrl}
               alt="School Logo"
-              className="w-full h-full object-contain drop-shadow-sm"
+              className="w-full h-full object-cover drop-shadow-sm scale-110"
             />
           </div>
         )}
