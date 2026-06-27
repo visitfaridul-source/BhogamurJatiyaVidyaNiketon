@@ -345,7 +345,7 @@ export default function IdCardTemplate({
       )}
 
       {/* Header */}
-      <div className="w-full pt-1.5 pb-1 px-3 relative z-10 text-left drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
+      <div className="w-full pt-1.5 pb-1 px-3 relative z-10 text-center drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
         <h2
           className={cn(
             "font-bold uppercase text-white leading-[1.05] font-fjalla w-full whitespace-nowrap tracking-wide",
@@ -358,12 +358,12 @@ export default function IdCardTemplate({
             settings.schoolName ||
             "Bhogamur Jatiya Vidya Niketon"}
         </h2>
-        <p className="text-[8.5px] font-semibold text-white/95 tracking-wide mt-1 leading-tight w-[70%]">
+        <p className="text-[8.5px] font-semibold text-white/95 tracking-wide mt-1 leading-tight w-full mx-auto">
           Bhogamur, Nagaon, Assam, 782140
         </p>
 
         {settings.logoUrl && (
-          <div className="absolute top-[32px] right-2.5 shrink-0 w-[12mm] h-[12mm] flex items-center justify-center bg-white/20 rounded-full overflow-hidden shadow-sm border border-white/30 z-30">
+          <div className="absolute top-[38px] right-2.5 shrink-0 w-[12mm] h-[12mm] flex items-center justify-center bg-white/20 rounded-full overflow-hidden shadow-sm border border-white/30 z-30">
             <img
               src={settings.logoUrl}
               alt="School Logo"
