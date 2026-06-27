@@ -345,30 +345,29 @@ export default function IdCardTemplate({
       )}
 
       {/* Header */}
-      <div className="w-full pt-1.5 pb-1 px-3 relative z-10 flex items-start justify-between gap-1">
-        <div className="flex-1 flex flex-col items-start text-left drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
-          <h2
-            className={cn(
-              "text-[14px] font-bold tracking-wide uppercase text-white leading-[1.05] font-fjalla w-full",
-              (settings.idCardSchoolName || settings.schoolName || "").length > 25
-                ? "text-[11px]"
-                : "",
-            )}
-          >
-            {settings.idCardSchoolName ||
-              settings.schoolName ||
-              "Bhogamur Jatiya Vidya Niketon"}
-          </h2>
-          <p className="text-[8.5px] font-semibold text-white/95 tracking-wide mt-1 leading-tight">
-            Bhogamur, Nagaon, Assam, 782140
-          </p>
-        </div>
+      <div className="w-full pt-1.5 pb-1 px-3 relative z-10 text-left drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
+        <h2
+          className={cn(
+            "font-bold tracking-tight uppercase text-white leading-[1.05] font-fjalla w-full whitespace-nowrap",
+            (settings.idCardSchoolName || settings.schoolName || "").length > 30
+              ? "text-[11px]"
+              : "text-[13px]",
+          )}
+        >
+          {settings.idCardSchoolName ||
+            settings.schoolName ||
+            "Bhogamur Jatiya Vidya Niketon"}
+        </h2>
+        <p className="text-[8.5px] font-semibold text-white/95 tracking-wide mt-1 leading-tight w-[70%]">
+          Bhogamur, Nagaon, Assam, 782140
+        </p>
+
         {settings.logoUrl && (
-          <div className="shrink-0 w-[12mm] h-[12mm] flex items-center justify-center bg-white/10 rounded-full overflow-hidden shadow-sm border border-white/20 mt-1">
+          <div className="absolute top-[20px] right-2.5 shrink-0 w-[14mm] h-[14mm] flex items-center justify-center bg-white/20 rounded-full overflow-hidden shadow-sm border border-white/30 z-30">
             <img
               src={settings.logoUrl}
               alt="School Logo"
-              className="w-full h-full object-cover drop-shadow-sm scale-110"
+              className="w-full h-full object-cover drop-shadow-sm scale-[1.3]"
             />
           </div>
         )}
