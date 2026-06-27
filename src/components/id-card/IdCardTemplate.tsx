@@ -481,11 +481,11 @@ export default function IdCardTemplate({
           <span className="font-bold text-slate-800">: {phone}</span>
         </div>
 
-        <div className="flex items-start text-[8.5px] leading-snug pt-0.5">
-          <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0 mt-[1px]">
+        <div className="flex items-start text-[8px] leading-[1.1] pt-0.5">
+          <span className="font-bold w-[21mm] uppercase text-slate-500 shrink-0">
             Address
           </span>
-          <span className="font-semibold text-slate-800 leading-[1.2] shrink">
+          <span className="font-semibold text-slate-800 flex-1 break-words">
             : {addr}
           </span>
         </div>
