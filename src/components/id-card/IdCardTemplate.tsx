@@ -345,13 +345,13 @@ export default function IdCardTemplate({
       )}
 
       {/* Header */}
-      <div className="w-full pt-1.5 pb-1 px-3 relative z-10 text-center drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
+      <div className="w-full pt-1.5 pb-1 px-1 relative z-10 text-center drop-shadow-[0_2.5px_2.5px_rgba(0,0,0,0.85)]">
         <h2
           className={cn(
-            "font-bold uppercase text-white leading-[1.05] font-fjalla w-full whitespace-nowrap tracking-wide",
+            "font-black uppercase text-white leading-[1.05] font-fjalla w-full whitespace-nowrap tracking-wider",
             (settings.idCardSchoolName || settings.schoolName || "").length > 30
-              ? "text-[12px]"
-              : "text-[14px]",
+              ? "text-[13px]"
+              : "text-[15.5px]",
           )}
         >
           {settings.idCardSchoolName ||
@@ -363,11 +363,11 @@ export default function IdCardTemplate({
         </p>
 
         {settings.logoUrl && (
-          <div className="absolute top-[38px] right-2.5 shrink-0 w-[12mm] h-[12mm] flex items-center justify-center bg-white/20 rounded-full overflow-hidden shadow-sm border border-white/30 z-30">
+          <div className="absolute top-[46px] right-2 shrink-0 w-[10mm] h-[10mm] flex items-center justify-center bg-white rounded-lg shadow-md border border-slate-200/80 z-30 p-[1px]">
             <img
               src={settings.logoUrl}
               alt="School Logo"
-              className="w-full h-full object-contain p-[1.5px] drop-shadow-sm"
+              className="w-full h-full object-contain drop-shadow-sm"
             />
           </div>
         )}

@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useWebsite, WebsiteStaffMember } from '../../context/WebsiteContext';
 import { useConfirm } from '../../context/ConfirmationContext';
-import { Plus, Edit2, Trash2, X, Image as ImageIcon, Briefcase, Mail, Phone, Link as LinkIcon, Camera } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Image as ImageIcon, Briefcase, Mail, Phone, Link as LinkIcon, Camera, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { compressImage } from '../../lib/utils';
 
 export default function StaffManagement() {
   const { settings, updateSettings } = useWebsite();
@@ -61,8 +62,11 @@ export default function StaffManagement() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, imageUrl: reader.result as string }));
+      reader.onloadend = async () => {
+        if (reader.result) {
+          const compressed = await compressImage(reader.result as string, 300, 300, 0.75);
+          setFormData(prev => ({ ...prev, imageUrl: compressed }));
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -159,6 +163,20 @@ export default function StaffManagement() {
           </button>
         </div>
       )}
+
+      {/* Information Banner to prevent redundancy */}
+      <div className="bg-blue-50/80 border border-blue-100/50 rounded-[2rem] p-6 flex gap-4 items-start shadow-sm">
+        <div className="p-3 bg-blue-500 text-white rounded-2xl shadow-md shrink-0">
+          <Info className="w-6 h-6" />
+        </div>
+        <div>
+          <h2 className="font-bold text-blue-900 text-sm md:text-base">Automatic Teacher Sync Active</h2>
+          <p className="text-blue-700/90 text-xs md:text-sm mt-1 leading-relaxed">
+            All academic teachers registered in the <strong>Teachers</strong> section are automatically synchronized and listed on the public "Our Staff" page of the website. 
+            <strong> You do not need to re-register them here!</strong> Use this section only to add non-teaching staff, executive directors, or custom profiles requiring specific URLs.
+          </p>
+        </div>
+      </div>
 
       {/* Grid */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

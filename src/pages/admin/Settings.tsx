@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useWebsite } from '@/context/WebsiteContext';
 import { useSearchParams } from 'react-router-dom';
 import { Save, Upload, Image as ImageIcon, Video, FileText, Smartphone, Type, Settings2, Palette, LogIn } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, compressImage } from '@/lib/utils';
 import { motion } from 'motion/react';
 
 export default function Settings() {
@@ -70,9 +70,10 @@ export default function Settings() {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         if (event.target?.result) {
-          setFormData(prev => ({ ...prev, logoUrl: event.target!.result as string }));
+          const compressed = await compressImage(event.target!.result as string, 300, 300, 0.85);
+          setFormData(prev => ({ ...prev, logoUrl: compressed }));
           setSaved(false);
         }
       };
@@ -233,9 +234,10 @@ export default function Settings() {
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
                       const reader = new FileReader();
-                      reader.onload = (event) => {
+                      reader.onload = async (event) => {
                         if (event.target?.result) {
-                          setFormData(prev => ({ ...prev, principalSignatureUrl: event.target!.result as string }));
+                          const compressed = await compressImage(event.target!.result as string, 300, 150, 0.8);
+                          setFormData(prev => ({ ...prev, principalSignatureUrl: compressed }));
                           setSaved(false);
                         }
                       };
@@ -283,9 +285,10 @@ export default function Settings() {
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
                       const reader = new FileReader();
-                      reader.onload = (event) => {
+                      reader.onload = async (event) => {
                         if (event.target?.result) {
-                          setFormData(prev => ({ ...prev, watermarkUrl: event.target!.result as string }));
+                          const compressed = await compressImage(event.target!.result as string, 400, 400, 0.6);
+                          setFormData(prev => ({ ...prev, watermarkUrl: compressed }));
                           setSaved(false);
                         }
                       };
@@ -379,9 +382,10 @@ export default function Settings() {
                              onChange={(e) => {
                                if (e.target.files && e.target.files[0]) {
                                  const reader = new FileReader();
-                                 reader.onload = (event) => {
+                                 reader.onload = async (event) => {
                                    if (event.target?.result) {
-                                     setFormData(prev => ({ ...prev, heroGalleryImages: [...(prev.heroGalleryImages || []), event.target!.result as string] }));
+                                     const compressed = await compressImage(event.target!.result as string, 800, 600, 0.75);
+                                     setFormData(prev => ({ ...prev, heroGalleryImages: [...(prev.heroGalleryImages || []), compressed] }));
                                      setSaved(false);
                                    }
                                  };
@@ -456,9 +460,10 @@ export default function Settings() {
                         onChange={(e) => {
                           if (e.target.files && e.target.files[0]) {
                             const reader = new FileReader();
-                            reader.onload = (event) => {
+                            reader.onload = async (event) => {
                               if (event.target?.result) {
-                                setFormData(prev => ({ ...prev, heroOverlayImageUrl: event.target!.result as string }));
+                                const compressed = await compressImage(event.target!.result as string, 800, 600, 0.7);
+                                setFormData(prev => ({ ...prev, heroOverlayImageUrl: compressed }));
                                 setSaved(false);
                               }
                             };
@@ -1055,9 +1060,10 @@ export default function Settings() {
                          onChange={(e) => {
                            if (e.target.files && e.target.files[0]) {
                              const reader = new FileReader();
-                             reader.onload = (event) => {
+                             reader.onload = async (event) => {
                                if (event.target?.result) {
-                                 setFormData(prev => ({ ...prev, principalImageUrl: event.target!.result as string }));
+                                 const compressed = await compressImage(event.target!.result as string, 500, 500, 0.75);
+                                 setFormData(prev => ({ ...prev, principalImageUrl: compressed }));
                                  setSaved(false);
                                }
                              };
@@ -1248,9 +1254,10 @@ export default function Settings() {
                           onChange={(e) => {
                             if (e.target.files && e.target.files[0]) {
                               const reader = new FileReader();
-                              reader.onload = (event) => {
+                              reader.onload = async (event) => {
                                 if (event.target?.result) {
-                                  setFormData(prev => ({ ...prev, loginSidebarLogoUrl: event.target!.result as string }));
+                                  const compressed = await compressImage(event.target!.result as string, 400, 400, 0.8);
+                                  setFormData(prev => ({ ...prev, loginSidebarLogoUrl: compressed }));
                                   setSaved(false);
                                 }
                               };
@@ -1297,9 +1304,10 @@ export default function Settings() {
                           onChange={(e) => {
                             if (e.target.files && e.target.files[0]) {
                               const reader = new FileReader();
-                              reader.onload = (event) => {
+                              reader.onload = async (event) => {
                                 if (event.target?.result) {
-                                  setFormData(prev => ({ ...prev, loginSidebarQuoteAvatarUrl: event.target!.result as string }));
+                                  const compressed = await compressImage(event.target!.result as string, 200, 200, 0.75);
+                                  setFormData(prev => ({ ...prev, loginSidebarQuoteAvatarUrl: compressed }));
                                   setSaved(false);
                                 }
                               };
@@ -1498,10 +1506,11 @@ export default function Settings() {
                              onChange={(e) => {
                                if (e.target.files && e.target.files[0]) {
                                  const reader = new FileReader();
-                                 reader.onload = (event) => {
+                                 reader.onload = async (event) => {
                                    if (event.target?.result) {
+                                     const compressed = await compressImage(event.target!.result as string, 800, 600, 0.75);
                                      const newItems = [...(formData.galleryPageItems || [])];
-                                     newItems[idx] = { ...item, src: event.target!.result as string };
+                                     newItems[idx] = { ...item, src: compressed };
                                      setFormData(prev => ({ ...prev, galleryPageItems: newItems }));
                                      setSaved(false);
                                    }

@@ -385,9 +385,9 @@ const defaultSettings: WebsiteSettings = {
   loginBoxTitle: "Welcome Back",
   loginBoxSubtitle: "Please select your role to continue securely.",
 
-  phone: "+1 (555) 123-4567",
-  email: "hello@bhogamurjatiyavidyaniketon.com",
-  address: "123 Education Ave, Tech District, SF, CA 94103",
+  phone: "+91 94350-00101",
+  email: "bjvnhs@gmail.com",
+  address: "Bhogamur, Nagaon, Assam, 782140",
   aboutText: "য’ত সপোনৰ আৰম্ভণি হয় আৰু ভৱিষ্যত উজলি উঠে।",
   galleryImages: [],
   principalImageUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=800",
