@@ -93,11 +93,11 @@ export default function Attendance() {
   }, [user]);
   const location = useLocation();
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [selectedClass, setSelectedClass] = useState<string>("");
+  const [selectedClass, setSelectedClass] = useState<string>("Nursery");
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
   const [faceScannerFilterType, setFaceScannerFilterType] = useState<"All" | "Student" | "Teacher">("Teacher");
-  const [faceScannerFilterClass, setFaceScannerFilterClass] = useState<string>("");
+  const [faceScannerFilterClass, setFaceScannerFilterClass] = useState<string>("Nursery");
   const [viewMode, setViewMode] = useState<"detailed" | "summary" | "class-overview">("detailed");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAbsenteesOnly, setShowAbsenteesOnly] = useState(false);
@@ -118,7 +118,7 @@ export default function Attendance() {
       }
     }
   }, [location.state]);
-  const [monitorClassFilter, setMonitorClassFilter] = useState<string>("");
+  const [monitorClassFilter, setMonitorClassFilter] = useState<string>("Nursery");
   const [monitorTeacherFilter, setMonitorTeacherFilter] = useState<string>("");
 
   const [attendanceData, setAttendanceData] = useState(initialMockAttendance);
@@ -129,7 +129,7 @@ export default function Attendance() {
   const [registerMonth, setRegisterMonth] = useState<number>(new Date().getMonth());
   const [registerYear, setRegisterYear] = useState<number>(new Date().getFullYear());
   const [registerTeacher, setRegisterTeacher] = useState<string>("");
-  const [registerClass, setRegisterClass] = useState<string>(selectedClass || "Class 10");
+  const [registerClass, setRegisterClass] = useState<string>(selectedClass || "Nursery");
   const [registerSection, setRegisterSection] = useState<string>("");
   const [registerTargetType, setRegisterTargetType] = useState<"Student" | "Teacher">("Student");
 
@@ -1801,7 +1801,6 @@ export default function Attendance() {
                     onChange={(e) => setFaceScannerFilterClass(e.target.value)}
                     title="Dictionary Class Filter"
                   >
-                    <option value="">All Classes</option>
                     {classes.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2 pointer-events-none" />
@@ -2189,7 +2188,6 @@ export default function Attendance() {
                             }
                           }}
                         >
-                          <option value="">All Tiers (Summary Overview)</option>
                           {classes.map((c) => (
                             <option key={c} value={c}>
                               {c}
@@ -2893,7 +2891,7 @@ export default function Attendance() {
                             onChange={(e) => setMonitorClassFilter(e.target.value)}
                             className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-300"
                          >
-                            <option value="">All Classes</option>
+
                             {classes.map((cls) => (
                                <option key={cls} value={cls}>{cls}</option>
                             ))}

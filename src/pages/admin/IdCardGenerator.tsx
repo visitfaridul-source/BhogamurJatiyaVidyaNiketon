@@ -38,7 +38,7 @@ export default function IdCardGenerator() {
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
-  const [classFilter, setClassFilter] = useState("");
+  const [classFilter, setClassFilter] = useState("Nursery");
 
   const printGridRef = useRef<HTMLDivElement>(null);
 
@@ -345,7 +345,6 @@ export default function IdCardGenerator() {
                     onChange={(e) => setClassFilter(e.target.value)}
                     className="bg-white border border-slate-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500/20 outline-none"
                   >
-                    <option value="">All Classes</option>
                     {classes.map((c) => (
                       <option key={c} value={c}>
                         {c}

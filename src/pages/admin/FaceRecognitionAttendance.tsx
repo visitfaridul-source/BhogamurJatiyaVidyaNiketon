@@ -189,7 +189,7 @@ export default function FaceRecognitionAttendance() {
 
   // Dictionary Optimization Filters
   const [dictionaryFilterType, setDictionaryFilterType] = useState<"All" | "Student" | "Teacher">("Teacher");
-  const [dictionaryFilterClass, setDictionaryFilterClass] = useState<string>("");
+  const [dictionaryFilterClass, setDictionaryFilterClass] = useState<string>("Nursery");
 
   // UI state for dual-mode logging
   const [scanMode, setScanMode] = useState<"check-in" | "early-out">(
@@ -1146,7 +1146,6 @@ export default function FaceRecognitionAttendance() {
             value={dictionaryFilterClass}
             onChange={(e) => setDictionaryFilterClass(e.target.value)}
           >
-            <option value="">All Classes</option>
             {["Nursery", "LKG", "UKG", "Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"].map(c => (
               <option key={c} value={c}>{c}</option>
             ))}

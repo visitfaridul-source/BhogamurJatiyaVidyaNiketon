@@ -47,7 +47,7 @@ export default function ResultsManagement() {
   };
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClassFilter, setSelectedClassFilter] = useState('');
+  const [selectedClassFilter, setSelectedClassFilter] = useState('Nursery');
   const [showModal, setShowModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [newSubjectColName, setNewSubjectColName] = useState('English');
@@ -724,7 +724,6 @@ export default function ResultsManagement() {
               onChange={(e) => setSelectedClassFilter(e.target.value)}
               className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
             >
-              <option value="">All Classes</option>
               {uniqueClasses.map(className => (
                 <option key={className} value={className}>{className}</option>
               ))}

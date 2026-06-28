@@ -79,7 +79,7 @@ export default function Students() {
   const { students, setStudents } = useSchool();
   const { confirm } = useConfirm();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClassFilter, setSelectedClassFilter] = useState('');
+  const [selectedClassFilter, setSelectedClassFilter] = useState('Nursery');
   const [selectedSectionFilter, setSelectedSectionFilter] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('');
   const [selectedStudentForID, setSelectedStudentForID] = useState<any>(null);
@@ -627,7 +627,6 @@ export default function Students() {
                 setSelectedSectionFilter('');
               }}
             >
-              <option value="">All Classes</option>
               {['Nursery', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'].map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             {selectedClassFilter && availableSectionsFilter.length > 0 && (
