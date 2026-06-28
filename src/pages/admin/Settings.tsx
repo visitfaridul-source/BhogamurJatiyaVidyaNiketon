@@ -1494,51 +1494,40 @@ export default function Settings() {
                         ×
                       </button>
                       
-                      {item.src ? (
-                        <img src={item.src} className="w-full h-32 object-cover rounded-lg border border-slate-200" alt="Preview" />
-                      ) : (
-                        <div className="w-full h-32 bg-slate-200 rounded-lg border border-slate-300 flex items-center justify-center relative overflow-hidden cursor-pointer hover:bg-slate-300 transition-colors">
-                           <Upload className="w-5 h-5 text-slate-400" />
-                           <input 
-                             type="file" 
-                             accept="image/*"
-                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                             onChange={(e) => {
-                               if (e.target.files && e.target.files[0]) {
-                                 const reader = new FileReader();
-                                 reader.onload = async (event) => {
-                                   if (event.target?.result) {
-                                     const compressed = await compressImage(event.target!.result as string, 800, 600, 0.75);
-                                     const newItems = [...(formData.galleryPageItems || [])];
-                                     newItems[idx] = { ...item, src: compressed };
-                                     setFormData(prev => ({ ...prev, galleryPageItems: newItems }));
-                                     setSaved(false);
-                                   }
-                                 };
-                                 reader.readAsDataURL(e.target.files[0]);
-                               }
-                             }}
-                           />
+                      {item.src && (
+                        <div className="relative">
+                          <img src={item.src} className="w-full h-32 object-cover rounded-lg border border-slate-200" alt="Preview" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newItems = [...(formData.galleryPageItems || [])];
+                              newItems[idx] = { ...item, src: '' };
+                              setFormData(prev => ({ ...prev, galleryPageItems: newItems }));
+                              setSaved(false);
+                            }}
+                            className="absolute bottom-2 right-2 bg-slate-900/80 hover:bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded transition"
+                          >
+                            Clear Link
+                          </button>
                         </div>
                       )}
                       
-                      {!item.src && (
-                        <div>
-                           <input 
-                             type="text" 
-                             placeholder="Or paste image URL"
-                             onChange={(e) => {
-                               if (e.target.value) {
-                                 const newItems = [...(formData.galleryPageItems || [])];
-                                 newItems[idx] = { ...item, src: e.target.value };
-                                 setFormData(prev => ({ ...prev, galleryPageItems: newItems }));
-                                 setSaved(false);
-                               }
-                             }}
-                             className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500"
-                           />
-                        </div>
-                      )}
+                      <div>
+                         <label className="block text-xs font-semibold text-slate-600 mb-1">Image URL (External Link Only)</label>
+                         <input 
+                           type="url" 
+                           required={true}
+                           value={item.src}
+                           placeholder="Paste public image link (Unsplash, Imgur, etc.)"
+                           onChange={(e) => {
+                             const newItems = [...(formData.galleryPageItems || [])];
+                             newItems[idx] = { ...item, src: e.target.value };
+                             setFormData(prev => ({ ...prev, galleryPageItems: newItems }));
+                             setSaved(false);
+                           }}
+                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500"
+                         />
+                      </div>
 
                       <div>
                          <label className="block text-xs font-semibold text-slate-600 mb-1">Title</label>

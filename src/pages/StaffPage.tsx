@@ -1,54 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useWebsite } from '../context/WebsiteContext';
-import { useSchool } from '../context/SchoolContext';
 import { Mail, Phone, ExternalLink, X, User, GraduationCap, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function StaffPage() {
   const { settings } = useWebsite();
-  const { teachers } = useSchool();
   const navigate = useNavigate();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  // Combine custom website staff with school teachers, avoiding redundancy
-  const combinedStaff = useMemo(() => {
-    const list = [...(settings.staffMembers || [])];
-    
-    // Create sets of existing keys for easy duplicate checking
-    const existingNames = new Set(list.map(s => s.name.trim().toLowerCase()));
-    const existingEmails = new Set(list.map(s => s.email?.trim().toLowerCase()).filter(Boolean));
-    const existingPhones = new Set(list.map(s => s.phone?.trim()).filter(Boolean));
-
-    // Convert teachers into WebsiteStaffMember structure
-    const teacherStaffMembers = (teachers || []).map(t => ({
-      id: `teacher-${t.id}`,
-      name: t.name,
-      gender: t.gender,
-      role: `${t.subject} Teacher`.toUpperCase(),
-      bio: `${t.qualification || 'Educator'} specializing in ${t.subject}. Dedicated to teaching excellence and student success.`,
-      imageUrl: t.avatar || '',
-      email: t.email || '',
-      phone: t.phone || '',
-      isFromTeachersDb: true
-    }));
-
-    // Filter out duplicates (redundant entries)
-    const nonDuplicateTeachers = teacherStaffMembers.filter(t => {
-      const nameKey = t.name.trim().toLowerCase();
-      const emailKey = t.email?.trim().toLowerCase();
-      const phoneKey = t.phone?.trim();
-
-      const isDuplicateName = existingNames.has(nameKey);
-      const isDuplicateEmail = emailKey ? existingEmails.has(emailKey) : false;
-      const isDuplicatePhone = phoneKey ? existingPhones.has(phoneKey) : false;
-
-      return !isDuplicateName && !isDuplicateEmail && !isDuplicatePhone;
-    });
-
-    return [...list, ...nonDuplicateTeachers];
-  }, [settings.staffMembers, teachers]);
+  const combinedStaff = settings.staffMembers || [];
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans selection:bg-blue-500/30">

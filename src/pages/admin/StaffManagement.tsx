@@ -272,9 +272,9 @@ export default function StaffManagement() {
                   )}
 
                   <form id="staff-form" onSubmit={handleSave} className="space-y-6">
-                    {/* Photo Input (URL based & direct upload) */}
+                    {/* Photo Input (External link only to reduce Firebase usage) */}
                     <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Profile Photo</label>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Profile Photo (External Link Only)</label>
                         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                            <div className="w-16 h-16 rounded-2xl bg-slate-50 flex-shrink-0 overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center relative group p-1">
                               {formData.imageUrl ? (
@@ -284,38 +284,18 @@ export default function StaffManagement() {
                               )}
                            </div>
                            <div className="flex-1 space-y-2.5 w-full">
-                              <div className="flex flex-wrap items-center gap-2">
-                                 <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm transition inline-flex items-center gap-1.5">
-                                    <Camera className="w-4 h-4 text-slate-500" />
-                                    Browse Photo...
-                                    <input 
-                                       type="file" 
-                                       accept="image/*" 
-                                       onChange={handleFileChange}
-                                       className="hidden" 
-                                    />
-                                 </label>
-                                 {formData.imageUrl && (
-                                    <button 
-                                       type="button" 
-                                       onClick={() => setFormData({ ...formData, imageUrl: '' })}
-                                       className="text-xs text-rose-500 hover:text-rose-600 font-bold px-3 py-2.5 border border-rose-100 bg-rose-50 rounded-xl hover:bg-rose-100 transition"
-                                    >
-                                       Remove Photo
-                                    </button>
-                                  )}
-                              </div>
                               <div className="flex items-center gap-2">
-                                 <span className="text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">Or use URL:</span>
+                                 <span className="text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">Image URL:</span>
                                  <input 
                                     type="url" 
-                                    required={false}
-                                    value={formData.imageUrl && typeof formData.imageUrl === 'string' && !formData.imageUrl.startsWith('data:') ? formData.imageUrl : ''} 
+                                    required={true}
+                                    value={formData.imageUrl || ''} 
                                     onChange={e => setFormData({...formData, imageUrl: e.target.value})}
-                                    placeholder="https://images.unsplash.com/photo-..." 
-                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                    placeholder="Paste external image link (e.g. https://images.unsplash.com/...)" 
+                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                                  />
                               </div>
+                              <p className="text-[11px] text-slate-500 font-medium">To save storage and optimize performance, please paste a direct web link to the photo (Unsplash, Imgur, or any public hosting link).</p>
                            </div>
                         </div>
                     </div>
