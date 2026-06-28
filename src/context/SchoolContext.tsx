@@ -297,6 +297,12 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     let unsubStudents = () => {};
     let unsubTeachers = () => {};
     let unsubAdmissions = () => {};
+    let unsubResults = () => {};
+    let unsubSessions = () => {};
+    let unsubCourses = () => {};
+    let unsubAttendance = () => {};
+    let unsubFees = () => {};
+    let unsubEvents = () => {};
 
     // 1. Students - only if logged in
     if (user) {
@@ -361,25 +367,29 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       setOnlineAdmissionsState([]);
     }
 
-    // 4. Results
-    const unsubResults = onSnapshot(collection(db, 'results'), (snapshot) => {
-      const data: StudentResult[] = [];
-      snapshot.forEach(doc => {
-        data.push({ id: doc.id, ...doc.data() } as StudentResult);
-      });
-      setDbStats(prev => ({ ...prev, results: snapshot.size }));
-      if (snapshot.size === 0) {
+    // 4. Results - only if logged in (public results page queries on-demand)
+    if (user) {
+      unsubResults = onSnapshot(collection(db, 'results'), (snapshot) => {
+        const data: StudentResult[] = [];
+        snapshot.forEach(doc => {
+          data.push({ id: doc.id, ...doc.data() } as StudentResult);
+        });
+        setDbStats(prev => ({ ...prev, results: snapshot.size }));
+        if (snapshot.size === 0) {
+          setResultsState([]);
+        } else {
+          setResultsState(data);
+        }
+      }, () => {
+        // Suppress background listener error in console
         setResultsState([]);
-      } else {
-        setResultsState(data);
-      }
-    }, () => {
-      // Suppress background listener error in console
+      });
+    } else {
       setResultsState([]);
-    });
+    }
 
-    // 5. Academic Sessions
-    const unsubSessions = onSnapshot(collection(db, 'sessions'), (snapshot) => {
+    // 5. Academic Sessions (Unconditional, small, needed for course listing/timetable on public pages)
+    unsubSessions = onSnapshot(collection(db, 'sessions'), (snapshot) => {
       const data: AcademicSession[] = [];
       snapshot.forEach(doc => {
         data.push({ id: doc.id, ...doc.data() } as AcademicSession);
@@ -395,8 +405,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       setSessionsState([]);
     });
 
-    // 6. Courses
-    const unsubCourses = onSnapshot(collection(db, 'courses'), (snapshot) => {
+    // 6. Courses (Unconditional, small, needed for public course directory)
+    unsubCourses = onSnapshot(collection(db, 'courses'), (snapshot) => {
       const data: Course[] = [];
       snapshot.forEach(doc => {
         data.push({ id: doc.id, ...doc.data() } as Course);
@@ -412,62 +422,74 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       setCoursesState([]);
     });
 
-    // 7. Attendance
-    const unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {
-      const data: Record<string, any> = {};
-      snapshot.forEach(doc => {
-        const item = doc.data();
-        const docId = item.id || doc.id.split('_')[1] || doc.id;
-        const key = `${item.date}:${docId}`;
-        data[key] = {
-          status: item.status,
-          remarks: item.remarks || '',
-          inTime: item.inTime || '',
-          outTime: item.outTime || '',
-          earlyOutReason: item.earlyOutReason || ''
-        };
-      });
-      setDbStats(prev => ({ ...prev, attendance: snapshot.size }));
-      if (snapshot.size === 0) {
+    // 7. Attendance - only if logged in (sensitive, large collection)
+    if (user) {
+      unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {
+        const data: Record<string, any> = {};
+        snapshot.forEach(doc => {
+          const item = doc.data();
+          const docId = item.id || doc.id.split('_')[1] || doc.id;
+          const key = `${item.date}:${docId}`;
+          data[key] = {
+            status: item.status,
+            remarks: item.remarks || '',
+            inTime: item.inTime || '',
+            outTime: item.outTime || '',
+            earlyOutReason: item.earlyOutReason || ''
+          };
+        });
+        setDbStats(prev => ({ ...prev, attendance: snapshot.size }));
+        if (snapshot.size === 0) {
+          setAttendanceMapState({});
+        } else {
+          setAttendanceMapState(data);
+        }
+      }, () => {
         setAttendanceMapState({});
-      } else {
-        setAttendanceMapState(data);
-      }
-    }, () => {
+      });
+    } else {
       setAttendanceMapState({});
-    });
+    }
 
-    // 8. Fees & Transactions
-    const unsubFees = onSnapshot(collection(db, 'fees'), (snapshot) => {
-      const data: any[] = [];
-      snapshot.forEach(doc => {
-        data.push({ id: doc.id, ...doc.data() });
-      });
-      setDbStats(prev => ({ ...prev, fees: snapshot.size }));
-      if (snapshot.size === 0) {
+    // 8. Fees & Transactions - only if logged in (sensitive, large collection)
+    if (user) {
+      unsubFees = onSnapshot(collection(db, 'fees'), (snapshot) => {
+        const data: any[] = [];
+        snapshot.forEach(doc => {
+          data.push({ id: doc.id, ...doc.data() });
+        });
+        setDbStats(prev => ({ ...prev, fees: snapshot.size }));
+        if (snapshot.size === 0) {
+          setFeesTransactionsState([]);
+        } else {
+          setFeesTransactionsState(data);
+        }
+      }, () => {
         setFeesTransactionsState([]);
-      } else {
-        setFeesTransactionsState(data);
-      }
-    }, () => {
-      setFeesTransactionsState([]);
-    });
-
-    // 9. School Events
-    const unsubEvents = onSnapshot(collection(db, 'events'), (snapshot) => {
-      const data: any[] = [];
-      snapshot.forEach(doc => {
-        data.push({ id: doc.id, ...doc.data() });
       });
-      setDbStats(prev => ({ ...prev, events: snapshot.size }));
-      if (snapshot.size === 0) {
+    } else {
+      setFeesTransactionsState([]);
+    }
+
+    // 9. School Events - only if logged in (only shown inside admin dashboard)
+    if (user) {
+      unsubEvents = onSnapshot(collection(db, 'events'), (snapshot) => {
+        const data: any[] = [];
+        snapshot.forEach(doc => {
+          data.push({ id: doc.id, ...doc.data() });
+        });
+        setDbStats(prev => ({ ...prev, events: snapshot.size }));
+        if (snapshot.size === 0) {
+          setSchoolEventsState([]);
+        } else {
+          setSchoolEventsState(data);
+        }
+      }, () => {
         setSchoolEventsState([]);
-      } else {
-        setSchoolEventsState(data);
-      }
-    }, () => {
+      });
+    } else {
       setSchoolEventsState([]);
-    });
+    }
 
     return () => {
       unsubStudents();

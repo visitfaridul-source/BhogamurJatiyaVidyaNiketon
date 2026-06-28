@@ -1,67 +1,97 @@
 import React, { useState } from 'react';
-import { useSchool, StudentResult } from '../context/SchoolContext';
+import { StudentResult } from '../context/SchoolContext';
 import { useWebsite } from '../context/WebsiteContext';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, CheckCircle2, XCircle, Award, Printer, Download, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { db } from '../firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 export default function ResultPage() {
-  const { results } = useSchool();
   const { settings } = useWebsite();
   const [admNo, setAdmNo] = useState('');
   const [fullName, setFullName] = useState('');
   const [searchedResult, setSearchedResult] = useState<StudentResult | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [isPrinting, setIsPrinting] = useState(false);
   const navigate = useNavigate();
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setHasSearched(true);
     setError('');
+    setSearchedResult(null);
 
     if (!admNo.trim() || !fullName.trim()) {
       setError('Please enter both Admission Number and Full Name.');
-      setSearchedResult(null);
       return;
     }
 
-    const result = results.find(
-      r => r.studentId.toLowerCase() === admNo.trim().toLowerCase() &&
-           r.studentName.toLowerCase() === fullName.trim().toLowerCase()
-    );
+    try {
+      setIsLoading(true);
 
-    if (result) {
-      // Check if restricted by admin
-      const isRestricted = settings.restrictedResultClasses?.some(
-        c => result.className.toLowerCase().includes(c.toLowerCase()) || c.toLowerCase().includes(result.className.toLowerCase())
+      // Perform a direct, secure query looking up the specific admission number
+      const resultsRef = collection(db, 'results');
+      const q = query(resultsRef, where('studentId', '==', admNo.trim()));
+      const querySnapshot = await getDocs(q);
+
+      const matchedResults: StudentResult[] = [];
+      querySnapshot.forEach((doc) => {
+        matchedResults.push({ id: doc.id, ...doc.data() } as StudentResult);
+      });
+
+      // Find by student name in-memory with case-insensitive matching
+      const result = matchedResults.find(
+        r => r.studentName.trim().toLowerCase() === fullName.trim().toLowerCase()
       );
-      if (isRestricted) {
-        setSearchedResult(null);
-        setError(`The results for ${result.className} are currently restricted/locked by the school management. Please contact the administration.`);
-        return;
-      }
 
-      // Calculate rank
-      const peerResults = results.filter(
-        r => r.className === result.className && r.examName === result.examName
-      ).sort((a, b) => b.percentage - a.percentage);
-      
-      let rank = 1;
-      for (let i = 0; i < peerResults.length; i++) {
-        if (peerResults[i].id === result.id) {
-          rank = i + 1;
-          break;
+      if (result) {
+        // Check if restricted by admin
+        const isRestricted = settings.restrictedResultClasses?.some(
+          c => result.className.toLowerCase().includes(c.toLowerCase()) || c.toLowerCase().includes(result.className.toLowerCase())
+        );
+        if (isRestricted) {
+          setError(`The results for ${result.className} are currently restricted/locked by the school management. Please contact the administration.`);
+          setIsLoading(false);
+          return;
         }
+
+        // To calculate rank safely, query peer results for the same exam and class only
+        const peerQuery = query(
+          resultsRef,
+          where('className', '==', result.className),
+          where('examName', '==', result.examName)
+        );
+        const peerSnapshot = await getDocs(peerQuery);
+        const peerResults: StudentResult[] = [];
+        peerSnapshot.forEach((doc) => {
+          peerResults.push({ id: doc.id, ...doc.data() } as StudentResult);
+        });
+
+        // Sort peer results by percentage
+        peerResults.sort((a, b) => b.percentage - a.percentage);
+
+        let rank = 1;
+        for (let i = 0; i < peerResults.length; i++) {
+          if (peerResults[i].id === result.id) {
+            rank = i + 1;
+            break;
+          }
+        }
+
+        const resultWithRank = { ...result, rank };
+        setSearchedResult(resultWithRank as StudentResult & { rank: number });
+      } else {
+        setError('No matching result found. Please check your credentials.');
       }
-      
-      const resultWithRank = { ...result, rank };
-      setSearchedResult(resultWithRank as StudentResult & { rank: number });
-    } else {
-      setSearchedResult(null);
-      setError('No matching result found. Please check your credentials.');
+    } catch (err) {
+      console.error("Failed to query result: ", err);
+      setError('An error occurred while fetching the result. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -183,7 +213,8 @@ export default function ResultPage() {
                   placeholder="Admission Number (e.g. ADM2023001)"
                   value={admNo}
                   onChange={(e) => setAdmNo(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800 font-medium"
+                  disabled={isLoading}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800 font-medium disabled:opacity-60"
                 />
               </div>
               <div className="flex-1">
@@ -192,15 +223,21 @@ export default function ResultPage() {
                   placeholder="Full Name (e.g. AARAV SHARMA)"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800 font-medium"
+                  disabled={isLoading}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800 font-medium disabled:opacity-60"
                 />
               </div>
               <button 
                 type="submit"
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                disabled={isLoading}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Search className="w-5 h-5" />
-                Find
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Search className="w-5 h-5" />
+                )}
+                {isLoading ? 'Searching...' : 'Find'}
               </button>
             </form>
 
