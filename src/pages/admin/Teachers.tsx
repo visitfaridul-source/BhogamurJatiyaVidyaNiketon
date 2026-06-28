@@ -106,8 +106,8 @@ export default function Teachers() {
     if (videoRef.current) {
       const canvas = document.createElement("canvas");
       
-      // Calculate scaled dimensions (target max width ~300px)
-      const MAX_WIDTH = 300;
+      // Calculate scaled dimensions (target max width ~200px to ensure 20-30KB size)
+      const MAX_WIDTH = 200;
       let targetWidth = videoRef.current.videoWidth;
       let targetHeight = videoRef.current.videoHeight;
       
@@ -122,8 +122,8 @@ export default function Teachers() {
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.drawImage(videoRef.current, 0, 0, targetWidth, targetHeight);
-        // Use 0.6 quality for lower file size (approx 20-30kb)
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+        // Use 0.55 quality to keep size under 20-30KB and avoid data crashes
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.55);
         setPhotoPreview(dataUrl);
         stopCamera();
       }
@@ -156,7 +156,8 @@ export default function Teachers() {
         img.src = reader.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 300;
+          // Scale to max width of 200px to ensure extremely lightweight 20-30KB images
+          const MAX_WIDTH = 200;
           let targetWidth = img.width;
           let targetHeight = img.height;
           
@@ -171,8 +172,8 @@ export default function Teachers() {
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-            // Use 0.6 quality for lower file size (approx 20-30kb)
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+            // Use 0.55 quality to keep size under 20-30KB and avoid document limit crashes
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.55);
             setPhotoPreview(dataUrl);
           }
         };
