@@ -184,7 +184,29 @@ export default function IdCardTemplate({
           </div>
         )}
 
-        {/* Abstract Background SVG */}
+        {/* Abstract Background SVG (Top) */}
+        <div className="absolute top-0 left-0 right-0 h-[12.7mm] pointer-events-none opacity-100 z-0 rotate-180">
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="w-full h-full"
+          >
+            <path
+              d="M0,0 Q50,50 100,0 L100,100 L0,100 Z"
+              fill={styles.accent}
+              opacity="1"
+            />
+            <circle
+              cx="20"
+              cy="80"
+              r="30"
+              fill={styles.secondary}
+              opacity="1"
+            />
+          </svg>
+        </div>
+
+        {/* Abstract Background SVG (Bottom) */}
         <div className="absolute bottom-0 left-0 right-0 h-[25.4mm] pointer-events-none opacity-100 z-0">
           <svg
             viewBox="0 0 100 100"
@@ -219,7 +241,7 @@ export default function IdCardTemplate({
 
         <div className="flex-1 w-full p-4 flex flex-col justify-end relative z-10">
           {/* QR Code Container - Centered */}
-          <div className="flex flex-col items-center justify-center mb-auto mt-auto shrink-0 relative z-20">
+          <div className="flex flex-col items-center justify-center mt-auto mb-4 shrink-0 relative z-20">
             <div className="p-1.5 bg-white rounded-lg shadow-sm border border-black/5 flex flex-col items-center gap-1">
               <QRCodeSVG
                 value={JSON.stringify({
