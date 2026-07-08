@@ -184,6 +184,23 @@ export default function IdCardTemplate({
           </div>
         )}
 
+        {/* Top Header Overlay with School Name */}
+        <div className="absolute top-0 left-0 right-0 h-[12.7mm] z-10 flex items-center justify-center px-2 pt-1">
+          <p
+            className={cn(
+              "font-bold font-fjalla uppercase leading-tight whitespace-nowrap text-white text-center",
+              (settings.idCardSchoolName || settings.schoolName || "Bhogamur Jatiya Vidya Niketon").length > 22
+                ? "text-[8px] tracking-normal"
+                : "text-[10px] tracking-wide"
+            )}
+            style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}
+          >
+            {settings.idCardSchoolName ||
+              settings.schoolName ||
+              "Bhogamur Jatiya Vidya Niketon"}
+          </p>
+        </div>
+
         {/* Abstract Background SVG (Top) */}
         <div className="absolute top-0 left-0 right-0 h-[12.7mm] pointer-events-none opacity-100 z-0 rotate-180">
           <svg
@@ -264,18 +281,6 @@ export default function IdCardTemplate({
           <div className="mt-auto space-y-1 bg-black/40 backdrop-blur-sm p-3 px-4 w-full border-t border-black/20" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
             <p className="text-[7px] font-bold text-white">
               If found, return to:
-            </p>
-            <p
-              className={cn(
-                "font-bold font-fjalla uppercase leading-tight whitespace-nowrap text-white",
-                (settings.idCardSchoolName || settings.schoolName || "Bhogamur Jatiya Vidya Niketon").length > 22
-                  ? "text-[8px] tracking-normal"
-                  : "text-[10px] tracking-wide"
-              )}
-            >
-              {settings.idCardSchoolName ||
-                settings.schoolName ||
-                "Bhogamur Jatiya Vidya Niketon"}
             </p>
             <p className="text-[7px] text-white leading-tight">
               {settings.address || "BHOGAMUR, NAGAON, ASSAM, 782140"}
