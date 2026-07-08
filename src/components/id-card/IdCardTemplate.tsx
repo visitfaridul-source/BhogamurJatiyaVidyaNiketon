@@ -318,12 +318,12 @@ export default function IdCardTemplate({
           <path
             d="M100,100 L0,100 L0,88 C30,75 70,105 100,82 Z"
             fill={styles.primary}
-            opacity="0.95"
+            opacity="0.05"
           />
           <path
             d="M100,100 L0,100 L0,92 C40,85 60,100 100,90 Z"
             fill={styles.secondary}
-            opacity="1"
+            opacity="0.08"
           />
 
           {/* Decorative circles */}
