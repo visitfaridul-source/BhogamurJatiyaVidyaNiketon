@@ -185,7 +185,7 @@ export default function IdCardTemplate({
         )}
 
         {/* Abstract Background SVG */}
-        <div className="absolute bottom-0 left-0 right-0 h-[50.8mm] pointer-events-none opacity-80 mix-blend-multiply z-0">
+        <div className="absolute bottom-0 left-0 right-0 h-[25.4mm] pointer-events-none opacity-100 z-0">
           <svg
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
@@ -194,14 +194,14 @@ export default function IdCardTemplate({
             <path
               d="M0,0 Q50,50 100,0 L100,100 L0,100 Z"
               fill={styles.accent}
-              opacity="0.7"
+              opacity="1"
             />
             <circle
               cx="20"
               cy="80"
               r="30"
               fill={styles.secondary}
-              opacity="0.8"
+              opacity="1"
             />
           </svg>
         </div>
