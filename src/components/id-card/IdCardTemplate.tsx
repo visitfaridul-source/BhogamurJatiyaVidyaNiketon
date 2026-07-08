@@ -345,12 +345,12 @@ export default function IdCardTemplate({
       )}
 
       {/* Header */}
-      <div className="w-full pt-1.5 pb-1 px-1 relative z-10 text-center drop-shadow-[0_2.5px_2.5px_rgba(0,0,0,0.85)] flex flex-col items-center">
+      <div className="w-full pt-1.5 pb-1 px-1.5 relative z-10 text-center drop-shadow-[0_2.5px_2.5px_rgba(0,0,0,0.85)] flex flex-col items-center">
         <h2
           className={cn(
-            "font-black uppercase text-white leading-[1.1] font-fjalla w-full tracking-wide",
+            "font-black uppercase text-white leading-[1.1] font-fjalla w-full tracking-normal",
             (settings.idCardSchoolName || settings.schoolName || "").length > 25
-              ? "text-[12px]"
+              ? "text-[11.5px]"
               : "text-[14.5px]",
           )}
         >
@@ -358,7 +358,7 @@ export default function IdCardTemplate({
             settings.schoolName ||
             "Bhogamur Jatiya Vidya Niketon"}
         </h2>
-        <p className="text-[9.5px] text-center font-semibold text-white/95 tracking-wide mt-1 leading-tight w-full mx-auto">
+        <p className="text-[10.5px] text-center font-semibold text-white/95 tracking-wide mt-1 leading-tight w-full mx-auto">
           Bhogamur, Nagaon, Assam, 782140
         </p>
 
@@ -501,7 +501,7 @@ export default function IdCardTemplate({
           {settings.principalSignatureUrl ? (
             <img
               src={settings.principalSignatureUrl}
-              className="w-[18mm] h-[6mm] mb-[2px] object-contain mix-blend-multiply opacity-80"
+              className="w-[18mm] h-[6mm] mb-[2px] object-contain"
               alt="Signature"
             />
           ) : (
