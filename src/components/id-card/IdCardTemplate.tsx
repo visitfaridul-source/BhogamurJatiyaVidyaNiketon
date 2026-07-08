@@ -345,20 +345,20 @@ export default function IdCardTemplate({
       )}
 
       {/* Header */}
-      <div className="w-full pt-1.5 pb-1 px-1 relative z-10 text-center drop-shadow-[0_2.5px_2.5px_rgba(0,0,0,0.85)]">
+      <div className="w-full pt-1.5 pb-1 px-1 relative z-10 text-center drop-shadow-[0_2.5px_2.5px_rgba(0,0,0,0.85)] flex flex-col items-center">
         <h2
           className={cn(
-            "font-black uppercase text-white leading-[1.05] font-fjalla w-full whitespace-nowrap tracking-wider",
-            (settings.idCardSchoolName || settings.schoolName || "").length > 30
-              ? "text-[13px]"
-              : "text-[15.5px]",
+            "font-black uppercase text-white leading-[1.1] font-fjalla w-full tracking-wide",
+            (settings.idCardSchoolName || settings.schoolName || "").length > 25
+              ? "text-[12px]"
+              : "text-[14.5px]",
           )}
         >
           {settings.idCardSchoolName ||
             settings.schoolName ||
             "Bhogamur Jatiya Vidya Niketon"}
         </h2>
-        <p className="text-[8.5px] font-semibold text-white/95 tracking-wide mt-1 leading-tight w-full mx-auto">
+        <p className="text-[9.5px] text-center font-semibold text-white/95 tracking-wide mt-1 leading-tight w-full mx-auto">
           Bhogamur, Nagaon, Assam, 782140
         </p>
 
