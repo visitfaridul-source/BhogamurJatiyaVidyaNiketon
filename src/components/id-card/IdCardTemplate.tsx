@@ -301,29 +301,29 @@ export default function IdCardTemplate({
           <path
             d="M0,0 L100,0 L100,28 C70,45 30,10 0,32 Z"
             fill={styles.primary}
-            opacity="0.9"
+            opacity="1"
           />
           <path
             d="M0,0 L100,0 L100,24 C60,40 40,5 0,22 Z"
             fill={styles.secondary}
-            opacity="0.7"
+            opacity="1"
           />
           <path
             d="M0,0 L100,0 L100,18 C50,30 50,-5 0,15 Z"
             fill={styles.accent}
-            opacity="0.5"
+            opacity="0.9"
           />
 
           {/* Bottom subtle waves */}
           <path
             d="M100,100 L0,100 L0,88 C30,75 70,105 100,82 Z"
             fill={styles.primary}
-            opacity="0.05"
+            opacity="0.95"
           />
           <path
             d="M100,100 L0,100 L0,92 C40,85 60,100 100,90 Z"
             fill={styles.secondary}
-            opacity="0.08"
+            opacity="1"
           />
 
           {/* Decorative circles */}
