@@ -345,12 +345,12 @@ export default function IdCardTemplate({
       )}
 
       {/* Header */}
-      <div className="w-full pt-1.5 pb-1 px-1.5 relative z-10 text-center drop-shadow-[0_2.5px_2.5px_rgba(0,0,0,0.85)] flex flex-col items-center">
+      <div className="w-full pt-1.5 pb-1 px-0.5 relative z-10 text-center drop-shadow-[0_2.5px_2.5px_rgba(0,0,0,0.85)] flex flex-col items-center">
         <h2
           className={cn(
-            "font-black uppercase text-white leading-[1.1] font-fjalla w-full tracking-normal",
+            "font-black uppercase text-white leading-[1.1] font-fjalla w-full tracking-normal transform scale-x-[1.08]",
             (settings.idCardSchoolName || settings.schoolName || "").length > 25
-              ? "text-[11.5px]"
+              ? "text-[12px]"
               : "text-[14.5px]",
           )}
         >
