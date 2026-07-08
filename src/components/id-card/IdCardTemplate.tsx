@@ -185,15 +185,15 @@ export default function IdCardTemplate({
         )}
 
         {/* Top Header Overlay with School Name */}
-        <div className="absolute top-0 left-0 right-0 h-[12.7mm] z-10 flex items-center justify-center px-2 pt-1">
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-start justify-center px-1 pt-[2mm]">
           <p
             className={cn(
-              "font-bold font-fjalla uppercase leading-tight whitespace-nowrap text-white text-center",
+              "font-bold font-fjalla uppercase leading-none text-white text-center w-full",
               (settings.idCardSchoolName || settings.schoolName || "Bhogamur Jatiya Vidya Niketon").length > 22
-                ? "text-[8px] tracking-normal"
-                : "text-[10px] tracking-wide"
+                ? "text-[9px] tracking-wide scale-x-110"
+                : "text-[12px] tracking-[0.2em] scale-x-105"
             )}
-            style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}
+            style={{ textShadow: '1px 1px 3px rgba(0,0,0,0.9)' }}
           >
             {settings.idCardSchoolName ||
               settings.schoolName ||
@@ -256,9 +256,9 @@ export default function IdCardTemplate({
           </div>
         )}
 
-        <div className="flex-1 w-full pt-4 flex flex-col justify-end relative z-10">
+        <div className="flex-1 w-full pt-4 pb-[20mm] flex flex-col justify-end relative z-10">
           {/* QR Code Container - Centered */}
-          <div className="flex flex-col items-center justify-center mt-auto mb-0 translate-y-[14mm] shrink-0 relative z-20">
+          <div className="flex flex-col items-center justify-center mt-auto mb-0 shrink-0 relative z-20">
             <div className="p-1.5 bg-white rounded-lg shadow-sm border border-black/5 flex flex-col items-center gap-1">
               <QRCodeSVG
                 value={JSON.stringify({
@@ -278,23 +278,20 @@ export default function IdCardTemplate({
             </div>
           </div>
 
-          <div className="mt-auto space-y-1 bg-black/40 backdrop-blur-sm p-3 px-4 w-full border-t border-black/20" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
-            <p className="text-[7px] font-bold text-white">
-              If found, return to:
-            </p>
-            <p className="text-[7px] text-white leading-tight">
-              {settings.address || "BHOGAMUR, NAGAON, ASSAM, 782140"}
-            </p>
-            <p className="text-[7px] text-white leading-tight">
-              Ph: {settings.phone || "8638803208"}
-            </p>
-          </div>
         </div>
 
-        <div
-          className="h-[2mm] w-full mt-auto"
-          style={{ backgroundColor: styles.secondary }}
-        />
+        {/* Bottom Overlay Info */}
+        <div className="absolute bottom-0 left-0 right-0 z-20 space-y-1 bg-black/40 backdrop-blur-sm pt-2 pb-1.5 px-4 w-full border-t border-black/20 text-center" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
+          <p className="text-[7px] font-bold text-white uppercase tracking-wider">
+            If found, return to:
+          </p>
+          <p className="text-[8px] font-bold text-white leading-tight">
+            {settings.address || "BHOGAMUR, NAGAON, ASSAM, 782140"}
+          </p>
+          <p className="text-[7px] font-bold text-white leading-tight">
+            Ph: {settings.phone || "8638803208"}
+          </p>
+        </div>
       </div>
     );
   }
