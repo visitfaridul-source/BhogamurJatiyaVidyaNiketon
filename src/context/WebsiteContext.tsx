@@ -171,6 +171,7 @@ export interface WebsiteSettings {
   principalHeroName?: string;
   vicePrincipalHeroImage?: string;
   vicePrincipalHeroName?: string;
+  idCardBackBackgroundUrl?: string;
   
   // Login Sidebar
   watermarkUrl?: string;
@@ -402,6 +403,7 @@ const defaultSettings: WebsiteSettings = {
   principalMessageBody: "Dear Parents, Students, and Well-wishers,\n\nIt gives me immense pleasure to welcome you to our distinguished institution. We have consistently strived to create an environment that encourages curiosity, critical thinking, and innovation. We believe that every child is unique and possesses extraordinary potential waiting to be discovered.\n\nOur dedicated faculty focuses on delivering a holistic educational experience. Beyond the rigorous academic curriculum, we emphasize the importance of sports, arts, and moral values. We aim to equip our students not just with knowledge, but with the wisdom to use it for the betterment of society.\n\nAs we navigate the challenges and opportunities of the 21st century, our focus remains steadfast on preparing our youth to be responsible global citizens. We value the partnership of our parents in this deeply rewarding journey and look forward to building a brighter future together.\n\nLet us work hand in hand to help our students soar to new heights.",
   principalSignatureUrl: undefined,
   watermarkUrl: undefined,
+  idCardBackBackgroundUrl: undefined,
   loginSidebarHeading: "Empowering education through technology.",
   loginSidebarLogoUrl: undefined,
   loginSidebarQuoteAuthor: "Dr. Sarah Jenkins",

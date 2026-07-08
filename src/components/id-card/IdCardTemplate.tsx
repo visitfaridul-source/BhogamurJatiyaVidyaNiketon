@@ -173,8 +173,19 @@ export default function IdCardTemplate({
         )}
         style={{ boxSizing: "border-box" }}
       >
+        {/* Custom Back Background Photo */}
+        {settings.idCardBackBackgroundUrl && (
+          <div className="absolute inset-0 pointer-events-none z-0">
+            <img 
+              src={settings.idCardBackBackgroundUrl}
+              className="w-full h-full object-cover"
+              alt="Back Background"
+            />
+          </div>
+        )}
+
         {/* Abstract Background SVG */}
-        <div className="absolute inset-0 pointer-events-none opacity-20">
+        <div className="absolute inset-0 pointer-events-none opacity-80 mix-blend-multiply z-0">
           <svg
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
@@ -183,14 +194,14 @@ export default function IdCardTemplate({
             <path
               d="M0,0 Q50,50 100,0 L100,100 L0,100 Z"
               fill={styles.accent}
-              opacity="0.3"
+              opacity="0.7"
             />
             <circle
               cx="20"
               cy="80"
               r="30"
               fill={styles.secondary}
-              opacity="0.4"
+              opacity="0.8"
             />
           </svg>
         </div>
@@ -251,7 +262,7 @@ export default function IdCardTemplate({
             </div>
           </div>
 
-          <div className="mt-auto space-y-1 bg-white/60 backdrop-blur-[2px] p-2 rounded-lg border border-black/5">
+          <div className="mt-auto space-y-1 bg-white/30 backdrop-blur-sm p-2 rounded-lg border border-white/20">
             <p className="text-[7px] font-bold text-slate-800">
               If found, return to:
             </p>
