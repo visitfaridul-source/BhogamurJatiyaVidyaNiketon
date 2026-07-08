@@ -241,7 +241,7 @@ export default function IdCardTemplate({
 
         <div className="flex-1 w-full p-4 flex flex-col justify-end relative z-10">
           {/* QR Code Container - Centered */}
-          <div className="flex flex-col items-center justify-center mt-auto mb-4 shrink-0 relative z-20">
+          <div className="flex flex-col items-center justify-center mt-auto mb-0 translate-y-[18mm] shrink-0 relative z-20">
             <div className="p-1.5 bg-white rounded-lg shadow-sm border border-black/5 flex flex-col items-center gap-1">
               <QRCodeSVG
                 value={JSON.stringify({
@@ -261,28 +261,27 @@ export default function IdCardTemplate({
             </div>
           </div>
 
-          <div className="mt-auto space-y-1 bg-white/30 backdrop-blur-sm p-2 rounded-lg border border-white/20">
-            <p className="text-[7px] font-bold text-slate-800">
+          <div className="mt-auto space-y-1 bg-black/40 backdrop-blur-sm p-2 rounded-lg border border-black/20" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
+            <p className="text-[7px] font-bold text-white">
               If found, return to:
             </p>
             <p
               className={cn(
-                "font-bold font-fjalla uppercase leading-tight whitespace-nowrap",
+                "font-bold font-fjalla uppercase leading-tight whitespace-nowrap text-white",
                 (settings.idCardSchoolName || settings.schoolName || "Bhogamur Jatiya Vidya Niketon").length > 22
                   ? "text-[8px] tracking-normal"
                   : "text-[10px] tracking-wide"
               )}
-              style={{ color: styles.primary }}
             >
               {settings.idCardSchoolName ||
                 settings.schoolName ||
                 "Bhogamur Jatiya Vidya Niketon"}
             </p>
-            <p className="text-[7px] text-slate-700 leading-tight">
-              {settings.address || "123 Education Lane, Tech City"}
+            <p className="text-[7px] text-white leading-tight">
+              {settings.address || "BHOGAMUR, NAGAON, ASSAM, 782140"}
             </p>
-            <p className="text-[7px] text-slate-700 leading-tight">
-              Ph: {settings.phone || "+1 (555) 123-4567"}
+            <p className="text-[7px] text-white leading-tight">
+              Ph: {settings.phone || "8638803208"}
             </p>
           </div>
         </div>
