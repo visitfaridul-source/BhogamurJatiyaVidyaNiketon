@@ -367,7 +367,7 @@ export default function IdCardTemplate({
             <img
               src={settings.logoUrl}
               alt="School Logo"
-              className="w-full h-full object-contain"
+              className="w-full h-full object-contain drop-shadow-md"
             />
           </div>
         )}

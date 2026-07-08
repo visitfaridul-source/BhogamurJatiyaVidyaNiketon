@@ -215,7 +215,7 @@ export default function Settings() {
               <div className="border-2 border-dashed border-slate-300 rounded-2xl p-6 flex flex-col items-center justify-center text-center bg-slate-50 relative overflow-hidden group hover:border-amber-400 transition-colors h-[164px]">
                 {formData.principalSignatureUrl ? (
                   <div className="relative bg-black/5 p-2 rounded-lg">
-                    <img src={formData.principalSignatureUrl} alt="Signature" className="h-16 object-contain mix-blend-multiply" />
+                    <img src={formData.principalSignatureUrl} alt="Signature" className="h-16 object-contain " />
                     <button onClick={() => { setFormData(prev => ({...prev, principalSignatureUrl: undefined})); setSaved(false); }} className="absolute -top-3 -right-3 bg-rose-500 text-white w-6 h-6 rounded-full flex items-center justify-center shadow-md">
                       ×
                     </button>
