@@ -94,7 +94,8 @@ export default function IdCardGenerator() {
         m.id.toLowerCase().includes(searchTerm.toLowerCase());
       const matchClass =
         targetGroup === "students" && classFilter
-          ? m.class === classFilter
+          ? (m.class || "").toLowerCase().replace(/\s+/g, "") ===
+            classFilter.toLowerCase().replace(/\s+/g, "")
           : true;
       return matchSearch && matchClass;
     });
@@ -115,7 +116,7 @@ export default function IdCardGenerator() {
   useEffect(() => {
     setSelectedIds(new Set());
     setSearchTerm("");
-    setClassFilter("");
+    setClassFilter("Nursery");
   }, [targetGroup]);
 
   const handleSelectAll = (e: ChangeEvent<HTMLInputElement>) => {
@@ -345,6 +346,7 @@ export default function IdCardGenerator() {
                     onChange={(e) => setClassFilter(e.target.value)}
                     className="bg-white border border-slate-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500/20 outline-none"
                   >
+                    <option value="">All Classes</option>
                     {classes.map((c) => (
                       <option key={c} value={c}>
                         {c}
