@@ -30,8 +30,18 @@ export function compressImage(base64Str: string, maxWidth = 800, maxHeight = 800
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        // preserve transparency for PNGs by using webp or png. Webp supports both compression and transparency.
+        const outputType = base64Str.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+        
+        // If it's a JPEG, we can use quality. For PNG, quality is ignored but that's fine.
+        // Even better, just use webp if supported, but let's stick to matching input type for safety.
+        if (outputType === 'image/jpeg') {
+           ctx.fillStyle = '#FFFFFF';
+           ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        
+        resolve(canvas.toDataURL(outputType, quality));
       } else {
         resolve(base64Str);
       }
