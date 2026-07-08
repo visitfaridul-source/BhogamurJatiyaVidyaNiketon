@@ -256,7 +256,12 @@ export default function IdCardTemplate({
               If found, return to:
             </p>
             <p
-              className="text-[11px] font-bold font-fjalla uppercase leading-tight tracking-wide"
+              className={cn(
+                "font-bold font-fjalla uppercase leading-tight whitespace-nowrap",
+                (settings.idCardSchoolName || settings.schoolName || "Bhogamur Jatiya Vidya Niketon").length > 22
+                  ? "text-[8px] tracking-normal"
+                  : "text-[10px] tracking-wide"
+              )}
               style={{ color: styles.primary }}
             >
               {settings.idCardSchoolName ||
