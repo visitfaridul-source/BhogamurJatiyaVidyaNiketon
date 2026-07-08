@@ -185,7 +185,7 @@ export default function IdCardTemplate({
         )}
 
         {/* Abstract Background SVG */}
-        <div className="absolute inset-0 pointer-events-none opacity-80 mix-blend-multiply z-0">
+        <div className="absolute bottom-0 left-0 right-0 h-[50.8mm] pointer-events-none opacity-80 mix-blend-multiply z-0">
           <svg
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
@@ -217,32 +217,9 @@ export default function IdCardTemplate({
           </div>
         )}
 
-        <div
-          className="w-full py-2.5 text-center shadow-sm relative z-10"
-          style={{ backgroundColor: styles.primary }}
-        >
-          <h3 className="text-[10px] font-bold tracking-widest uppercase text-white">
-            Terms & Conditions
-          </h3>
-        </div>
-
-        <div className="flex-1 w-full p-4 flex flex-col justify-between relative z-10">
-          <div
-            className="text-[7.5px] leading-[1.6] text-justify space-y-2"
-            style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}
-          >
-            <p>
-              1. This identity card is for school use only and is
-              non-transferable.
-            </p>
-            <p>
-              2. If found by a stranger, please drop it in the nearest post box
-              or return it to the administrative office of the school.
-            </p>
-          </div>
-
-          {/* QR Code Container - Made prominent ("thora boda rakho") */}
-          <div className="flex flex-col items-center justify-center my-2 shrink-0">
+        <div className="flex-1 w-full p-4 flex flex-col justify-end relative z-10">
+          {/* QR Code Container - Centered */}
+          <div className="flex flex-col items-center justify-center mb-auto mt-auto shrink-0 relative z-20">
             <div className="p-1.5 bg-white rounded-lg shadow-sm border border-black/5 flex flex-col items-center gap-1">
               <QRCodeSVG
                 value={JSON.stringify({
