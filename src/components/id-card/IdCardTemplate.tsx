@@ -185,15 +185,19 @@ export default function IdCardTemplate({
         )}
 
         {/* Top Header Overlay with School Name */}
-        <div className="absolute top-0 left-0 right-0 z-10 flex items-start justify-center px-1 pt-[2mm]">
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-start justify-center px-1 pt-[2mm] w-full">
           <p
             className={cn(
-              "font-bold font-fjalla uppercase leading-none text-white text-center w-full",
+              "font-bold font-fjalla uppercase leading-none text-white w-full",
               (settings.idCardSchoolName || settings.schoolName || "Bhogamur Jatiya Vidya Niketon").length > 22
-                ? "text-[9px] tracking-wide scale-x-110"
-                : "text-[12px] tracking-[0.2em] scale-x-105"
+                ? "text-[9px]"
+                : "text-[11px]"
             )}
-            style={{ textShadow: '1px 1px 3px rgba(0,0,0,0.9)' }}
+            style={{ 
+              textShadow: '1px 1px 3px rgba(0,0,0,0.9)',
+              textAlignLast: 'justify',
+              textJustify: 'inter-word'
+            }}
           >
             {settings.idCardSchoolName ||
               settings.schoolName ||
