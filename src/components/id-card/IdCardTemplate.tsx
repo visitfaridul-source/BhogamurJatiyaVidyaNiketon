@@ -321,12 +321,12 @@ export default function IdCardTemplate({
           />
           <path
             d="M0,0 L100,0 L100,24 C60,40 40,5 0,22 Z"
-            fill={styles.secondary}
+            fill="#2563eb"
             opacity="1"
           />
           <path
             d="M0,0 L100,0 L100,18 C50,30 50,-5 0,15 Z"
-            fill={styles.accent}
+            fill="#3b82f6"
             opacity="0.9"
           />
 
