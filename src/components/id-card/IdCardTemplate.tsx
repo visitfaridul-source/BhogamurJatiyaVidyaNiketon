@@ -310,12 +310,12 @@ export default function IdCardTemplate({
 
           {/* Bottom subtle waves */}
           <path
-            d="M100,100 L0,100 L0,88 C30,75 70,105 100,82 Z"
+            d="M100,100 L0,100 L0,96 C30,90 70,105 100,93 Z"
             fill="#2563eb"
             opacity="0.6"
           />
           <path
-            d="M100,100 L0,100 L0,92 C40,85 60,100 100,90 Z"
+            d="M100,100 L0,100 L0,98 C40,95 60,100 100,97 Z"
             fill="#1e3a8a"
             opacity="0.9"
           />
@@ -323,7 +323,7 @@ export default function IdCardTemplate({
           {/* Decorative circles */}
           <circle cx="85" cy="12" r="18" fill="white" opacity="0.1" />
           <circle cx="92" cy="8" r="8" fill="white" opacity="0.2" />
-          <circle cx="15" cy="85" r="25" fill={styles.accent} opacity="0.05" />
+          <circle cx="15" cy="98" r="15" fill={styles.accent} opacity="0.05" />
         </svg>
       </div>
 
