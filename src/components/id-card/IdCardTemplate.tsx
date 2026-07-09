@@ -487,7 +487,7 @@ export default function IdCardTemplate({
       {/* Footer Details */}
       <div className="mb-2 w-full px-3 flex justify-between items-end relative z-20 shrink-0 mt-auto">
         <div className="text-left flex flex-col justify-end pb-[6px]">
-           <span className="text-[10px] font-bold text-slate-800 uppercase tracking-tight font-fjalla">
+           <span className="text-[10px] font-bold text-white uppercase tracking-tight font-fjalla">
               {member.type === "student" ? "Student ID Card" : "Teacher ID Card"}
            </span>
         </div>
@@ -500,13 +500,13 @@ export default function IdCardTemplate({
             />
           ) : (
             <img
-              src="https://api.dicebear.com/7.x/initials/svg?seed=Principal&backgroundColor=transparent&textColor=000000"
-              className="w-[12mm] h-[4mm] opacity-60 mb-[2px] object-cover mix-blend-multiply"
+              src="https://api.dicebear.com/7.x/initials/svg?seed=Principal&backgroundColor=transparent&textColor=ffffff"
+              className="w-[12mm] h-[4mm] opacity-90 mb-[2px] object-cover"
               alt="Signature"
             />
           )}
-          <div className="w-[16mm] h-[1px] bg-slate-400 mb-[2px]"></div>
-          <p className="text-[5px] uppercase font-bold text-slate-600 tracking-wider">
+          <div className="w-[18mm] h-[1.5px] bg-white/60 mb-[2px]"></div>
+          <p className="text-[7px] uppercase font-bold text-white tracking-wider">
             Principal
           </p>
         </div>
