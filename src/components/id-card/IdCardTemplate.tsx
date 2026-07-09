@@ -316,7 +316,7 @@ export default function IdCardTemplate({
           {/* Top dynamic waves */}
           <path
             d="M0,0 L100,0 L100,28 C70,45 30,10 0,32 Z"
-            fill="#2563eb"
+            fill="#1e3a8a"
             opacity="1"
           />
           <path
