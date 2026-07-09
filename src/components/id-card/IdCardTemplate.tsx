@@ -259,7 +259,7 @@ export default function IdCardTemplate({
         </div>
 
         {/* Bottom Overlay Info */}
-        <div className="absolute bottom-0 left-0 right-0 z-20 space-y-1 bg-black/40 backdrop-blur-sm pt-2 pb-1.5 px-4 w-full border-t border-black/20 text-center" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
+        <div className="absolute bottom-0 left-0 right-0 z-20 space-y-1 bg-[#1e3a8a]/90 backdrop-blur-sm pt-2 pb-1.5 px-4 w-full border-t border-blue-900/50 text-center" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
           <p className="text-[7px] font-bold text-white uppercase tracking-wider">
             If found, return to:
           </p>
