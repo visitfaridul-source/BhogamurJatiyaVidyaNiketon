@@ -340,7 +340,7 @@ export default function IdCardTemplate({
             settings.schoolName ||
             "Bhogamur Jatiya Vidya Niketon"}
         </h2>
-        <p className="text-[10.5px] text-center font-semibold text-white/95 tracking-wide mt-1 leading-tight w-full mx-auto">
+        <p className="text-[10.5px] text-center font-semibold text-white/95 tracking-wide mt-0 leading-tight w-full mx-auto">
           Bhogamur, Nagaon, Assam, 782140
         </p>
 
