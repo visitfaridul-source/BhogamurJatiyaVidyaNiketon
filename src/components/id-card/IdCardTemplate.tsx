@@ -373,7 +373,7 @@ export default function IdCardTemplate({
       <div className="text-center mt-1.5 px-2 relative z-20">
         <h3
           className={cn(
-            "text-[11px] font-black uppercase tracking-tight leading-none text-slate-800",
+            "text-[11px] font-black uppercase tracking-tight leading-none text-red-700",
           )}
         >
           {member.name}
