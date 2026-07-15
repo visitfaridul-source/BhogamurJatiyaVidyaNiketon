@@ -13,10 +13,9 @@ interface PhotoEditorProps {
 const PhotoEditor: React.FC<PhotoEditorProps> = ({ photoUrl, onClose, onSave }) => {
   const [crop, setCrop] = useState<Crop>({
     unit: '%',
-    x: 10,
+    x: 25,
     y: 10,
-    width: 80,
-    height: 80
+    width: 50
   });
   const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
   
@@ -70,13 +69,12 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photoUrl, onClose, onSave }) 
         </button>
       </div>
 
-      <div className="relative w-full max-w-3xl flex-1 min-h-[40vh] max-h-[60vh] bg-black/50 rounded-xl overflow-hidden mt-12 mb-6 border border-slate-800 flex items-center justify-center p-4">
+      <div className="relative w-full max-w-3xl flex-1 min-h-[40vh] bg-black/50 rounded-xl mt-12 mb-6 border border-slate-800 flex items-center justify-center p-4">
         <ReactCrop
           crop={crop}
           onChange={(_, percentCrop) => setCrop(percentCrop)}
           onComplete={(c) => setCompletedCrop(c)}
-          aspect={3 / 4} // Standard ID photo aspect ratio (passport size)
-          className="max-h-full flex items-center justify-center"
+          className="flex items-center justify-center"
         >
           <img
             ref={imgRef}
@@ -86,18 +84,9 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photoUrl, onClose, onSave }) 
             style={{ 
               transform: `rotate(${rotation}deg)`,
               filter: `brightness(${brightness}%) contrast(${contrast}%)`,
-              maxHeight: '55vh',
-              objectFit: 'contain'
-            }}
-            onLoad={(e) => {
-              const { width, height } = e.currentTarget;
-              setCompletedCrop({
-                x: width * 0.1,
-                y: height * 0.1,
-                width: width * 0.8,
-                height: height * 0.8,
-                unit: 'px'
-              });
+              maxHeight: '60vh',
+              maxWidth: '100%',
+              display: 'block'
             }}
           />
         </ReactCrop>
@@ -158,7 +147,7 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photoUrl, onClose, onSave }) 
                 setBrightness(100);
                 setContrast(100);
                 setRotation(0);
-                setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 });
+                setCrop({ unit: '%', x: 25, y: 10, width: 50 });
               }}
               className="text-xs text-slate-400 hover:text-white underline transition-colors"
             >
@@ -212,13 +201,24 @@ const getCroppedImg = async (
     return '';
   }
 
-  croppedCanvas.width = pixelCrop.width;
-  croppedCanvas.height = pixelCrop.height;
-
   // In react-image-crop, pixelCrop is relative to the displayed image size.
   // We need to scale it to the natural image size.
   const scaleX = image.naturalWidth / image.width;
   const scaleY = image.naturalHeight / image.height;
+
+  let targetWidth = pixelCrop.width * scaleX;
+  let targetHeight = pixelCrop.height * scaleY;
+  
+  // Downscale if too large to avoid localStorage quota issues
+  const MAX_WIDTH = 300;
+  if (targetWidth > MAX_WIDTH) {
+    const aspectRatio = targetHeight / targetWidth;
+    targetWidth = MAX_WIDTH;
+    targetHeight = MAX_WIDTH * aspectRatio;
+  }
+
+  croppedCanvas.width = targetWidth;
+  croppedCanvas.height = targetHeight;
 
   croppedCtx.drawImage(
     canvas,
@@ -228,19 +228,16 @@ const getCroppedImg = async (
     pixelCrop.height * scaleY,
     0,
     0,
-    pixelCrop.width,
-    pixelCrop.height
+    targetWidth,
+    targetHeight
   );
 
-  return new Promise((resolve) => {
-    croppedCanvas.toBlob((blob) => {
-      if (!blob) {
-        resolve('');
-        return;
-      }
-      resolve(URL.createObjectURL(blob));
-    }, 'image/jpeg', 0.95);
-  });
+  try {
+    return croppedCanvas.toDataURL('image/jpeg', 0.8);
+  } catch (err) {
+    console.error('Canvas is tainted, returning original image', err);
+    return image.src;
+  }
 };
 
 export default PhotoEditor;

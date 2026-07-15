@@ -882,8 +882,10 @@ export default function Students() {
           photoUrl={viewingStudentForPhoto.photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStudentForPhoto.name}`}
           onClose={() => setIsEditingPhoto(false)}
           onSave={(editedUrl) => {
-            setStudents(prev => prev.map(s => s.id === viewingStudentForPhoto.id ? { ...s, photoUrl: editedUrl } : s));
-            setViewingStudentForPhoto(prev => ({ ...prev, photoUrl: editedUrl }));
+            if (editedUrl) {
+              setStudents(prev => prev.map(s => s.id === viewingStudentForPhoto.id ? { ...s, photoUrl: editedUrl } : s));
+              setViewingStudentForPhoto(prev => ({ ...prev, photoUrl: editedUrl }));
+            }
             setIsEditingPhoto(false);
           }}
         />
