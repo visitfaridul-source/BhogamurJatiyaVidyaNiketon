@@ -480,23 +480,25 @@ export default function IdCardTemplate({
            </span>
         </div>
         <div className="text-right flex flex-col items-end pt-1 pb-[2px]">
-          {settings.principalSignatureUrl ? (
-            <img
-              src={settings.principalSignatureUrl}
-              className="w-[18mm] h-[6mm] mb-[2px] object-contain"
-              alt="Signature"
-            />
-          ) : (
-            <img
-              src="https://api.dicebear.com/7.x/initials/svg?seed=Principal&backgroundColor=transparent&textColor=000000"
-              className="w-[12mm] h-[4mm] opacity-90 mb-[2px] object-cover"
-              alt="Signature"
-            />
-          )}
-          <div className="w-[18mm] h-[1.5px] bg-slate-400 mb-[2px]"></div>
-          <p className="text-[8px] uppercase font-bold text-slate-800 tracking-wider">
-            Principal
-          </p>
+          <div className="flex flex-col items-center">
+            {settings.principalSignatureUrl ? (
+              <img
+                src={settings.principalSignatureUrl}
+                className="w-[18mm] h-[6mm] mb-[2px] object-contain"
+                alt="Signature"
+              />
+            ) : (
+              <img
+                src="https://api.dicebear.com/7.x/initials/svg?seed=Principal&backgroundColor=transparent&textColor=000000"
+                className="w-[12mm] h-[4mm] opacity-90 mb-[2px] object-cover"
+                alt="Signature"
+              />
+            )}
+            <div className="w-[18mm] h-[1.5px] bg-slate-400 mb-[2px]"></div>
+            <p className="text-[8px] uppercase font-bold text-slate-800 tracking-wider text-center">
+              Principal
+            </p>
+          </div>
         </div>
       </div>
 
