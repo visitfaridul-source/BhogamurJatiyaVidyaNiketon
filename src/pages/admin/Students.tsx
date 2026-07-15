@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Search, Plus, Filter, MoreVertical, Edit, Trash2, Download, Upload, IdCard, X, Printer, UserPlus, Image as ImageIcon, FileSpreadsheet, ClipboardList, Camera, RefreshCcw } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import * as XLSX from 'xlsx';
+import PhotoEditor from '../../components/PhotoEditor';
 import { useSchool } from '../../context/SchoolContext';
 import { useConfirm } from '../../context/ConfirmationContext';
 
@@ -86,7 +87,8 @@ export default function Students() {
   const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<any>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [viewingPhotoUrl, setViewingPhotoUrl] = useState<string | null>(null);
+  const [viewingStudentForPhoto, setViewingStudentForPhoto] = useState<any>(null);
+  const [isEditingPhoto, setIsEditingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Automatically update old students with default address
@@ -680,7 +682,7 @@ export default function Students() {
                   <td className="px-6 py-4">
                     <div 
                       className="w-12 h-12 rounded-full border border-slate-200 overflow-hidden shrink-0 bg-white cursor-pointer hover:opacity-80 transition-opacity"
-                      onClick={() => setViewingPhotoUrl((student as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}`)}
+                      onClick={() => setViewingStudentForPhoto(student)}
                     >
                        {(student as any).photoUrl ? (
                           <img src={(student as any).photoUrl} alt={student.name} className="w-full h-full object-cover" />
@@ -847,24 +849,45 @@ export default function Students() {
       , document.body)}
 
       {/* View Photo Modal */}
-      {viewingPhotoUrl && createPortal(
-        <div className="fixed inset-0 z-[110] bg-black/90 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setViewingPhotoUrl(null)}>
-          <div className="relative max-w-4xl max-h-[90vh] w-full flex items-center justify-center">
+      {viewingStudentForPhoto && !isEditingPhoto && createPortal(
+        <div className="fixed inset-0 z-[110] bg-black/90 flex flex-col items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setViewingStudentForPhoto(null)}>
+          <div className="absolute top-4 right-4 md:top-8 md:right-8 flex gap-4">
             <button 
-              onClick={(e) => { e.stopPropagation(); setViewingPhotoUrl(null); }} 
-              className="absolute -top-12 md:-top-4 md:-right-12 text-white hover:text-slate-300 p-2 transition-colors"
+              onClick={(e) => { e.stopPropagation(); setIsEditingPhoto(true); }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium shadow-lg"
             >
-              <X className="w-8 h-8" />
+              <Edit className="w-4 h-4" /> Edit Photo
             </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setViewingStudentForPhoto(null); }} 
+              className="p-2 text-white hover:text-slate-300 transition-colors bg-black/50 rounded-full"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          <div className="relative max-w-4xl max-h-[80vh] w-full flex items-center justify-center mt-12">
             <img 
-              src={viewingPhotoUrl} 
+              src={viewingStudentForPhoto.photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStudentForPhoto.name}`} 
               alt="Student Photo Full" 
-              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200" 
+              className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200" 
               onClick={(e) => e.stopPropagation()} 
             />
           </div>
         </div>
       , document.body)}
+
+      {/* Photo Editor */}
+      {isEditingPhoto && viewingStudentForPhoto && (
+        <PhotoEditor
+          photoUrl={viewingStudentForPhoto.photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingStudentForPhoto.name}`}
+          onClose={() => setIsEditingPhoto(false)}
+          onSave={(editedUrl) => {
+            setStudents(prev => prev.map(s => s.id === viewingStudentForPhoto.id ? { ...s, photoUrl: editedUrl } : s));
+            setViewingStudentForPhoto(prev => ({ ...prev, photoUrl: editedUrl }));
+            setIsEditingPhoto(false);
+          }}
+        />
+      )}
 
       {/* Add/Edit Student Modal */}
       {(isAddStudentModalOpen || editingStudent) && createPortal(
