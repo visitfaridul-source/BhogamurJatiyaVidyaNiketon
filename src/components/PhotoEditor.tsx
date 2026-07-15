@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from 'react';
-import Cropper from 'react-easy-crop';
+import React, { useState, useRef } from 'react';
+import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { X, Check, Sun, Contrast, RotateCcw } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
@@ -10,34 +11,56 @@ interface PhotoEditorProps {
 }
 
 const PhotoEditor: React.FC<PhotoEditorProps> = ({ photoUrl, onClose, onSave }) => {
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
+  const [crop, setCrop] = useState<Crop>({
+    unit: '%',
+    x: 10,
+    y: 10,
+    width: 80,
+    height: 80
+  });
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
+  
+  const imgRef = useRef<HTMLImageElement>(null);
+
   const [rotation, setRotation] = useState(0);
   const [brightness, setBrightness] = useState(100);
   const [contrast, setContrast] = useState(100);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
-
-  const onCropComplete = useCallback((croppedArea: any, croppedAreaPixels: any) => {
-    setCroppedAreaPixels(croppedAreaPixels);
-  }, []);
 
   const handleSave = async () => {
     try {
-      const editedImage = await getCroppedImg(
-        photoUrl,
-        croppedAreaPixels,
-        rotation,
-        brightness,
-        contrast
-      );
-      onSave(editedImage);
+      if (imgRef.current && completedCrop?.width && completedCrop?.height) {
+        const editedImage = await getCroppedImg(
+          imgRef.current,
+          completedCrop,
+          rotation,
+          brightness,
+          contrast
+        );
+        onSave(editedImage);
+      } else if (imgRef.current) {
+        // If no crop, just apply filters
+        const fullCrop: PixelCrop = {
+          x: 0, y: 0,
+          width: imgRef.current.width,
+          height: imgRef.current.height,
+          unit: 'px'
+        };
+        const editedImage = await getCroppedImg(
+          imgRef.current,
+          fullCrop,
+          rotation,
+          brightness,
+          contrast
+        );
+        onSave(editedImage);
+      }
     } catch (e) {
       console.error(e);
     }
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] bg-black/95 flex flex-col items-center justify-center animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[120] bg-black/95 flex flex-col items-center justify-center animate-in fade-in duration-200 p-4 overflow-y-auto">
       <div className="absolute top-4 right-4 flex gap-4 z-10">
         <button onClick={onClose} className="p-2 text-white hover:text-red-400 transition-colors bg-black/50 rounded-full">
           <X className="w-6 h-6" />
@@ -47,25 +70,40 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photoUrl, onClose, onSave }) 
         </button>
       </div>
 
-      <div className="relative w-full max-w-2xl h-[50vh] md:h-[60vh] bg-black/50 rounded-xl overflow-hidden mt-12 mb-6 border border-slate-800">
-        <Cropper
-          image={photoUrl}
+      <div className="relative w-full max-w-3xl flex-1 min-h-[40vh] max-h-[60vh] bg-black/50 rounded-xl overflow-hidden mt-12 mb-6 border border-slate-800 flex items-center justify-center p-4">
+        <ReactCrop
           crop={crop}
-          zoom={zoom}
-          rotation={rotation}
+          onChange={(_, percentCrop) => setCrop(percentCrop)}
+          onComplete={(c) => setCompletedCrop(c)}
           aspect={3 / 4} // Standard ID photo aspect ratio (passport size)
-          onCropChange={setCrop}
-          onCropComplete={onCropComplete}
-          onZoomChange={setZoom}
-          onRotationChange={setRotation}
-          style={{
-            containerStyle: { background: 'transparent' },
-            mediaStyle: { filter: `brightness(${brightness}%) contrast(${contrast}%)` }
-          }}
-        />
+          className="max-h-full flex items-center justify-center"
+        >
+          <img
+            ref={imgRef}
+            src={photoUrl}
+            alt="Crop me"
+            crossOrigin="anonymous"
+            style={{ 
+              transform: `rotate(${rotation}deg)`,
+              filter: `brightness(${brightness}%) contrast(${contrast}%)`,
+              maxHeight: '55vh',
+              objectFit: 'contain'
+            }}
+            onLoad={(e) => {
+              const { width, height } = e.currentTarget;
+              setCompletedCrop({
+                x: width * 0.1,
+                y: height * 0.1,
+                width: width * 0.8,
+                height: height * 0.8,
+                unit: 'px'
+              });
+            }}
+          />
+        </ReactCrop>
       </div>
 
-      <div className="w-full max-w-md space-y-6 bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white shadow-xl">
+      <div className="w-full max-w-md space-y-6 bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white shadow-xl shrink-0">
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
             <div className="flex items-center gap-2"><Sun className="w-4 h-4" /> Brightness</div>
@@ -119,9 +157,8 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photoUrl, onClose, onSave }) 
               onClick={() => {
                 setBrightness(100);
                 setContrast(100);
-                setZoom(1);
                 setRotation(0);
-                setCrop({x: 0, y: 0});
+                setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 });
               }}
               className="text-xs text-slate-400 hover:text-white underline transition-colors"
             >
@@ -134,14 +171,13 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photoUrl, onClose, onSave }) 
 };
 
 // Helper function to draw cropped image
-export const getCroppedImg = async (
-  imageSrc: string,
-  pixelCrop: any,
+const getCroppedImg = async (
+  image: HTMLImageElement,
+  pixelCrop: PixelCrop,
   rotation = 0,
   brightness = 100,
   contrast = 100
 ): Promise<string> => {
-  const image = await createImage(imageSrc);
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
 
@@ -152,9 +188,9 @@ export const getCroppedImg = async (
   // Calculate bounding box of the rotated image
   const rotRad = (rotation * Math.PI) / 180;
   const bBoxWidth =
-    Math.abs(Math.cos(rotRad) * image.width) + Math.abs(Math.sin(rotRad) * image.height);
+    Math.abs(Math.cos(rotRad) * image.naturalWidth) + Math.abs(Math.sin(rotRad) * image.naturalHeight);
   const bBoxHeight =
-    Math.abs(Math.sin(rotRad) * image.width) + Math.abs(Math.cos(rotRad) * image.height);
+    Math.abs(Math.sin(rotRad) * image.naturalWidth) + Math.abs(Math.cos(rotRad) * image.naturalHeight);
 
   canvas.width = bBoxWidth;
   canvas.height = bBoxHeight;
@@ -162,7 +198,7 @@ export const getCroppedImg = async (
   // Draw rotated image
   ctx.translate(bBoxWidth / 2, bBoxHeight / 2);
   ctx.rotate(rotRad);
-  ctx.translate(-image.width / 2, -image.height / 2);
+  ctx.translate(-image.naturalWidth / 2, -image.naturalHeight / 2);
   
   // Apply filters
   ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
@@ -179,12 +215,17 @@ export const getCroppedImg = async (
   croppedCanvas.width = pixelCrop.width;
   croppedCanvas.height = pixelCrop.height;
 
+  // In react-image-crop, pixelCrop is relative to the displayed image size.
+  // We need to scale it to the natural image size.
+  const scaleX = image.naturalWidth / image.width;
+  const scaleY = image.naturalHeight / image.height;
+
   croppedCtx.drawImage(
     canvas,
-    pixelCrop.x,
-    pixelCrop.y,
-    pixelCrop.width,
-    pixelCrop.height,
+    pixelCrop.x * scaleX,
+    pixelCrop.y * scaleY,
+    pixelCrop.width * scaleX,
+    pixelCrop.height * scaleY,
     0,
     0,
     pixelCrop.width,
@@ -201,14 +242,5 @@ export const getCroppedImg = async (
     }, 'image/jpeg', 0.95);
   });
 };
-
-const createImage = (url: string): Promise<HTMLImageElement> =>
-  new Promise((resolve, reject) => {
-    const image = new Image();
-    image.addEventListener('load', () => resolve(image));
-    image.addEventListener('error', (error) => reject(error));
-    image.setAttribute('crossOrigin', 'anonymous'); // needed to avoid CORS issues
-    image.src = url;
-  });
 
 export default PhotoEditor;
