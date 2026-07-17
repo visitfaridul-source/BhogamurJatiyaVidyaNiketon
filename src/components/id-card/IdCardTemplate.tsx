@@ -477,12 +477,12 @@ export default function IdCardTemplate({
 
       {/* Footer Details */}
       <div className="mb-[12mm] w-full px-3 flex justify-between items-end relative z-20 shrink-0 mt-auto">
-        <div className="text-left flex flex-col justify-end pb-[0px]">
+        <div className="text-left flex flex-col justify-end pb-[5mm]">
            <span className="text-[12px] font-bold text-red-700 uppercase tracking-tight font-fjalla">
               {member.type === "student" ? "Student ID Card" : "Teacher ID Card"}
            </span>
         </div>
-        <div className="text-right flex flex-col items-end pt-1 pb-[4px]">
+        <div className="text-right flex flex-col items-end pt-1 pb-[3mm]">
           <div className="flex flex-col items-center">
             {settings.principalSignatureUrl ? (
               <img
