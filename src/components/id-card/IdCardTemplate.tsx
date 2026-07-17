@@ -507,7 +507,7 @@ export default function IdCardTemplate({
 
       {/* Bottom Bar */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-[10mm] w-full overflow-hidden shrink-0"
+        className="absolute bottom-0 left-0 right-0 h-[5mm] w-full overflow-hidden shrink-0"
         style={{ backgroundColor: styles.primary }}
       >
         <div className="absolute inset-0 bg-white/20 w-1/2 skew-x-12 translate-x-1/2"></div>
