@@ -473,13 +473,13 @@ export default function IdCardTemplate({
       </div>
 
       {/* Footer Details */}
-      <div className="mb-2 w-full px-3 flex justify-between items-end relative z-20 shrink-0 mt-auto">
-        <div className="text-left flex flex-col justify-end pb-[6px]">
+      <div className="mb-3 w-full px-3 flex justify-between items-end relative z-20 shrink-0 mt-auto">
+        <div className="text-left flex flex-col justify-end pb-[8px]">
            <span className="text-[12px] font-bold text-red-700 uppercase tracking-tight font-fjalla">
               {member.type === "student" ? "Student ID Card" : "Teacher ID Card"}
            </span>
         </div>
-        <div className="text-right flex flex-col items-end pt-1 pb-[2px]">
+        <div className="text-right flex flex-col items-end pt-1 pb-[4px]">
           <div className="flex flex-col items-center">
             {settings.principalSignatureUrl ? (
               <img
@@ -504,7 +504,7 @@ export default function IdCardTemplate({
 
       {/* Bottom Bar */}
       <div
-        className="h-[6mm] w-full mt-auto relative overflow-hidden shrink-0"
+        className="h-[8mm] w-full mt-auto relative overflow-hidden shrink-0"
         style={{ backgroundColor: styles.accent }}
       >
         <div className="absolute inset-0 bg-white/20 w-1/2 skew-x-12 translate-x-1/2"></div>
