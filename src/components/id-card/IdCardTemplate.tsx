@@ -259,11 +259,14 @@ export default function IdCardTemplate({
         </div>
 
         {/* Bottom Overlay Info */}
-        <div className="absolute bottom-0 left-0 right-0 z-20 space-y-0 bg-[#1e3a8a]/90 backdrop-blur-sm pt-2 pb-1.5 px-4 w-full border-t border-blue-900/50 text-center" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
-          <p className="text-[8px] font-bold text-white uppercase tracking-wider mb-0.5">
+        <div 
+          className="absolute bottom-0 left-0 right-0 z-20 flex flex-col justify-end pt-1.5 pb-2.5 px-4 w-full border-t border-black/10 text-center" 
+          style={{ backgroundColor: styles.primary, textShadow: '1px 1px 2px rgba(0,0,0,0.4)' }}
+        >
+          <p className="text-[7.5px] font-bold text-white uppercase tracking-wider leading-none mb-[2px]">
             If found, return to:
           </p>
-          <p className="text-[9px] font-bold text-white leading-none mb-0.5">
+          <p className="text-[8.5px] font-bold text-white leading-none mb-[2px]">
             {settings.address || "BHOGAMUR, NAGAON, ASSAM, 782140"}
           </p>
           <p className="text-[8px] font-bold text-white leading-none">
