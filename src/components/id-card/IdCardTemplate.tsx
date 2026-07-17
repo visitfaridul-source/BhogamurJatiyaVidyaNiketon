@@ -477,7 +477,7 @@ export default function IdCardTemplate({
 
       {/* Footer Details */}
       <div className="mb-[12mm] w-full px-3 flex justify-between items-end relative z-20 shrink-0 mt-auto">
-        <div className="text-left flex flex-col justify-end pb-[8px]">
+        <div className="text-left flex flex-col justify-end pb-[0px]">
            <span className="text-[12px] font-bold text-red-700 uppercase tracking-tight font-fjalla">
               {member.type === "student" ? "Student ID Card" : "Teacher ID Card"}
            </span>
@@ -492,13 +492,13 @@ export default function IdCardTemplate({
               />
             ) : (
               <img
-                src="https://api.dicebear.com/7.x/initials/svg?seed=Principal&backgroundColor=transparent&textColor=000000"
+                src="https://api.dicebear.com/7.x/initials/svg?seed=Principal&backgroundColor=transparent&textColor=ffffff"
                 className="w-[12mm] h-[4mm] opacity-90 mb-[2px] object-cover"
                 alt="Signature"
               />
             )}
-            <div className="w-[18mm] h-[1.5px] bg-slate-400 mb-[2px]"></div>
-            <p className="text-[8px] uppercase font-bold text-slate-800 tracking-wider text-center">
+            <div className="w-[18mm] h-[1.5px] bg-white mb-[2px]"></div>
+            <p className="text-[8px] uppercase font-bold text-white tracking-wider text-center">
               Principal
             </p>
           </div>
@@ -507,7 +507,7 @@ export default function IdCardTemplate({
 
       {/* Bottom Bar */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-[10mm] w-full overflow-hidden shrink-0"
+        className="absolute bottom-0 left-0 right-0 h-[22mm] w-full overflow-hidden shrink-0"
         style={{ backgroundColor: styles.primary }}
       >
         <div className="absolute inset-0 bg-white/20 w-1/2 skew-x-12 translate-x-1/2"></div>
