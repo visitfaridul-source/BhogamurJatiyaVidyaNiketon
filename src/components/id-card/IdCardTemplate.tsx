@@ -477,7 +477,7 @@ export default function IdCardTemplate({
 
       {/* Footer Details */}
       <div className="absolute bottom-[12mm] left-0 right-0 px-3 flex justify-between items-end z-20">
-        <div className="text-left flex flex-col justify-end pb-[5mm] translate-y-[8mm]">
+        <div className="text-left flex flex-col justify-end pb-[5mm] translate-y-[9mm]">
            <span className="text-[12px] font-bold text-red-700 uppercase tracking-tight font-fjalla">
               {member.type === "student" ? "Student ID Card" : "Teacher ID Card"}
            </span>
@@ -507,8 +507,8 @@ export default function IdCardTemplate({
 
       {/* Bottom Bar */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-[7mm] w-full overflow-hidden shrink-0"
-        style={{ backgroundColor: styles.primary, filter: "brightness(0.85)" }}
+        className="absolute bottom-0 left-0 right-0 h-[9mm] w-full overflow-hidden shrink-0"
+        style={{ backgroundColor: styles.primary, filter: "brightness(0.65)" }}
       >
         <div className="absolute inset-0 bg-white/20 w-1/2 skew-x-12 translate-x-1/2"></div>
       </div>
