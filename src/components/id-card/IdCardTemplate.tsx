@@ -185,13 +185,13 @@ export default function IdCardTemplate({
         )}
 
         {/* Top Header Overlay with School Name */}
-        <div className="absolute top-0 left-0 right-0 z-10 flex items-start justify-center px-1 pt-[2mm]">
+        <div className="absolute top-0 left-0 right-0 z-10 flex flex-col items-center justify-start px-2 pt-[2.5mm]">
           <p
             className={cn(
               "font-bold font-fjalla uppercase leading-none text-white text-center w-full",
               (settings.idCardSchoolName || settings.schoolName || "Bhogamur Jatiya Vidya Niketon").length > 22
-                ? "text-[11px] tracking-wide scale-x-110"
-                : "text-[14px] tracking-wide scale-x-105"
+                ? "text-[12.5px] tracking-wide"
+                : "text-[15px] tracking-wider"
             )}
             style={{ textShadow: '1px 1px 3px rgba(0,0,0,0.9)' }}
           >
@@ -199,10 +199,15 @@ export default function IdCardTemplate({
               settings.schoolName ||
               "Bhogamur Jatiya Vidya Niketon"}
           </p>
+          {/* Matching elegant accent bar */}
+          <div 
+            className="w-[20mm] h-[1.5px] mt-[1mm] opacity-95 rounded-full" 
+            style={{ backgroundColor: styles.accent }}
+          />
         </div>
 
         {/* Abstract Background SVG (Top) */}
-        <div className="absolute top-0 left-0 right-0 h-[12.7mm] pointer-events-none opacity-100 z-0 rotate-180">
+        <div className="absolute top-0 left-0 right-0 h-[15mm] pointer-events-none opacity-100 z-0 rotate-180">
           <svg
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
