@@ -482,7 +482,7 @@ export default function IdCardTemplate({
               {member.type === "student" ? "Student ID Card" : "Teacher ID Card"}
            </span>
         </div>
-        <div className="text-right flex flex-col items-end pt-1 pb-[1mm]">
+        <div className="text-right flex flex-col items-end pt-1 pb-[1mm] translate-y-[10mm]">
           <div className="flex flex-col items-center">
             {settings.principalSignatureUrl ? (
               <img
