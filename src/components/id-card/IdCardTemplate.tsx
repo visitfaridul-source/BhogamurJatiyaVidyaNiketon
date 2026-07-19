@@ -210,14 +210,14 @@ export default function IdCardTemplate({
           >
             <path
               d="M0,0 Q50,50 100,0 L100,100 L0,100 Z"
-              fill="#2563eb"
+              fill="#111c44"
               opacity="1"
             />
             <circle
               cx="20"
               cy="80"
               r="30"
-              fill="#1d4ed8"
+              fill="#0b1329"
               opacity="1"
             />
           </svg>
@@ -297,17 +297,17 @@ export default function IdCardTemplate({
           {/* Top dynamic waves */}
           <path
             d="M0,0 L100,0 L100,28 C70,45 30,10 0,32 Z"
-            fill="#1e3a8a"
+            fill="#0b1329"
             opacity="1"
           />
           <path
             d="M0,0 L100,0 L100,24 C60,40 40,5 0,22 Z"
-            fill="#2563eb"
+            fill="#111c44"
             opacity="1"
           />
           <path
             d="M0,0 L100,0 L100,18 C50,30 50,-5 0,15 Z"
-            fill="#3b82f6"
+            fill="#1e3a8a"
             opacity="0.9"
           />
 
