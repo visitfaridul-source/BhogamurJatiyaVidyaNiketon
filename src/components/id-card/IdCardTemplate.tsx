@@ -49,7 +49,7 @@ const THEME_STYLES = {
     text: "text-emerald-900",
   },
   dark: {
-    bg: "bg-slate-900",
+    bg: "bg-white",
     primary: "#1e293b", // slate-800
     secondary: "#334155", // slate-700
     accent: "#f59e0b", // amber-500
@@ -507,7 +507,7 @@ export default function IdCardTemplate({
 
       {/* Bottom Bar */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-[9mm] w-full overflow-hidden shrink-0"
+        className="absolute bottom-0 left-0 right-0 h-[8mm] w-full overflow-hidden shrink-0"
         style={{ backgroundColor: styles.primary, filter: "brightness(0.65)" }}
       >
         <div className="absolute inset-0 bg-white/20 w-1/2 skew-x-12 translate-x-1/2"></div>
