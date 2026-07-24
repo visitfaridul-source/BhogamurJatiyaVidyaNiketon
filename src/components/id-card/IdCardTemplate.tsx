@@ -527,12 +527,13 @@ export default function IdCardTemplate({
       </div>
 
       {/* Bottom Bar */}
-      <div
-        className="absolute bottom-0 left-0 right-0 h-[8mm] w-full overflow-hidden shrink-0 flex items-center justify-center z-30 px-2"
-        style={{ backgroundColor: styles.primary, filter: "brightness(0.65)" }}
-      >
-        <div className="absolute inset-0 bg-white/20 w-1/2 skew-x-12 translate-x-1/2 pointer-events-none"></div>
-        <span className="relative z-10 text-white font-black text-[10px] tracking-widest uppercase font-fjalla drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+      <div className="absolute bottom-0 left-0 right-0 h-[8mm] w-full overflow-hidden shrink-0 flex items-center justify-center z-30 px-2">
+        <div
+          className="absolute inset-0 w-full h-full"
+          style={{ backgroundColor: styles.primary, filter: "brightness(0.65)" }}
+        />
+        <div className="absolute inset-0 bg-white/10 w-1/2 skew-x-12 translate-x-1/2 pointer-events-none" />
+        <span className="relative z-10 text-white font-black text-[11px] tracking-widest uppercase font-sans drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
           Session : {sessionText}
         </span>
       </div>
