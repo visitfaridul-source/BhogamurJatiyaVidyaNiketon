@@ -2,6 +2,7 @@ import React from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { cn } from "@/lib/utils";
 import { useWebsite } from "@/context/WebsiteContext";
+import { useSchool } from "@/context/SchoolContext";
 
 export interface CardMemberData {
   name: string;
@@ -18,6 +19,7 @@ export interface CardMemberData {
   photoUrl?: string; // Standardized to photoUrl
   photo?: string;
   emergencyContact?: string;
+  session?: string;
   // Teacher/Staff specific
   subject?: string;
   qualification?: string;
@@ -145,6 +147,20 @@ export default function IdCardTemplate({
 }: IdCardTemplateProps) {
   const styles = THEME_STYLES[theme];
   const { settings } = useWebsite();
+
+  let activeSessionName = member.session;
+  if (!activeSessionName) {
+    try {
+      const schoolContext = useSchool();
+      const activeSession = schoolContext?.sessions?.find((s) => s.isActive);
+      if (activeSession) {
+        activeSessionName = activeSession.name;
+      }
+    } catch {
+      // Safe fallback if rendered outside SchoolProvider
+    }
+  }
+  const sessionText = activeSessionName || "2026-2027";
 
   const qrData = JSON.stringify({
     id: member.id,
@@ -512,10 +528,13 @@ export default function IdCardTemplate({
 
       {/* Bottom Bar */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-[8mm] w-full overflow-hidden shrink-0"
+        className="absolute bottom-0 left-0 right-0 h-[8mm] w-full overflow-hidden shrink-0 flex items-center justify-center z-30 px-2"
         style={{ backgroundColor: styles.primary, filter: "brightness(0.65)" }}
       >
-        <div className="absolute inset-0 bg-white/20 w-1/2 skew-x-12 translate-x-1/2"></div>
+        <div className="absolute inset-0 bg-white/20 w-1/2 skew-x-12 translate-x-1/2 pointer-events-none"></div>
+        <span className="relative z-10 text-white font-black text-[10px] tracking-widest uppercase font-fjalla drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+          Session : {sessionText}
+        </span>
       </div>
     </div>
   );
