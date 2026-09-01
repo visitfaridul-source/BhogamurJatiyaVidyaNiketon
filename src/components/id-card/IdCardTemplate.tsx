@@ -378,8 +378,8 @@ export default function IdCardTemplate({
           className={cn(
             "font-black uppercase text-white leading-[1.1] font-fjalla w-full tracking-normal transform scale-x-[1.18] origin-center",
             (settings.idCardSchoolName || settings.schoolName || "").length > 25
-              ? "text-[12px]"
-              : "text-[14.5px]",
+              ? "text-[9.5px]"
+              : "text-[11.5px]",
           )}
         >
           {settings.idCardSchoolName ||
