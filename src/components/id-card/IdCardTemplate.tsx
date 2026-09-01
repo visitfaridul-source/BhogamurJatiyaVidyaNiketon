@@ -145,7 +145,29 @@ export default function IdCardTemplate({
   theme = "blue",
   side = "front",
 }: IdCardTemplateProps) {
-  const styles = THEME_STYLES[theme];
+  let styles = { ...THEME_STYLES[theme] };
+  let svgColors = {
+    dark: "#0b1329",
+    base: "#111c44",
+    light: "#1e3a8a",
+  };
+
+  // Specific override for Teacher ID Card with Prestige Gold theme
+  if (theme === "gold" && member.type === "teacher") {
+    styles = {
+      bg: "bg-[#fffdf7]",
+      primary: "#7f1d1d", // Deep Maroon
+      secondary: "#b45309", // Deep Gold
+      accent: "#f59e0b", // Gold Accent
+      text: "text-[#7f1d1d]",
+    };
+    svgColors = {
+      dark: "#4c0519", // Rose-950
+      base: "#7f1d1d", // Red-900 (Maroon)
+      light: "#9f1239", // Rose-800
+    };
+  }
+
   const { settings } = useWebsite();
 
   let activeSessionName = member.session;
@@ -231,14 +253,14 @@ export default function IdCardTemplate({
           >
             <path
               d="M0,0 Q50,50 100,0 L100,100 L0,100 Z"
-              fill="#111c44"
+              fill={svgColors.base}
               opacity="1"
             />
             <circle
               cx="20"
               cy="80"
               r="30"
-              fill="#0b1329"
+              fill={svgColors.dark}
               opacity="1"
             />
           </svg>
@@ -318,17 +340,17 @@ export default function IdCardTemplate({
           {/* Top dynamic waves */}
           <path
             d="M0,0 L100,0 L100,28 C70,45 30,10 0,32 Z"
-            fill="#0b1329"
+            fill={svgColors.dark}
             opacity="1"
           />
           <path
             d="M0,0 L100,0 L100,24 C60,40 40,5 0,22 Z"
-            fill="#111c44"
+            fill={svgColors.base}
             opacity="1"
           />
           <path
             d="M0,0 L100,0 L100,18 C50,30 50,-5 0,15 Z"
-            fill="#1e3a8a"
+            fill={svgColors.light}
             opacity="0.9"
           />
 
