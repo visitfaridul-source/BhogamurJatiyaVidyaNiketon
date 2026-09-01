@@ -183,7 +183,7 @@ export default function IdCardTemplate({
     return (
       <div
         className={cn(
-          "w-[54mm] h-[86mm] relative overflow-hidden flex flex-col p-0",
+          "w-[52mm] h-[84mm] relative overflow-hidden flex flex-col p-0",
           styles.bg,
           "border border-slate-200 shadow-sm",
         )}
@@ -302,7 +302,7 @@ export default function IdCardTemplate({
   return (
     <div
       className={cn(
-        "w-[54mm] h-[86mm] relative overflow-hidden flex flex-col",
+        "w-[52mm] h-[84mm] relative overflow-hidden flex flex-col",
         styles.bg,
         "border border-slate-200 shadow-sm",
       )}
