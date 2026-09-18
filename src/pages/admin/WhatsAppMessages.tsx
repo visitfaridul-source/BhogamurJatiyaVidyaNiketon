@@ -33,7 +33,14 @@ import {
   Settings,
   ChevronRight,
   ShieldCheck,
-  Bell
+  Bell,
+  Power,
+  Lock,
+  Unlock,
+  EyeOff,
+  Smartphone,
+  ShieldAlert,
+  GraduationCap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -68,8 +75,8 @@ export default function WhatsAppMessages() {
   // Active Top Tab
   const [activeTab, setActiveTab] = useState<ActiveTab>('send');
 
-  // Filters
-  const [selectedClass, setSelectedClass] = useState<string>('All');
+  // Filters - Defaults to '' ("Select") to optimize data read and computation
+  const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedSection, setSelectedSection] = useState<string>('All');
   const [date, setDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [notificationType, setNotificationType] = useState<NotificationType>('attendance');
@@ -111,6 +118,37 @@ export default function WhatsAppMessages() {
   const [isSavingTemplates, setIsSavingTemplates] = useState(false);
   const [templateSaveSuccess, setTemplateSaveSuccess] = useState(false);
 
+  // Live simulation interactive status selector
+  const [simulatedStatus, setSimulatedStatus] = useState<'Absent' | 'Early Leave' | 'Present' | 'Late'>('Absent');
+
+  // Derived Admin switches
+  const isSimulationEnabled = tempConfig.enableLiveChatSimulation ?? true;
+  const isLiveChatAllowed = tempConfig.allowLiveWhatsAppChat ?? true;
+
+  // Toggle Live Simulation Preview ON/OFF
+  const handleToggleSimulation = async (forcedState?: boolean) => {
+    const nextState = forcedState !== undefined ? forcedState : !isSimulationEnabled;
+    const updated = { ...tempConfig, enableLiveChatSimulation: nextState };
+    setTempConfig(updated);
+    try {
+      await updateSettings({ whatsappConfig: updated });
+    } catch (err) {
+      console.error('Error saving simulation toggle:', err);
+    }
+  };
+
+  // Toggle Allow / Block Live WhatsApp Chat & Notifications
+  const handleToggleAllowLiveChat = async (forcedState?: boolean) => {
+    const nextState = forcedState !== undefined ? forcedState : !isLiveChatAllowed;
+    const updated = { ...tempConfig, allowLiveWhatsAppChat: nextState };
+    setTempConfig(updated);
+    try {
+      await updateSettings({ whatsappConfig: updated });
+    } catch (err) {
+      console.error('Error saving allow live chat toggle:', err);
+    }
+  };
+
   // Copy feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedBatchNumbers, setCopiedBatchNumbers] = useState(false);
@@ -134,7 +172,7 @@ export default function WhatsAppMessages() {
 
   // All distinct sections for selected class
   const availableSections = useMemo(() => {
-    if (selectedClass === 'All') return [];
+    if (!selectedClass || selectedClass === 'All') return [];
     const sectionSet = new Set<string>();
     students.forEach(s => {
       if (s.class === selectedClass && s.section && s.section.trim()) {
@@ -236,8 +274,12 @@ export default function WhatsAppMessages() {
     return interpolateTemplate(cfg.attendancePresentTemplate, ctx);
   };
 
-  // Filtered Students list
+  // Filtered Students list - Return empty when no class is selected to optimize data read & rendering
   const filteredStudents = useMemo(() => {
+    if (!selectedClass) {
+      return [];
+    }
+
     return students.filter(student => {
       // Class filter
       if (selectedClass !== 'All' && student.class !== selectedClass) {
@@ -279,6 +321,10 @@ export default function WhatsAppMessages() {
     let earlyLeave = 0;
     let late = 0;
     let validPhone = 0;
+
+    if (!selectedClass) {
+      return { total, present, absent, earlyLeave, late, validPhone };
+    }
 
     const baseList = selectedClass === 'All' 
       ? students 
@@ -325,6 +371,10 @@ export default function WhatsAppMessages() {
 
   // Dispatch single WhatsApp message
   const handleSendSingle = (student: any, customMsg?: string) => {
+    if (!isLiveChatAllowed) {
+      alert('Live WhatsApp Chat & Dispatch is currently BLOCKED by School Admin. An Administrator can enable live chat in the Configure Templates tab or banner.');
+      return;
+    }
     const msg = customMsg || getResolvedMessage(student);
     const countryCode = (settings.whatsappConfig?.defaultCountryCode) || '91';
     const link = createWhatsAppLink(student.phone, msg, countryCode);
@@ -368,6 +418,10 @@ export default function WhatsAppMessages() {
 
   // Copy all comma-separated numbers for broadcast lists
   const handleCopyAllNumbers = () => {
+    if (!selectedClass) {
+      alert('Please select a Target Class first.');
+      return;
+    }
     const targets = selectedIds.size > 0 
       ? filteredStudents.filter(s => selectedIds.has(s.id))
       : filteredStudents;
@@ -375,6 +429,11 @@ export default function WhatsAppMessages() {
     const numbers = targets
       .map(s => formatWhatsAppNumber(s.phone, settings.whatsappConfig?.defaultCountryCode || '91'))
       .filter(n => n.length >= 10);
+
+    if (numbers.length === 0) {
+      alert('No valid phone numbers found for the selected criteria.');
+      return;
+    }
 
     const text = numbers.join(', ');
     navigator.clipboard.writeText(text);
@@ -389,6 +448,14 @@ export default function WhatsAppMessages() {
   }, [filteredStudents, selectedIds]);
 
   const handleStartQueue = () => {
+    if (!isLiveChatAllowed) {
+      alert('Live WhatsApp Chat & Dispatch is currently BLOCKED by School Admin. An Administrator can enable live chat in the Configure Templates tab or banner.');
+      return;
+    }
+    if (!selectedClass) {
+      alert('Please select a Target Class before starting the WhatsApp queue.');
+      return;
+    }
     if (queueStudents.length === 0) {
       alert('Please select at least one student or choose a class with students.');
       return;
@@ -487,11 +554,33 @@ export default function WhatsAppMessages() {
             <MessageSquare className="w-7 h-7" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">WhatsApp Student Notifications</h1>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
                 Manual / On-Demand
               </span>
+              {isLiveChatAllowed ? (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Live Chat: Allowed
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1">
+                  <Lock className="w-3 h-3" />
+                  Live Chat: Blocked
+                </span>
+              )}
+              {isSimulationEnabled ? (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-blue-500" />
+                  Simulation: ON
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1">
+                  <EyeOff className="w-3 h-3 text-amber-600" />
+                  Simulation: OFF
+                </span>
+              )}
             </div>
             <p className="text-sm text-slate-500 mt-1">
               Send class-wise WhatsApp attendance notifications (Present, Absent, Early Leave) and school notices to student admission numbers.
@@ -546,13 +635,49 @@ export default function WhatsAppMessages() {
       {/* TAB 1: SEND MESSAGES */}
       {activeTab === 'send' && (
         <div className="space-y-6">
+          {/* Admin Blocked Alert Banner if Live WhatsApp Chat is blocked */}
+          {!isLiveChatAllowed && (
+            <div className="p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-rose-900 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-200 text-rose-800 flex items-center justify-center shrink-0">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold flex items-center gap-2">
+                    Live WhatsApp Chat is Currently Blocked by Admin
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-200 text-rose-800 uppercase">
+                      Blocked
+                    </span>
+                  </h4>
+                  <p className="text-xs text-rose-700 mt-0.5">
+                    Outgoing WhatsApp messaging to student parent numbers is disabled. Super Admin can allow live chat below or in Configure Templates.
+                  </p>
+                </div>
+              </div>
+              <button
+                id="btn-allow-live-chat-banner"
+                onClick={() => handleToggleAllowLiveChat(true)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-700 hover:bg-rose-800 text-white shrink-0 shadow-sm transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Unlock className="w-3.5 h-3.5" />
+                <span>Allow Live WhatsApp Chat</span>
+              </button>
+            </div>
+          )}
+
           {/* Filter & Configuration Control Box */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Class Selector */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
-                  Target Class
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Target Class</span>
+                  {!selectedClass && (
+                    <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                      Select Required
+                    </span>
+                  )}
                 </label>
                 <select
                   id="select-class-filter"
@@ -562,14 +687,20 @@ export default function WhatsAppMessages() {
                     setSelectedSection('All');
                     setSelectedIds(new Set());
                   }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  className={cn(
+                    "w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all",
+                    !selectedClass
+                      ? "border-amber-400 bg-amber-50/40 text-amber-900 font-semibold ring-1 ring-amber-400/40"
+                      : "border-slate-300 text-slate-900"
+                  )}
                 >
-                  <option value="All">All Classes ({students.length} students)</option>
+                  <option value="">-- Select Class --</option>
                   {availableClasses.map(cls => (
                     <option key={cls} value={cls}>
                       {cls}
                     </option>
                   ))}
+                  <option value="All">All Classes (Full School)</option>
                 </select>
               </div>
 
@@ -585,10 +716,10 @@ export default function WhatsAppMessages() {
                     setSelectedSection(e.target.value);
                     setSelectedIds(new Set());
                   }}
-                  disabled={selectedClass === 'All'}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
+                  disabled={!selectedClass || selectedClass === 'All'}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="All">All Sections</option>
+                  <option value="All">{!selectedClass ? 'Select Class First' : 'All Sections'}</option>
                   {availableSections.map(sec => (
                     <option key={sec} value={sec}>
                       Section {sec}
@@ -639,7 +770,7 @@ export default function WhatsAppMessages() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                     <Edit3 className="w-3.5 h-3.5 text-blue-600" />
-                    Message Content for {selectedClass === 'All' ? 'All Classes' : selectedClass}
+                    Message Content for {!selectedClass ? 'Target Class' : selectedClass === 'All' ? 'All Classes' : selectedClass}
                   </span>
                   <span className="text-xs text-slate-500">
                     Placeholders like <code className="text-blue-600">{'{student_name}'}</code> will be auto-replaced
@@ -786,20 +917,25 @@ export default function WhatsAppMessages() {
           {/* Bulk Action Ribbon */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 text-white p-4 rounded-2xl shadow-md">
             <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <label className={cn("flex items-center gap-2.5 select-none", !selectedClass ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
                 <input
                   id="checkbox-select-all"
                   type="checkbox"
-                  checked={selectedIds.size > 0 && selectedIds.size === filteredStudents.length}
+                  disabled={!selectedClass || filteredStudents.length === 0}
+                  checked={Boolean(selectedClass && selectedIds.size > 0 && selectedIds.size === filteredStudents.length)}
                   onChange={handleSelectAll}
                   className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-700"
                 />
                 <span className="text-sm font-semibold">
-                  {selectedIds.size === 0 ? 'Select All' : `Selected ${selectedIds.size} of ${filteredStudents.length}`}
+                  {!selectedClass 
+                    ? 'Select Class First' 
+                    : selectedIds.size === 0 
+                    ? 'Select All' 
+                    : `Selected ${selectedIds.size} of ${filteredStudents.length}`}
                 </span>
               </label>
 
-              {classStats.absent > 0 && (
+              {Boolean(selectedClass && classStats.absent > 0) && (
                 <button
                   id="btn-select-absent-only"
                   onClick={handleSelectAbsentOnly}
@@ -815,17 +951,29 @@ export default function WhatsAppMessages() {
               <button
                 id="btn-start-multi-send"
                 onClick={handleStartQueue}
-                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95"
+                disabled={!selectedClass}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95",
+                  !selectedClass
+                    ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+                )}
               >
                 <Play className="w-4 h-4 fill-white" />
-                Launch Multi-Send Queue ({selectedIds.size > 0 ? selectedIds.size : filteredStudents.length})
+                Launch Multi-Send Queue ({!selectedClass ? 0 : selectedIds.size > 0 ? selectedIds.size : filteredStudents.length})
               </button>
 
               {/* Copy Broadcast Numbers */}
               <button
                 id="btn-copy-batch-numbers"
                 onClick={handleCopyAllNumbers}
-                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                disabled={!selectedClass}
+                className={cn(
+                  "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-colors",
+                  !selectedClass
+                    ? "bg-slate-800/50 text-slate-500 border-slate-800 cursor-not-allowed"
+                    : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 cursor-pointer"
+                )}
               >
                 {copiedBatchNumbers ? (
                   <>
@@ -846,19 +994,68 @@ export default function WhatsAppMessages() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <span className="text-sm font-bold text-slate-900">
-                {selectedClass === 'All' ? 'All Classes' : selectedClass} Student List ({filteredStudents.length})
+                {!selectedClass 
+                  ? 'Target Class: Please select a class' 
+                  : `${selectedClass === 'All' ? 'All Classes' : selectedClass} Student List (${filteredStudents.length})`}
               </span>
               <span className="text-xs text-slate-500">
-                Click "Send WhatsApp" on any student or launch the Multi-Send Queue
+                {!selectedClass 
+                  ? 'Select a class above to preview student admission contacts' 
+                  : 'Click "Send WhatsApp" on any student or launch the Multi-Send Queue'}
               </span>
             </div>
 
-            {filteredStudents.length === 0 ? (
+            {!selectedClass ? (
+              <div className="p-8 sm:p-12 text-center space-y-4 bg-slate-50/60">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center border border-emerald-200 shadow-sm">
+                  <GraduationCap className="w-7 h-7" />
+                </div>
+                <div className="max-w-md mx-auto space-y-1.5">
+                  <h3 className="text-base font-bold text-slate-800">
+                    Select a Target Class to View Students
+                  </h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    To optimize read performance and fast-track attendance notifications, please choose a target class from the dropdown above or click any class shortcut below:
+                  </p>
+                </div>
+
+                {/* Quick Class Shortcut Chips */}
+                {availableClasses.length > 0 && (
+                  <div className="pt-2 flex flex-wrap justify-center items-center gap-2 max-w-2xl mx-auto">
+                    {availableClasses.map(cls => (
+                      <button
+                        key={cls}
+                        type="button"
+                        onClick={() => {
+                          setSelectedClass(cls);
+                          setSelectedSection('All');
+                          setSelectedIds(new Set());
+                        }}
+                        className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-800 transition-all shadow-xs cursor-pointer active:scale-95"
+                      >
+                        {cls}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedClass('All');
+                        setSelectedSection('All');
+                        setSelectedIds(new Set());
+                      }}
+                      className="px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-all cursor-pointer active:scale-95"
+                    >
+                      All Classes
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : filteredStudents.length === 0 ? (
               <div className="p-12 text-center text-slate-500 space-y-3">
                 <Users className="w-12 h-12 text-slate-300 mx-auto" />
-                <p className="text-sm font-semibold text-slate-700">No students match the current filters</p>
+                <p className="text-sm font-semibold text-slate-700">No students match the current filters in {selectedClass}</p>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Try adjusting the class, section, or attendance status filter above to find students.
+                  Try adjusting the section or status filter above to find students.
                 </p>
               </div>
             ) : (
@@ -1054,6 +1251,118 @@ export default function WhatsAppMessages() {
               </div>
             </div>
 
+            {/* Admin WhatsApp Controls & Permissions (Master Toggles) */}
+            <div className="p-4.5 bg-slate-900 text-white rounded-2xl border border-slate-800 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  <h3 className="text-sm font-bold tracking-tight text-slate-100">
+                    Super Admin WhatsApp Controls & Permissions
+                  </h3>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  Global System Policy Controls
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Control 1: Master Live Chat Dispatch Permission */}
+                <div className="p-4 bg-slate-800/80 rounded-xl border border-slate-700/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-xs font-bold text-slate-200">
+                        Live WhatsApp Chat & Dispatch
+                      </span>
+                      {isLiveChatAllowed ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          ALLOWED
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                          BLOCKED
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Allow or block school staff from initiating live WhatsApp chats and sending attendance notices to students.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-700/50">
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      Status: {isLiveChatAllowed ? 'Live Chat is Active' : 'Live Chat is Blocked'}
+                    </span>
+                    <button
+                      id="btn-admin-toggle-allow-live-chat"
+                      type="button"
+                      onClick={() => handleToggleAllowLiveChat()}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer",
+                        isLiveChatAllowed
+                          ? "bg-rose-600 hover:bg-rose-500 text-white"
+                          : "bg-emerald-600 hover:bg-emerald-500 text-white"
+                      )}
+                    >
+                      {isLiveChatAllowed ? (
+                        <>
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Block Live Chat</span>
+                        </>
+                      ) : (
+                        <>
+                          <Unlock className="w-3.5 h-3.5" />
+                          <span>Allow Live Chat</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Control 2: Live WhatsApp Chat Simulation Preview ON / OFF */}
+                <div className="p-4 bg-slate-800/80 rounded-xl border border-slate-700/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-xs font-bold text-slate-200">
+                        Live WhatsApp Chat Simulation
+                      </span>
+                      {isSimulationEnabled ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          ACTIVE / ON
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          MUTED / OFF
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Render real-time interactive WhatsApp bubble preview dynamically reflecting template keystrokes and attendance statuses.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-700/50">
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      Preview: {isSimulationEnabled ? 'Showing Real-time Mockup' : 'Preview Paused'}
+                    </span>
+                    <button
+                      id="btn-admin-toggle-live-simulation"
+                      type="button"
+                      onClick={() => handleToggleSimulation()}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer",
+                        isSimulationEnabled
+                          ? "bg-amber-600 hover:bg-amber-500 text-white"
+                          : "bg-emerald-600 hover:bg-emerald-500 text-white"
+                      )}
+                    >
+                      <Power className="w-3.5 h-3.5" />
+                      <span>{isSimulationEnabled ? 'Turn OFF' : 'Turn ON'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* General Settings (Sender & Country Code) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
               <div>
@@ -1162,40 +1471,134 @@ export default function WhatsAppMessages() {
                 </div>
 
                 {/* WhatsApp Chat Simulation Preview */}
-                <div className="p-4 bg-slate-900 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-800 pb-2">
-                    <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Live WhatsApp Preview (Sample Student: Aarav Sharma)
-                    </span>
-                    <span>Assam (IST)</span>
-                  </div>
+                {isSimulationEnabled ? (
+                  <div className="bg-[#0b141a] rounded-2xl overflow-hidden border border-slate-700/80 shadow-xl space-y-0">
+                    {/* WhatsApp Top Header Bar */}
+                    <div className="bg-[#202c33] px-4 py-3 text-white flex items-center justify-between border-b border-slate-700/60">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="w-9 h-9 rounded-full bg-emerald-600 flex items-center justify-center font-bold text-white shadow-inner">
+                            <MessageSquare className="w-4 h-4" />
+                          </div>
+                          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 border-2 border-[#202c33] rounded-full"></span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-slate-100">Live WhatsApp Chat Simulation</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                              LIVE SYNC
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-emerald-400 flex items-center gap-1 font-mono">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            Simulating: Parent of Aarav Sharma (Class 5-A) • Online
+                          </p>
+                        </div>
+                      </div>
 
-                  {/* Bubble */}
-                  <div className="bg-[#DCF8C6] text-slate-900 p-3.5 rounded-2xl rounded-tr-none max-w-lg ml-auto shadow-md text-sm font-sans whitespace-pre-wrap leading-relaxed">
-                    {interpolateTemplate(
-                      (tempConfig[selectedTemplateKey] as string) || '',
-                      {
-                        ...buildContext(sampleStudent),
-                        status: selectedTemplateKey === 'attendanceAbsentTemplate' 
-                          ? 'Absent' 
-                          : selectedTemplateKey === 'attendanceEarlyLeaveTemplate' 
-                          ? 'Early Leave' 
-                          : selectedTemplateKey === 'attendanceLateTemplate'
-                          ? 'Late'
-                          : 'Present',
-                        inTime: '08:45 AM',
-                        outTime: '11:30 AM',
-                        earlyOutReason: 'Doctor Appointment permission',
-                        senderName: tempConfig.senderName
-                      }
-                    )}
-                    <div className="text-[10px] text-slate-500 text-right mt-1.5 flex items-center justify-end gap-1 font-mono">
-                      <span>{format(new Date(), 'hh:mm a')}</span>
-                      <Check className="w-3 h-3 text-blue-500" />
+                      {/* Admin ON/OFF Toggle */}
+                      <button
+                        id="btn-toggle-simulation-widget-off"
+                        type="button"
+                        onClick={() => handleToggleSimulation(false)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition-all shadow-sm active:scale-95 cursor-pointer"
+                        title="Turn OFF Live Simulation Preview"
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        <span>Simulation: ON</span>
+                      </button>
+                    </div>
+
+                    {/* Condition Switcher Pills */}
+                    <div className="bg-[#111b21] px-4 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 text-xs">
+                      <span className="text-slate-400 font-medium text-[11px]">
+                        Simulate Condition:
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {(['Absent', 'Present', 'Early Leave', 'Late'] as const).map(st => (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() => setSimulatedStatus(st)}
+                            className={cn(
+                              "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer",
+                              simulatedStatus === st
+                                ? "bg-emerald-600 text-white shadow-sm"
+                                : "bg-[#202c33] text-slate-300 hover:bg-[#2a3942]"
+                            )}
+                          >
+                            {st}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Chat Background & Message Area */}
+                    <div className="p-4 sm:p-5 bg-[#0b141a] min-h-[220px] flex flex-col justify-end space-y-3">
+                      {/* Date Badge */}
+                      <div className="flex justify-center">
+                        <span className="bg-[#182229] text-slate-400 text-[11px] px-3 py-1 rounded-lg uppercase tracking-wider font-mono shadow-sm">
+                          TODAY
+                        </span>
+                      </div>
+
+                      {/* Real-time WhatsApp Bubble */}
+                      <div className="bg-[#005c4b] text-[#e9edef] p-3.5 rounded-2xl rounded-tr-none max-w-lg ml-auto shadow-md text-sm font-sans whitespace-pre-wrap leading-relaxed border border-emerald-500/20">
+                        {interpolateTemplate(
+                          (tempConfig[selectedTemplateKey] as string) || '',
+                          {
+                            ...buildContext(sampleStudent),
+                            status: simulatedStatus,
+                            inTime: '08:45 AM',
+                            outTime: '11:30 AM',
+                            earlyOutReason: 'Doctor Appointment permission',
+                            senderName: tempConfig.senderName
+                          }
+                        )}
+                        <div className="text-[10px] text-emerald-200/80 text-right mt-2 flex items-center justify-end gap-1.5 font-mono">
+                          <span>{format(new Date(), 'hh:mm a')}</span>
+                          <span className="text-cyan-300 font-bold">✓✓</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* WhatsApp Simulated Bottom Bar */}
+                    <div className="bg-[#202c33] px-4 py-2.5 flex items-center gap-3 text-slate-400 border-t border-slate-800">
+                      <div className="flex-1 bg-[#2a3942] text-slate-400 text-xs px-3.5 py-2 rounded-xl border border-slate-700/50 flex items-center justify-between">
+                        <span className="italic">Type a reply as parent... (Simulation Mode)</span>
+                        <Send className="w-3.5 h-3.5 text-emerald-400" />
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800 shadow-xl text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+                      <EyeOff className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-100">Live WhatsApp Chat Simulation is Turned OFF</h4>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          MUTED
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 max-w-md mx-auto">
+                        The real-time WhatsApp bubble preview is blocked by Admin. Template editing above remains fully functional.
+                      </p>
+                    </div>
+                    <div className="pt-2 flex justify-center">
+                      <button
+                        id="btn-turn-on-live-simulation"
+                        type="button"
+                        onClick={() => handleToggleSimulation(true)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        <span>Turn ON Live WhatsApp Chat Simulation</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

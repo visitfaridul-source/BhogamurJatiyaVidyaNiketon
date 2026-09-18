@@ -81,6 +81,8 @@ export interface FeeStructureTier {
 export interface WhatsAppNotificationConfig {
   defaultCountryCode: string;
   senderName: string;
+  enableLiveChatSimulation: boolean;
+  allowLiveWhatsAppChat: boolean;
   attendancePresentTemplate: string;
   attendanceAbsentTemplate: string;
   attendanceEarlyLeaveTemplate: string;
@@ -94,6 +96,8 @@ export interface WhatsAppNotificationConfig {
 export const defaultWhatsAppConfig: WhatsAppNotificationConfig = {
   defaultCountryCode: '91',
   senderName: 'Principal, Bhogamur Jatiya Vidya Niketon',
+  enableLiveChatSimulation: true,
+  allowLiveWhatsAppChat: true,
   attendancePresentTemplate: 'Dear Parent, this is to inform you that your ward {student_name} (Class: {class}, Roll: {roll}) is PRESENT today ({date}) at {school_name}. In-Time: {in_time}. - {sender_name}',
   attendanceAbsentTemplate: 'Dear Parent, this is an important notification that your ward {student_name} (Class: {class}, Roll: {roll}) is marked ABSENT today ({date}) at {school_name}. If this is unplanned, please contact the school office. - {sender_name}',
   attendanceEarlyLeaveTemplate: 'Dear Parent, your ward {student_name} (Class: {class}, Roll: {roll}) has LEFT SCHOOL EARLY today ({date}) at {out_time}. Reason: {early_out_reason}. - {sender_name}',
