@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense, useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 import {
   Search,
   Calendar as CalendarIcon,
@@ -24,6 +24,7 @@ import {
   Sparkles,
   ChevronRight,
   ChevronDown,
+  MessageSquare,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -1712,6 +1713,13 @@ export default function Attendance() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
+          <Link
+            to="/admin/whatsapp-messages"
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm cursor-pointer"
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>WhatsApp SMS</span>
+          </Link>
           <button
             onClick={() => {
               if (selectedClass) {

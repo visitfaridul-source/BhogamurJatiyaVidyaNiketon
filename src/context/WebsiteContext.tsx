@@ -78,6 +78,32 @@ export interface FeeStructureTier {
   items: FeeStructureItem[];
 }
 
+export interface WhatsAppNotificationConfig {
+  defaultCountryCode: string;
+  senderName: string;
+  attendancePresentTemplate: string;
+  attendanceAbsentTemplate: string;
+  attendanceEarlyLeaveTemplate: string;
+  attendanceLateTemplate: string;
+  generalNoticeTemplate: string;
+  feeReminderTemplate: string;
+  holidayNoticeTemplate: string;
+  examScheduleTemplate: string;
+}
+
+export const defaultWhatsAppConfig: WhatsAppNotificationConfig = {
+  defaultCountryCode: '91',
+  senderName: 'Principal, Bhogamur Jatiya Vidya Niketon',
+  attendancePresentTemplate: 'Dear Parent, this is to inform you that your ward {student_name} (Class: {class}, Roll: {roll}) is PRESENT today ({date}) at {school_name}. In-Time: {in_time}. - {sender_name}',
+  attendanceAbsentTemplate: 'Dear Parent, this is an important notification that your ward {student_name} (Class: {class}, Roll: {roll}) is marked ABSENT today ({date}) at {school_name}. If this is unplanned, please contact the school office. - {sender_name}',
+  attendanceEarlyLeaveTemplate: 'Dear Parent, your ward {student_name} (Class: {class}, Roll: {roll}) has LEFT SCHOOL EARLY today ({date}) at {out_time}. Reason: {early_out_reason}. - {sender_name}',
+  attendanceLateTemplate: 'Dear Parent, your ward {student_name} (Class: {class}, Roll: {roll}) arrived LATE to school today ({date}) at {in_time}. Please ensure regular and timely attendance. - {sender_name}',
+  generalNoticeTemplate: 'Notice from {school_name}:\n\nDear Parents & Students of {class},\n\n{message_body}\n\nDate: {date}\nRegards,\n{sender_name}',
+  feeReminderTemplate: 'Dear Parent, this is a gentle reminder regarding school fees for {student_name} (Class: {class}, Roll: {roll}). Kindly clear the pending dues at the school fee counter. Thank you. - {school_name}',
+  holidayNoticeTemplate: 'Dear Parents, please note that {school_name} will remain closed on {holiday_date} on account of {holiday_reason}. Regular classes will resume on {reopening_date}. - {sender_name}',
+  examScheduleTemplate: 'Dear Parents & Students of {class}, the upcoming examination will commence from {exam_date}. Please ensure regular revision. - {school_name}'
+};
+
 export interface WebsiteSettings {
   // Core
   schoolName: string;
@@ -194,6 +220,7 @@ export interface WebsiteSettings {
   restrictedResultClasses?: string[];
   enableFaceAttendance?: boolean;
   enableQrAttendance?: boolean;
+  whatsappConfig?: WhatsAppNotificationConfig;
 }
 
 const defaultSettings: WebsiteSettings = {
@@ -448,7 +475,8 @@ const defaultSettings: WebsiteSettings = {
   ],
   restrictedResultClasses: [],
   enableFaceAttendance: true,
-  enableQrAttendance: true
+  enableQrAttendance: true,
+  whatsappConfig: defaultWhatsAppConfig
 };
 
 interface WebsiteContextType {

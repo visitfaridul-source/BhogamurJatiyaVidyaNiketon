@@ -35,6 +35,7 @@ import ManageAdmins from './pages/admin/ManageAdmins';
 import ManageCourses from './pages/admin/ManageCourses';
 import WebsitePagesSettings from './pages/admin/WebsitePagesSettings';
 import PrincipalMessagePage from './pages/PrincipalMessagePage';
+import WhatsAppMessages from './pages/admin/WhatsAppMessages';
 
 import GalleryPage from './pages/GalleryPage';
 import CoursesPage from './pages/CoursesPage';
@@ -79,6 +80,7 @@ export default function App() {
               <Route path="teachers" element={<Teachers />} />
               <Route path="staffs" element={<StaffManagement />} />
               <Route path="attendance" element={<Attendance />} />
+              <Route path="whatsapp-messages" element={<WhatsAppMessages />} />
               <Route path="results" element={<ResultsManagement />} />
               <Route path="face-recognition" element={<FaceRecognitionAttendance />} />
               <Route path="fees" element={<Fees />} />

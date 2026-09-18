@@ -1,0 +1,1515 @@
+import React, { useState, useMemo, useRef } from 'react';
+import { useSchool } from '@/context/SchoolContext';
+import { useWebsite, WhatsAppNotificationConfig, defaultWhatsAppConfig } from '@/context/WebsiteContext';
+import { useAuth } from '@/context/AuthContext';
+import { format } from 'date-fns';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  MessageSquare,
+  Send,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Filter,
+  Search,
+  Copy,
+  ExternalLink,
+  Edit3,
+  Save,
+  RotateCcw,
+  Users,
+  Check,
+  Share2,
+  Phone,
+  Sparkles,
+  UserCheck,
+  UserX,
+  Play,
+  Calendar,
+  Layers,
+  FileText,
+  HelpCircle,
+  Eye,
+  Settings,
+  ChevronRight,
+  ShieldCheck,
+  Bell
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  formatWhatsAppNumber,
+  isValidWhatsAppPhone,
+  interpolateTemplate,
+  createWhatsAppLink,
+  StudentMessageContext
+} from '@/lib/whatsappUtils';
+
+type NotificationType = 'attendance' | 'general' | 'fee' | 'holiday' | 'custom';
+type AttendanceFilter = 'all' | 'absent' | 'present' | 'early-leave' | 'late' | 'invalid-phone';
+type ActiveTab = 'send' | 'templates' | 'history';
+
+interface DispatchLog {
+  id: string;
+  studentId: string;
+  studentName: string;
+  className: string;
+  phone: string;
+  status: string;
+  type: string;
+  timestamp: string;
+  message: string;
+}
+
+export default function WhatsAppMessages() {
+  const { user } = useAuth();
+  const { students, attendanceMap } = useSchool();
+  const { settings, updateSettings } = useWebsite();
+
+  // Active Top Tab
+  const [activeTab, setActiveTab] = useState<ActiveTab>('send');
+
+  // Filters
+  const [selectedClass, setSelectedClass] = useState<string>('All');
+  const [selectedSection, setSelectedSection] = useState<string>('All');
+  const [date, setDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [notificationType, setNotificationType] = useState<NotificationType>('attendance');
+  const [statusFilter, setStatusFilter] = useState<AttendanceFilter>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Custom / General Notice Fields
+  const [customTitle, setCustomTitle] = useState<string>('School Announcement');
+  const [customBody, setCustomBody] = useState<string>('');
+  const [holidayDate, setHolidayDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [holidayReason, setHolidayReason] = useState<string>('Local Holiday');
+  const [reopeningDate, setReopeningDate] = useState<string>('');
+  const [examDate, setExamDate] = useState<string>('');
+
+  // Selected Student IDs
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Sent Tracking (local state per session)
+  const [sentRecords, setSentRecords] = useState<Record<string, string>>({});
+  const [dispatchLogs, setDispatchLogs] = useState<DispatchLog[]>([]);
+
+  // Sequential Multi-Sender Queue Modal
+  const [isQueueModalOpen, setIsQueueModalOpen] = useState(false);
+  const [queueIndex, setQueueIndex] = useState(0);
+
+  // Single Student Custom Edit Modal
+  const [editingStudentContext, setEditingStudentContext] = useState<{
+    student: any;
+    customMessage: string;
+  } | null>(null);
+
+  // Template Configuration State (for Super Admin)
+  const whatsappConfig = settings.whatsappConfig || defaultWhatsAppConfig;
+  const [tempConfig, setTempConfig] = useState<WhatsAppNotificationConfig>({
+    ...defaultWhatsAppConfig,
+    ...whatsappConfig
+  });
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<keyof WhatsAppNotificationConfig>('attendanceAbsentTemplate');
+  const [isSavingTemplates, setIsSavingTemplates] = useState(false);
+  const [templateSaveSuccess, setTemplateSaveSuccess] = useState(false);
+
+  // Copy feedback
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedBatchNumbers, setCopiedBatchNumbers] = useState(false);
+
+  // Textarea ref for placeholder insertion
+  const templateTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // All distinct classes from student list
+  const availableClasses = useMemo(() => {
+    const classSet = new Set<string>();
+    students.forEach(s => {
+      if (s.class && s.class.trim()) {
+        classSet.add(s.class.trim());
+      }
+    });
+    return Array.from(classSet).sort((a, b) => {
+      // Natural sort
+      return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [students]);
+
+  // All distinct sections for selected class
+  const availableSections = useMemo(() => {
+    if (selectedClass === 'All') return [];
+    const sectionSet = new Set<string>();
+    students.forEach(s => {
+      if (s.class === selectedClass && s.section && s.section.trim()) {
+        sectionSet.add(s.section.trim());
+      }
+    });
+    return Array.from(sectionSet).sort();
+  }, [students, selectedClass]);
+
+  // Derive attendance status for student on the chosen date
+  const getStudentAttendance = (studentId: string) => {
+    const key = `${date}:${studentId}`;
+    const record = attendanceMap[key];
+    if (!record) {
+      return {
+        status: 'Not Recorded' as const,
+        inTime: '',
+        outTime: '',
+        earlyOutReason: '',
+        remarks: ''
+      };
+    }
+    const hasEarlyOut = (record.earlyOutReason && record.earlyOutReason.trim() !== '') || (record.outTime && record.outTime.trim() !== '');
+    let resolvedStatus: 'Present' | 'Absent' | 'Early Leave' | 'Late' | 'Not Recorded' = record.status || 'Not Recorded';
+    if (record.status === 'Present' && hasEarlyOut) {
+      resolvedStatus = 'Early Leave';
+    }
+    return {
+      status: resolvedStatus,
+      inTime: record.inTime || '',
+      outTime: record.outTime || '',
+      earlyOutReason: record.earlyOutReason || '',
+      remarks: record.remarks || ''
+    };
+  };
+
+  // Helper to build resolved message context for a given student
+  const buildContext = (student: any): StudentMessageContext => {
+    const att = getStudentAttendance(student.id);
+    return {
+      studentName: student.name,
+      parentName: student.parentName,
+      className: student.class,
+      section: student.section,
+      roll: student.roll,
+      phone: student.phone,
+      date: format(new Date(date), 'dd/MM/yyyy'),
+      status: att.status,
+      inTime: att.inTime,
+      outTime: att.outTime,
+      earlyOutReason: att.earlyOutReason,
+      remarks: att.remarks,
+      schoolName: settings.schoolName || 'Bhogamur Jatiya Vidya Niketon',
+      senderName: tempConfig.senderName || 'Principal',
+      customTitle,
+      customBody,
+      holidayDate: format(new Date(holidayDate), 'dd/MM/yyyy'),
+      holidayReason,
+      reopeningDate,
+      examDate
+    };
+  };
+
+  // Resolve message string based on notification type and student status
+  const getResolvedMessage = (student: any): string => {
+    const ctx = buildContext(student);
+    const cfg = settings.whatsappConfig || defaultWhatsAppConfig;
+
+    if (notificationType === 'attendance') {
+      if (ctx.status === 'Absent') {
+        return interpolateTemplate(cfg.attendanceAbsentTemplate, ctx);
+      }
+      if (ctx.status === 'Early Leave') {
+        return interpolateTemplate(cfg.attendanceEarlyLeaveTemplate, ctx);
+      }
+      if (ctx.status === 'Late') {
+        return interpolateTemplate(cfg.attendanceLateTemplate, ctx);
+      }
+      // Default to Present template
+      return interpolateTemplate(cfg.attendancePresentTemplate, ctx);
+    }
+
+    if (notificationType === 'general') {
+      return interpolateTemplate(cfg.generalNoticeTemplate, ctx);
+    }
+
+    if (notificationType === 'fee') {
+      return interpolateTemplate(cfg.feeReminderTemplate, ctx);
+    }
+
+    if (notificationType === 'holiday') {
+      return interpolateTemplate(cfg.holidayNoticeTemplate, ctx);
+    }
+
+    if (notificationType === 'custom') {
+      return interpolateTemplate(customBody || 'Notice from school: {student_name} (Class {class})', ctx);
+    }
+
+    return interpolateTemplate(cfg.attendancePresentTemplate, ctx);
+  };
+
+  // Filtered Students list
+  const filteredStudents = useMemo(() => {
+    return students.filter(student => {
+      // Class filter
+      if (selectedClass !== 'All' && student.class !== selectedClass) {
+        return false;
+      }
+
+      // Section filter
+      if (selectedSection !== 'All' && student.section !== selectedSection) {
+        return false;
+      }
+
+      // Attendance status filter
+      const att = getStudentAttendance(student.id);
+      if (statusFilter === 'absent' && att.status !== 'Absent') return false;
+      if (statusFilter === 'present' && att.status !== 'Present') return false;
+      if (statusFilter === 'early-leave' && att.status !== 'Early Leave') return false;
+      if (statusFilter === 'late' && att.status !== 'Late') return false;
+      if (statusFilter === 'invalid-phone' && isValidWhatsAppPhone(student.phone)) return false;
+
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = student.name?.toLowerCase().includes(q);
+        const matchRoll = student.roll?.toLowerCase().includes(q);
+        const matchPhone = student.phone?.toLowerCase().includes(q);
+        const matchParent = student.parentName?.toLowerCase().includes(q);
+        if (!matchName && !matchRoll && !matchPhone && !matchParent) return false;
+      }
+
+      return true;
+    });
+  }, [students, selectedClass, selectedSection, statusFilter, searchQuery, date, attendanceMap]);
+
+  // Class Attendance Statistics for the selected criteria
+  const classStats = useMemo(() => {
+    let total = 0;
+    let present = 0;
+    let absent = 0;
+    let earlyLeave = 0;
+    let late = 0;
+    let validPhone = 0;
+
+    const baseList = selectedClass === 'All' 
+      ? students 
+      : students.filter(s => s.class === selectedClass && (selectedSection === 'All' || s.section === selectedSection));
+
+    baseList.forEach(s => {
+      total++;
+      const att = getStudentAttendance(s.id);
+      if (att.status === 'Present') present++;
+      else if (att.status === 'Absent') absent++;
+      else if (att.status === 'Early Leave') earlyLeave++;
+      else if (att.status === 'Late') late++;
+      if (isValidWhatsAppPhone(s.phone)) validPhone++;
+    });
+
+    return { total, present, absent, earlyLeave, late, validPhone };
+  }, [students, selectedClass, selectedSection, date, attendanceMap]);
+
+  // Checkbox handlers
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredStudents.length && filteredStudents.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredStudents.map(s => s.id)));
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const handleSelectAbsentOnly = () => {
+    const absentIds = filteredStudents
+      .filter(s => getStudentAttendance(s.id).status === 'Absent')
+      .map(s => s.id);
+    setSelectedIds(new Set(absentIds));
+  };
+
+  // Dispatch single WhatsApp message
+  const handleSendSingle = (student: any, customMsg?: string) => {
+    const msg = customMsg || getResolvedMessage(student);
+    const countryCode = (settings.whatsappConfig?.defaultCountryCode) || '91';
+    const link = createWhatsAppLink(student.phone, msg, countryCode);
+
+    if (!link) {
+      alert(`Invalid phone number provided for ${student.name}: "${student.phone || 'None'}"`);
+      return;
+    }
+
+    // Open WhatsApp in new tab
+    window.open(link, '_blank');
+
+    // Mark as sent
+    const nowTime = format(new Date(), 'hh:mm a');
+    setSentRecords(prev => ({ ...prev, [student.id]: nowTime }));
+
+    // Append to dispatch log
+    setDispatchLogs(prev => [
+      {
+        id: `${student.id}-${Date.now()}`,
+        studentId: student.id,
+        studentName: student.name,
+        className: student.class,
+        phone: student.phone,
+        status: 'Sent via WhatsApp',
+        type: notificationType,
+        timestamp: nowTime,
+        message: msg
+      },
+      ...prev
+    ]);
+  };
+
+  // Copy message for single student
+  const handleCopyMessage = (student: any) => {
+    const msg = getResolvedMessage(student);
+    navigator.clipboard.writeText(msg);
+    setCopiedId(student.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // Copy all comma-separated numbers for broadcast lists
+  const handleCopyAllNumbers = () => {
+    const targets = selectedIds.size > 0 
+      ? filteredStudents.filter(s => selectedIds.has(s.id))
+      : filteredStudents;
+
+    const numbers = targets
+      .map(s => formatWhatsAppNumber(s.phone, settings.whatsappConfig?.defaultCountryCode || '91'))
+      .filter(n => n.length >= 10);
+
+    const text = numbers.join(', ');
+    navigator.clipboard.writeText(text);
+    setCopiedBatchNumbers(true);
+    setTimeout(() => setCopiedBatchNumbers(false), 2500);
+  };
+
+  // Queue runner list
+  const queueStudents = useMemo(() => {
+    if (selectedIds.size === 0) return filteredStudents;
+    return filteredStudents.filter(s => selectedIds.has(s.id));
+  }, [filteredStudents, selectedIds]);
+
+  const handleStartQueue = () => {
+    if (queueStudents.length === 0) {
+      alert('Please select at least one student or choose a class with students.');
+      return;
+    }
+    setQueueIndex(0);
+    setIsQueueModalOpen(true);
+  };
+
+  // Save template configuration to Firestore
+  const handleSaveTemplates = async () => {
+    setIsSavingTemplates(true);
+    try {
+      await updateSettings({
+        whatsappConfig: tempConfig
+      });
+      setTemplateSaveSuccess(true);
+      setTimeout(() => setTemplateSaveSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to save WhatsApp templates:', err);
+      alert('Failed to save templates. Please check connection.');
+    } finally {
+      setIsSavingTemplates(false);
+    }
+  };
+
+  // Insert placeholder tag into active template textarea
+  const handleInsertTag = (tag: string) => {
+    const textarea = templateTextareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const currentVal = (tempConfig[selectedTemplateKey] as string) || '';
+
+    const newVal = currentVal.substring(0, start) + tag + currentVal.substring(end);
+    setTempConfig(prev => ({ ...prev, [selectedTemplateKey]: newVal }));
+
+    // Reset cursor
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, start + tag.length);
+    }, 0);
+  };
+
+  // Available tag placeholders
+  const placeholderTags = [
+    { tag: '{student_name}', label: 'Student Name' },
+    { tag: '{parent_name}', label: 'Parent Name' },
+    { tag: '{class}', label: 'Class' },
+    { tag: '{section}', label: 'Section' },
+    { tag: '{roll}', label: 'Roll No' },
+    { tag: '{phone}', label: 'Phone' },
+    { tag: '{date}', label: 'Date' },
+    { tag: '{status}', label: 'Attendance Status' },
+    { tag: '{in_time}', label: 'In-Time' },
+    { tag: '{out_time}', label: 'Early Out Time' },
+    { tag: '{early_out_reason}', label: 'Early Out Reason' },
+    { tag: '{school_name}', label: 'School Name' },
+    { tag: '{sender_name}', label: 'Sender Signature' },
+    { tag: '{message_body}', label: 'Custom Message' },
+    { tag: '{notice_title}', label: 'Notice Title' },
+    { tag: '{holiday_date}', label: 'Holiday Date' },
+    { tag: '{holiday_reason}', label: 'Holiday Reason' },
+    { tag: '{reopening_date}', label: 'Reopening Date' }
+  ];
+
+  // Template titles for tab selection
+  const templateDefinitions: { key: keyof WhatsAppNotificationConfig; title: string; desc: string; icon: any }[] = [
+    { key: 'attendanceAbsentTemplate', title: 'Absent Alert', desc: 'Sent when student is marked absent', icon: UserX },
+    { key: 'attendanceEarlyLeaveTemplate', title: 'Early Leave Notice', desc: 'Sent when student leaves school early with reason', icon: Clock },
+    { key: 'attendancePresentTemplate', title: 'Present Confirmation', desc: 'Daily arrival & attendance confirmation', icon: UserCheck },
+    { key: 'attendanceLateTemplate', title: 'Late Arrival Alert', desc: 'Sent when student arrives after official start time', icon: AlertCircle },
+    { key: 'generalNoticeTemplate', title: 'General Notice / Circular', desc: 'School announcements, circulars & events', icon: Bell },
+    { key: 'feeReminderTemplate', title: 'Fee Payment Reminder', desc: 'Gentle reminder regarding pending fees', icon: FileText },
+    { key: 'holidayNoticeTemplate', title: 'Holiday Advisory', desc: 'Notification about upcoming school closure and reopening', icon: Calendar },
+    { key: 'examScheduleTemplate', title: 'Exam Schedule', desc: 'Upcoming test dates and examination guidelines', icon: Sparkles },
+  ];
+
+  // Mock student for template preview
+  const sampleStudent = {
+    id: 'SAMPLE001',
+    name: 'Aarav Sharma',
+    parentName: 'Rajesh Sharma',
+    class: selectedClass !== 'All' ? selectedClass : 'Class 5',
+    section: 'A',
+    roll: '07',
+    phone: '9876543210'
+  };
+
+  return (
+    <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-inner">
+            <MessageSquare className="w-7 h-7" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">WhatsApp Student Notifications</h1>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                Manual / On-Demand
+              </span>
+            </div>
+            <p className="text-sm text-slate-500 mt-1">
+              Send class-wise WhatsApp attendance notifications (Present, Absent, Early Leave) and school notices to student admission numbers.
+            </p>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl self-start md:self-auto">
+          <button
+            id="tab-send-messages"
+            onClick={() => setActiveTab('send')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+              activeTab === 'send'
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            )}
+          >
+            <Send className="w-4 h-4 text-emerald-600" />
+            Send Messages
+          </button>
+          <button
+            id="tab-configure-templates"
+            onClick={() => setActiveTab('templates')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+              activeTab === 'templates'
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            )}
+          >
+            <Settings className="w-4 h-4 text-blue-600" />
+            Configure Templates
+          </button>
+          <button
+            id="tab-dispatch-history"
+            onClick={() => setActiveTab('history')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+              activeTab === 'history'
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            )}
+          >
+            <Clock className="w-4 h-4 text-amber-600" />
+            Activity Log ({dispatchLogs.length})
+          </button>
+        </div>
+      </div>
+
+      {/* TAB 1: SEND MESSAGES */}
+      {activeTab === 'send' && (
+        <div className="space-y-6">
+          {/* Filter & Configuration Control Box */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Class Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+                  Target Class
+                </label>
+                <select
+                  id="select-class-filter"
+                  value={selectedClass}
+                  onChange={e => {
+                    setSelectedClass(e.target.value);
+                    setSelectedSection('All');
+                    setSelectedIds(new Set());
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+                  <option value="All">All Classes ({students.length} students)</option>
+                  {availableClasses.map(cls => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Section Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+                  Section
+                </label>
+                <select
+                  id="select-section-filter"
+                  value={selectedSection}
+                  onChange={e => {
+                    setSelectedSection(e.target.value);
+                    setSelectedIds(new Set());
+                  }}
+                  disabled={selectedClass === 'All'}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
+                >
+                  <option value="All">All Sections</option>
+                  {availableSections.map(sec => (
+                    <option key={sec} value={sec}>
+                      Section {sec}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Attendance Date */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+                  Attendance Date
+                </label>
+                <div className="relative">
+                  <input
+                    id="input-attendance-date"
+                    type="date"
+                    value={date}
+                    onChange={e => setDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Notification Purpose */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+                  Notification Type
+                </label>
+                <select
+                  id="select-notification-type"
+                  value={notificationType}
+                  onChange={e => setNotificationType(e.target.value as NotificationType)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-emerald-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+                  <option value="attendance">📋 Daily Attendance (Present/Absent/Early)</option>
+                  <option value="general">📢 General School Announcement</option>
+                  <option value="fee">💳 School Fee Reminder</option>
+                  <option value="holiday">🏖️ Holiday / Event Advisory</option>
+                  <option value="custom">✍️ Custom One-Off Message</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Custom/General Message Input Row if selected */}
+            {(notificationType === 'general' || notificationType === 'custom') && (
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Edit3 className="w-3.5 h-3.5 text-blue-600" />
+                    Message Content for {selectedClass === 'All' ? 'All Classes' : selectedClass}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    Placeholders like <code className="text-blue-600">{'{student_name}'}</code> will be auto-replaced
+                  </span>
+                </div>
+                {notificationType === 'general' && (
+                  <input
+                    type="text"
+                    placeholder="Notice Heading (e.g. Science Fair Tomorrow / Parent Teacher Meeting)"
+                    value={customTitle}
+                    onChange={e => setCustomTitle(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                )}
+                <textarea
+                  rows={3}
+                  placeholder="Type the message body here. Parents will receive this customized with their child's name and roll number..."
+                  value={customBody}
+                  onChange={e => setCustomBody(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+            )}
+
+            {/* Holiday Input Fields */}
+            {notificationType === 'holiday' && (
+              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-amber-900 mb-1">Holiday Date</label>
+                  <input
+                    type="date"
+                    value={holidayDate}
+                    onChange={e => setHolidayDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-amber-900 mb-1">Occasion / Reason</label>
+                  <input
+                    type="text"
+                    value={holidayReason}
+                    onChange={e => setHolidayReason(e.target.value)}
+                    placeholder="e.g. Bihu / Independence Day"
+                    className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-amber-900 mb-1">Reopening Date</label>
+                  <input
+                    type="text"
+                    value={reopeningDate}
+                    onChange={e => setReopeningDate(e.target.value)}
+                    placeholder="e.g. Next Monday, 22 Sept"
+                    className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Quick Status Filters Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-1">Filter by:</span>
+                <button
+                  id="filter-status-all"
+                  onClick={() => setStatusFilter('all')}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                    statusFilter === 'all'
+                      ? "bg-slate-900 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  )}
+                >
+                  All ({classStats.total})
+                </button>
+                <button
+                  id="filter-status-absent"
+                  onClick={() => setStatusFilter('absent')}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5",
+                    statusFilter === 'absent'
+                      ? "bg-rose-600 text-white shadow-sm"
+                      : "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200"
+                  )}
+                >
+                  <UserX className="w-3.5 h-3.5" />
+                  Absentees Only ({classStats.absent})
+                </button>
+                <button
+                  id="filter-status-early-leave"
+                  onClick={() => setStatusFilter('early-leave')}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5",
+                    statusFilter === 'early-leave'
+                      ? "bg-amber-600 text-white shadow-sm"
+                      : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                  )}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  Early Leave ({classStats.earlyLeave})
+                </button>
+                <button
+                  id="filter-status-present"
+                  onClick={() => setStatusFilter('present')}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5",
+                    statusFilter === 'present'
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                  )}
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  Present ({classStats.present})
+                </button>
+                <button
+                  id="filter-status-invalid-phone"
+                  onClick={() => setStatusFilter('invalid-phone')}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                    statusFilter === 'invalid-phone'
+                      ? "bg-purple-600 text-white shadow-sm"
+                      : "bg-purple-50 text-purple-700 hover:bg-purple-100"
+                  )}
+                >
+                  Missing Phone ({classStats.total - classStats.validPhone})
+                </button>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  id="input-search-students"
+                  type="text"
+                  placeholder="Search name, roll, phone..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Bulk Action Ribbon */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 text-white p-4 rounded-2xl shadow-md">
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  id="checkbox-select-all"
+                  type="checkbox"
+                  checked={selectedIds.size > 0 && selectedIds.size === filteredStudents.length}
+                  onChange={handleSelectAll}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-700"
+                />
+                <span className="text-sm font-semibold">
+                  {selectedIds.size === 0 ? 'Select All' : `Selected ${selectedIds.size} of ${filteredStudents.length}`}
+                </span>
+              </label>
+
+              {classStats.absent > 0 && (
+                <button
+                  id="btn-select-absent-only"
+                  onClick={handleSelectAbsentOnly}
+                  className="text-xs bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 px-2.5 py-1 rounded-md border border-rose-500/30 transition-colors"
+                >
+                  Select All Absentees ({classStats.absent})
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Sequential Multi-Sender Queue button */}
+              <button
+                id="btn-start-multi-send"
+                onClick={handleStartQueue}
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95"
+              >
+                <Play className="w-4 h-4 fill-white" />
+                Launch Multi-Send Queue ({selectedIds.size > 0 ? selectedIds.size : filteredStudents.length})
+              </button>
+
+              {/* Copy Broadcast Numbers */}
+              <button
+                id="btn-copy-batch-numbers"
+                onClick={handleCopyAllNumbers}
+                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+              >
+                {copiedBatchNumbers ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-400" />
+                    <span className="text-emerald-400">Numbers Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-400" />
+                    Copy Phone Numbers (CSV)
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Student List Cards / Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <span className="text-sm font-bold text-slate-900">
+                {selectedClass === 'All' ? 'All Classes' : selectedClass} Student List ({filteredStudents.length})
+              </span>
+              <span className="text-xs text-slate-500">
+                Click "Send WhatsApp" on any student or launch the Multi-Send Queue
+              </span>
+            </div>
+
+            {filteredStudents.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 space-y-3">
+                <Users className="w-12 h-12 text-slate-300 mx-auto" />
+                <p className="text-sm font-semibold text-slate-700">No students match the current filters</p>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  Try adjusting the class, section, or attendance status filter above to find students.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {filteredStudents.map(student => {
+                  const att = getStudentAttendance(student.id);
+                  const isSelected = selectedIds.has(student.id);
+                  const hasValidPhone = isValidWhatsAppPhone(student.phone);
+                  const isSent = !!sentRecords[student.id];
+                  const resolvedMsg = getResolvedMessage(student);
+
+                  return (
+                    <div
+                      key={student.id}
+                      className={cn(
+                        "p-4 md:px-6 md:py-4.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors",
+                        isSelected ? "bg-emerald-50/40" : "hover:bg-slate-50/70",
+                        isSent && "bg-slate-50"
+                      )}
+                    >
+                      {/* Left: Checkbox + Student Info */}
+                      <div className="flex items-start md:items-center gap-3.5">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(student.id)}
+                          className="mt-1 md:mt-0 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+                        />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-900 text-sm">{student.name}</span>
+                            <span className="px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                              Roll: {student.roll || 'N/A'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                              {student.class} {student.section ? `(${student.section})` : ''}
+                            </span>
+                            {/* Attendance Badge */}
+                            {att.status === 'Absent' && (
+                              <span className="px-2 py-0.5 rounded text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
+                                <UserX className="w-3 h-3" />
+                                Absent
+                              </span>
+                            )}
+                            {att.status === 'Early Leave' && (
+                              <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                Early Leave {att.outTime ? `(${att.outTime})` : ''}
+                              </span>
+                            )}
+                            {att.status === 'Present' && (
+                              <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                <UserCheck className="w-3 h-3" />
+                                Present {att.inTime ? `(${att.inTime})` : ''}
+                              </span>
+                            )}
+                            {att.status === 'Late' && (
+                              <span className="px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200 flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" />
+                                Late {att.inTime ? `(${att.inTime})` : ''}
+                              </span>
+                            )}
+                            {att.status === 'Not Recorded' && (
+                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-500">
+                                Unmarked
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+                            <span>Parent: <strong className="text-slate-700">{student.parentName || 'N/A'}</strong></span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              <span className={cn("font-medium", hasValidPhone ? "text-slate-800" : "text-rose-600")}>
+                                {student.phone || 'No phone provided'}
+                              </span>
+                              {!hasValidPhone && (
+                                <span className="text-rose-500 font-semibold">(Invalid)</span>
+                              )}
+                            </span>
+                            {att.earlyOutReason && (
+                              <>
+                                <span>•</span>
+                                <span className="text-amber-700 font-medium">Reason: {att.earlyOutReason}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Message Preview & Action Buttons */}
+                      <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                        {isSent && (
+                          <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Sent {sentRecords[student.id]}
+                          </span>
+                        )}
+
+                        {/* Copy Message Text */}
+                        <button
+                          title="Copy tailored WhatsApp message to clipboard"
+                          onClick={() => handleCopyMessage(student)}
+                          className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors"
+                        >
+                          {copiedId === student.id ? (
+                            <Check className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </button>
+
+                        {/* Edit custom text for student */}
+                        <button
+                          title="Preview or edit custom message for this student"
+                          onClick={() => setEditingStudentContext({ student, customMessage: resolvedMsg })}
+                          className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+
+                        {/* Direct Send on WhatsApp */}
+                        <button
+                          disabled={!hasValidPhone}
+                          onClick={() => handleSendSingle(student)}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95",
+                            hasValidPhone
+                              ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                              : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                          )}
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          Send WhatsApp
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: CONFIGURE MESSAGE TEMPLATES (SUPER ADMIN) */}
+      {activeTab === 'templates' && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Configure WhatsApp Notification Templates</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Super Admin can configure standard messages for attendance (Present, Absent, Early Leave) and other school actions.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3">
+                <button
+                  id="btn-reset-default-templates"
+                  onClick={() => {
+                    if (confirm('Reset all templates to system defaults?')) {
+                      setTempConfig(defaultWhatsAppConfig);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Reset Defaults
+                </button>
+
+                <button
+                  id="btn-save-templates-db"
+                  onClick={handleSaveTemplates}
+                  disabled={isSavingTemplates}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isSavingTemplates ? (
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : templateSaveSuccess ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-300" />
+                      <span>Saved to Database!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>Save Templates to Database</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* General Settings (Sender & Country Code) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Default Country Code (e.g. 91 for India)
+                </label>
+                <input
+                  type="text"
+                  value={tempConfig.defaultCountryCode}
+                  onChange={e => setTempConfig(prev => ({ ...prev, defaultCountryCode: e.target.value.replace(/\D/g, '') }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  placeholder="91"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Sender Signature / School Authority
+                </label>
+                <input
+                  type="text"
+                  value={tempConfig.senderName}
+                  onChange={e => setTempConfig(prev => ({ ...prev, senderName: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  placeholder="Principal, Bhogamur Jatiya Vidya Niketon"
+                />
+              </div>
+            </div>
+
+            {/* Template Selection Sidebar + Editor Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column: Template List */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">
+                  Select Template To Edit:
+                </span>
+                {templateDefinitions.map(item => {
+                  const Icon = item.icon;
+                  const isSelected = selectedTemplateKey === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => setSelectedTemplateKey(item.key)}
+                      className={cn(
+                        "w-full text-left p-3 rounded-xl border transition-all flex items-start gap-3",
+                        isSelected
+                          ? "bg-blue-50/70 border-blue-500 text-blue-950 shadow-sm"
+                          : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
+                        isSelected ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"
+                      )}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-bold text-sm block truncate">{item.title}</span>
+                        <span className="text-xs text-slate-500 block truncate mt-0.5">{item.desc}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Right Columns: Editor & Live WhatsApp Simulation */}
+              <div className="lg:col-span-2 space-y-4">
+                {/* Editor Container */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                      <Edit3 className="w-4 h-4 text-blue-600" />
+                      Editing: {templateDefinitions.find(t => t.key === selectedTemplateKey)?.title}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {((tempConfig[selectedTemplateKey] as string) || '').length} characters
+                    </span>
+                  </div>
+
+                  {/* Clickable placeholder tag chips */}
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-500">Insert Dynamic Tag:</span>
+                    <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
+                      {placeholderTags.map(p => (
+                        <button
+                          key={p.tag}
+                          type="button"
+                          onClick={() => handleInsertTag(p.tag)}
+                          className="px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-800 text-xs font-mono border border-slate-200 transition-colors"
+                          title={`Click to insert ${p.label}`}
+                        >
+                          + {p.tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Textarea */}
+                  <textarea
+                    ref={templateTextareaRef}
+                    rows={6}
+                    value={(tempConfig[selectedTemplateKey] as string) || ''}
+                    onChange={e => setTempConfig(prev => ({ ...prev, [selectedTemplateKey]: e.target.value }))}
+                    className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-sans text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    placeholder="Type template message here..."
+                  />
+                </div>
+
+                {/* WhatsApp Chat Simulation Preview */}
+                <div className="p-4 bg-slate-900 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-800 pb-2">
+                    <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Live WhatsApp Preview (Sample Student: Aarav Sharma)
+                    </span>
+                    <span>Assam (IST)</span>
+                  </div>
+
+                  {/* Bubble */}
+                  <div className="bg-[#DCF8C6] text-slate-900 p-3.5 rounded-2xl rounded-tr-none max-w-lg ml-auto shadow-md text-sm font-sans whitespace-pre-wrap leading-relaxed">
+                    {interpolateTemplate(
+                      (tempConfig[selectedTemplateKey] as string) || '',
+                      {
+                        ...buildContext(sampleStudent),
+                        status: selectedTemplateKey === 'attendanceAbsentTemplate' 
+                          ? 'Absent' 
+                          : selectedTemplateKey === 'attendanceEarlyLeaveTemplate' 
+                          ? 'Early Leave' 
+                          : selectedTemplateKey === 'attendanceLateTemplate'
+                          ? 'Late'
+                          : 'Present',
+                        inTime: '08:45 AM',
+                        outTime: '11:30 AM',
+                        earlyOutReason: 'Doctor Appointment permission',
+                        senderName: tempConfig.senderName
+                      }
+                    )}
+                    <div className="text-[10px] text-slate-500 text-right mt-1.5 flex items-center justify-end gap-1 font-mono">
+                      <span>{format(new Date(), 'hh:mm a')}</span>
+                      <Check className="w-3 h-3 text-blue-500" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: DISPATCH ACTIVITY LOGS */}
+      {activeTab === 'history' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">WhatsApp Notification Activity Log</h2>
+              <p className="text-xs text-slate-500">
+                Log of messages dispatched during the current active session.
+              </p>
+            </div>
+            {dispatchLogs.length > 0 && (
+              <button
+                onClick={() => setDispatchLogs([])}
+                className="text-xs text-rose-600 hover:text-rose-700 font-semibold"
+              >
+                Clear Session Log
+              </button>
+            )}
+          </div>
+
+          {dispatchLogs.length === 0 ? (
+            <div className="p-12 text-center text-slate-400 space-y-2">
+              <Clock className="w-10 h-10 mx-auto text-slate-300" />
+              <p className="text-sm font-semibold text-slate-600">No messages dispatched yet in this session</p>
+              <p className="text-xs text-slate-400">
+                When you send WhatsApp messages to students from the Send tab, they will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase">
+                  <tr>
+                    <th className="py-3 px-4">Time</th>
+                    <th className="py-3 px-4">Student Name</th>
+                    <th className="py-3 px-4">Class</th>
+                    <th className="py-3 px-4">Phone</th>
+                    <th className="py-3 px-4">Type</th>
+                    <th className="py-3 px-4">Message Excerpt</th>
+                    <th className="py-3 px-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dispatchLogs.map(log => (
+                    <tr key={log.id} className="hover:bg-slate-50">
+                      <td className="py-3 px-4 font-mono text-slate-500">{log.timestamp}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900">{log.studentName}</td>
+                      <td className="py-3 px-4 text-slate-600">{log.className}</td>
+                      <td className="py-3 px-4 font-mono text-slate-700">{log.phone}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold">
+                          {log.type}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 max-w-xs truncate text-slate-600" title={log.message}>
+                        {log.message}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold flex items-center gap-1 w-fit">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Sent
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SEQUENTIAL MULTI-SEND QUEUE MODAL */}
+      <AnimatePresence>
+        {isQueueModalOpen && queueStudents.length > 0 && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200"
+            >
+              {/* Queue Header */}
+              <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold">WhatsApp Multi-Send Queue</h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-white">
+                      {queueIndex + 1} of {queueStudents.length}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Send one-by-one to prevent browser popup blocking. Click "Send on WhatsApp" then "Next".
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsQueueModalOpen(false)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full bg-slate-800 h-1.5">
+                <div
+                  className="bg-emerald-500 h-1.5 transition-all duration-300"
+                  style={{ width: `${((queueIndex + 1) / queueStudents.length) * 100}%` }}
+                />
+              </div>
+
+              {/* Current Student in Queue */}
+              {(() => {
+                const currentStudent = queueStudents[queueIndex];
+                if (!currentStudent) return null;
+
+                const att = getStudentAttendance(currentStudent.id);
+                const msg = getResolvedMessage(currentStudent);
+                const hasValidPhone = isValidWhatsAppPhone(currentStudent.phone);
+                const isCurrentSent = !!sentRecords[currentStudent.id];
+
+                return (
+                  <div className="p-6 space-y-6">
+                    {/* Student Info Card */}
+                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base font-bold text-slate-900">{currentStudent.name}</span>
+                          <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-semibold">
+                            {currentStudent.class}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-xs font-semibold">
+                            Roll: {currentStudent.roll}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Parent: <strong className="text-slate-700">{currentStudent.parentName || 'N/A'}</strong> | Phone:{' '}
+                          <strong className={hasValidPhone ? 'text-emerald-700' : 'text-rose-600'}>
+                            {currentStudent.phone || 'None'}
+                          </strong>
+                        </p>
+                      </div>
+
+                      {/* Status */}
+                      <div>
+                        {att.status === 'Absent' && (
+                          <span className="px-3 py-1 rounded-lg text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                            Absent
+                          </span>
+                        )}
+                        {att.status === 'Early Leave' && (
+                          <span className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            Early Leave
+                          </span>
+                        )}
+                        {att.status === 'Present' && (
+                          <span className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Present
+                          </span>
+                        )}
+                        {att.status === 'Not Recorded' && (
+                          <span className="px-3 py-1 rounded-lg text-xs font-medium bg-slate-200 text-slate-600">
+                            Unmarked
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Message Preview */}
+                    <div className="space-y-2">
+                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Tailored Message to be Sent:
+                      </span>
+                      <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-2xl text-slate-900 text-sm whitespace-pre-wrap leading-relaxed font-sans shadow-inner">
+                        {msg}
+                      </div>
+                    </div>
+
+                    {/* Modal Controls */}
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                      <button
+                        disabled={queueIndex === 0}
+                        onClick={() => setQueueIndex(prev => Math.max(0, prev - 1))}
+                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-30"
+                      >
+                        ← Previous
+                      </button>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => {
+                            if (queueIndex < queueStudents.length - 1) {
+                              setQueueIndex(prev => prev + 1);
+                            } else {
+                              setIsQueueModalOpen(false);
+                            }
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                        >
+                          Skip
+                        </button>
+
+                        <button
+                          disabled={!hasValidPhone}
+                          onClick={() => {
+                            handleSendSingle(currentStudent, msg);
+                            // Auto advance after 400ms
+                            setTimeout(() => {
+                              if (queueIndex < queueStudents.length - 1) {
+                                setQueueIndex(prev => prev + 1);
+                              } else {
+                                setIsQueueModalOpen(false);
+                              }
+                            }, 400);
+                          }}
+                          className={cn(
+                            "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95",
+                            hasValidPhone
+                              ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                              : "bg-slate-300 text-slate-500 cursor-not-allowed"
+                          )}
+                        >
+                          <Send className="w-4 h-4" />
+                          {isCurrentSent ? 'Resend on WhatsApp' : 'Send on WhatsApp & Next'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* SINGLE STUDENT CUSTOM MESSAGE PREVIEW MODAL */}
+      <AnimatePresence>
+        {editingStudentContext && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-200"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-bold text-slate-900 text-base">
+                  Message for {editingStudentContext.student.name}
+                </h3>
+                <button
+                  onClick={() => setEditingStudentContext(null)}
+                  className="text-slate-400 hover:text-slate-600 text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-1 text-xs text-slate-600">
+                <p>Phone Number: <strong>{editingStudentContext.student.phone || 'None'}</strong></p>
+                <p>Class: <strong>{editingStudentContext.student.class}</strong> | Roll: <strong>{editingStudentContext.student.roll}</strong></p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Customized WhatsApp Message:</label>
+                <textarea
+                  rows={6}
+                  value={editingStudentContext.customMessage}
+                  onChange={e => setEditingStudentContext(prev => prev ? ({ ...prev, customMessage: e.target.value }) : null)}
+                  className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-sans text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(editingStudentContext.customMessage);
+                    alert('Message copied to clipboard!');
+                  }}
+                  className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 font-semibold"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy Text
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setEditingStudentContext(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      handleSendSingle(editingStudentContext.student, editingStudentContext.customMessage);
+                      setEditingStudentContext(null);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    Send on WhatsApp
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

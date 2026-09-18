@@ -33,7 +33,8 @@ import {
   Database,
   RefreshCw,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  MessageSquare
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -48,6 +49,7 @@ const navItems = [
   { path: '/admin/staffs', icon: Briefcase, label: 'Website Staff' },
   { path: '/admin/website-pages', icon: BookOpen, label: 'Custom Pages' },
   { path: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
+  { path: '/admin/whatsapp-messages', icon: MessageSquare, label: 'WhatsApp SMS' },
   { path: '/admin/results', icon: BookOpen, label: 'Results' },
   { path: '/admin/face-recognition', icon: Camera, label: 'Face Scan' },
   { path: '/admin/fees', icon: Wallet, label: 'Fees' },

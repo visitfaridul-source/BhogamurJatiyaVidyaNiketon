@@ -151,7 +151,8 @@
         "heroHeadline": { "type": "string" },
         "heroSubtitle": { "type": "string" },
         "enableFaceAttendance": { "type": "boolean" },
-        "enableQrAttendance": { "type": "boolean" }
+        "enableQrAttendance": { "type": "boolean" },
+        "whatsappConfig": { "type": "object" }
       }
     }
   },
