@@ -105,7 +105,7 @@ export default function AdmissionData() {
           aadhaar: admission.aadhaar,
           pen: admission.pen,
           apaar: admission.apaar,
-          photoUrl: admission.photoUrl
+          ...(admission.photoUrl ? { photoUrl: admission.photoUrl } : {})
         };
         setStudents(prev => [newStudent, ...prev]);
         alert(`Student approved and enrolled! Assigned ID: ${newStudent.id}`);

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, OperationType, sanitizeFirestoreData } from '../firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, getDocs, getDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 
@@ -516,7 +516,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const setStudents = async (value: React.SetStateAction<Student[]>) => {
     try {
       const current = students;
-      const next = typeof value === 'function' ? (value as any)(current) : value;
+      const rawNext = typeof value === 'function' ? (value as any)(current) : value;
+      const next: Student[] = sanitizeFirestoreData(rawNext);
 
       // Optimistic visual update
       setStudentsState(next);
@@ -540,7 +541,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         const existing = current.find(item => item.id === s.id);
         if (!existing || JSON.stringify(existing) !== JSON.stringify(s)) {
           try {
-            await setDoc(doc(db, 'students', s.id), s);
+            await setDoc(doc(db, 'students', s.id), sanitizeFirestoreData(s));
             
             // Automatically register face if they have an uploaded photo or avatar
             const hasPhoto = s.photoUrl || (s.avatar && !s.avatar.includes("dicebear.com"));
@@ -566,7 +567,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const setTeachers = async (value: React.SetStateAction<Teacher[]>) => {
     try {
       const current = teachers;
-      const next = typeof value === 'function' ? (value as any)(current) : value;
+      const rawNext = typeof value === 'function' ? (value as any)(current) : value;
+      const next: Teacher[] = sanitizeFirestoreData(rawNext);
 
       setTeachersState(next);
 
@@ -587,7 +589,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         const existing = current.find(item => item.id === t.id);
         if (!existing || JSON.stringify(existing) !== JSON.stringify(t)) {
           try {
-            await setDoc(doc(db, 'teachers', t.id), t);
+            await setDoc(doc(db, 'teachers', t.id), sanitizeFirestoreData(t));
             
             // Automatically register face if they have an uploaded photo or avatar
             const hasPhoto = t.avatar && !t.avatar.includes("dicebear.com");
@@ -613,7 +615,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const setOnlineAdmissions = async (value: React.SetStateAction<OnlineAdmissionForm[]>) => {
     try {
       const current = onlineAdmissions;
-      const next = typeof value === 'function' ? (value as any)(current) : value;
+      const rawNext = typeof value === 'function' ? (value as any)(current) : value;
+      const next: OnlineAdmissionForm[] = sanitizeFirestoreData(rawNext);
 
       setOnlineAdmissionsState(next);
 
@@ -634,7 +637,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         const existing = current.find(item => item.id === a.id);
         if (!existing || JSON.stringify(existing) !== JSON.stringify(a)) {
           try {
-            await setDoc(doc(db, 'onlineAdmissions', a.id), a);
+            await setDoc(doc(db, 'onlineAdmissions', a.id), sanitizeFirestoreData(a));
           } catch (err) {
             handleFirestoreError(err, OperationType.WRITE, `onlineAdmissions/${a.id}`);
           }
@@ -648,7 +651,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const setResults = async (value: React.SetStateAction<StudentResult[]>) => {
     try {
       const current = results;
-      const next = typeof value === 'function' ? (value as any)(current) : value;
+      const rawNext = typeof value === 'function' ? (value as any)(current) : value;
+      const next: StudentResult[] = sanitizeFirestoreData(rawNext);
 
       setResultsState(next);
 
@@ -669,7 +673,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         const existing = current.find(item => item.id === r.id);
         if (!existing || JSON.stringify(existing) !== JSON.stringify(r)) {
           try {
-            await setDoc(doc(db, 'results', r.id), r);
+            await setDoc(doc(db, 'results', r.id), sanitizeFirestoreData(r));
           } catch (err) {
             handleFirestoreError(err, OperationType.WRITE, `results/${r.id}`);
           }
@@ -683,7 +687,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const setSessions = async (value: React.SetStateAction<AcademicSession[]>) => {
     try {
       const current = sessions;
-      const next = typeof value === 'function' ? (value as any)(current) : value;
+      const rawNext = typeof value === 'function' ? (value as any)(current) : value;
+      const next: AcademicSession[] = sanitizeFirestoreData(rawNext);
 
       setSessionsState(next);
 
@@ -704,7 +709,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         const existing = current.find(item => item.id === s.id);
         if (!existing || JSON.stringify(existing) !== JSON.stringify(s)) {
           try {
-            await setDoc(doc(db, 'sessions', s.id), s);
+            await setDoc(doc(db, 'sessions', s.id), sanitizeFirestoreData(s));
           } catch (err) {
             handleFirestoreError(err, OperationType.WRITE, `sessions/${s.id}`);
           }
@@ -718,7 +723,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const setCourses = async (value: React.SetStateAction<Course[]>) => {
     try {
       const current = courses;
-      const next = typeof value === 'function' ? (value as any)(current) : value;
+      const rawNext = typeof value === 'function' ? (value as any)(current) : value;
+      const next: Course[] = sanitizeFirestoreData(rawNext);
 
       setCoursesState(next);
 
@@ -739,7 +745,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         const existing = current.find(item => item.id === c.id);
         if (!existing || JSON.stringify(existing) !== JSON.stringify(c)) {
           try {
-            await setDoc(doc(db, 'courses', c.id), c);
+            await setDoc(doc(db, 'courses', c.id), sanitizeFirestoreData(c));
           } catch (err) {
             handleFirestoreError(err, OperationType.WRITE, `courses/${c.id}`);
           }
@@ -759,57 +765,57 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       console.log("Forcing manual complete sync to Firebase Firestore...");
       
       // 1. Students
-      try {
-        for (const s of students) {
-          await setDoc(doc(db, 'students', s.id), s);
+      for (const s of students) {
+        try {
+          await setDoc(doc(db, 'students', s.id), sanitizeFirestoreData(s));
+        } catch (err: any) {
+          throw new Error(`Failed writing block [students] (ID: ${s?.id || 'N/A'}): ${err.message || err}`);
         }
-      } catch (err: any) {
-        throw new Error(`Failed writing block [students] (ID: ${students[0]?.id || 'N/A'}): ${err.message || err}`);
       }
       
       // 2. Teachers
-      try {
-        for (const t of teachers) {
-          await setDoc(doc(db, 'teachers', t.id), t);
+      for (const t of teachers) {
+        try {
+          await setDoc(doc(db, 'teachers', t.id), sanitizeFirestoreData(t));
+        } catch (err: any) {
+          throw new Error(`Failed writing block [teachers] (ID: ${t?.id || 'N/A'}): ${err.message || err}`);
         }
-      } catch (err: any) {
-        throw new Error(`Failed writing block [teachers] (ID: ${teachers[0]?.id || 'N/A'}): ${err.message || err}`);
       }
       
       // 3. Online Admissions
-      try {
-        for (const a of onlineAdmissions) {
-          await setDoc(doc(db, 'onlineAdmissions', a.id), a);
+      for (const a of onlineAdmissions) {
+        try {
+          await setDoc(doc(db, 'onlineAdmissions', a.id), sanitizeFirestoreData(a));
+        } catch (err: any) {
+          throw new Error(`Failed writing block [onlineAdmissions] (ID: ${a?.id || 'N/A'}): ${err.message || err}`);
         }
-      } catch (err: any) {
-        throw new Error(`Failed writing block [onlineAdmissions] (ID: ${onlineAdmissions[0]?.id || 'N/A'}): ${err.message || err}`);
       }
       
       // 4. Results
-      try {
-        for (const r of results) {
-          await setDoc(doc(db, 'results', r.id), r);
+      for (const r of results) {
+        try {
+          await setDoc(doc(db, 'results', r.id), sanitizeFirestoreData(r));
+        } catch (err: any) {
+          throw new Error(`Failed writing block [results] (ID: ${r?.id || 'N/A'}): ${err.message || err}`);
         }
-      } catch (err: any) {
-        throw new Error(`Failed writing block [results] (ID: ${results[0]?.id || 'N/A'}): ${err.message || err}`);
       }
       
       // 5. Sessions
-      try {
-        for (const s of sessions) {
-          await setDoc(doc(db, 'sessions', s.id), s);
+      for (const s of sessions) {
+        try {
+          await setDoc(doc(db, 'sessions', s.id), sanitizeFirestoreData(s));
+        } catch (err: any) {
+          throw new Error(`Failed writing block [sessions] (ID: ${s?.id || 'N/A'}): ${err.message || err}`);
         }
-      } catch (err: any) {
-        throw new Error(`Failed writing block [sessions] (ID: ${sessions[0]?.id || 'N/A'}): ${err.message || err}`);
       }
       
       // 6. Courses
-      try {
-        for (const c of courses) {
-          await setDoc(doc(db, 'courses', c.id), c);
+      for (const c of courses) {
+        try {
+          await setDoc(doc(db, 'courses', c.id), sanitizeFirestoreData(c));
+        } catch (err: any) {
+          throw new Error(`Failed writing block [courses] (ID: ${c?.id || 'N/A'}): ${err.message || err}`);
         }
-      } catch (err: any) {
-        throw new Error(`Failed writing block [courses] (ID: ${courses[0]?.id || 'N/A'}): ${err.message || err}`);
       }
 
       setDbStats({
@@ -850,7 +856,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         earlyOutReason: fields.earlyOutReason !== undefined ? fields.earlyOutReason : (existing.earlyOutReason || '')
       };
 
-      await setDoc(docRef, updatedRecord);
+      await setDoc(docRef, sanitizeFirestoreData(updatedRecord));
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `attendance/${date}_${memberId}`);
     }
@@ -869,7 +875,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const saveFeeTransaction = async (tx: any) => {
     try {
       const docRef = doc(db, 'fees', tx.id);
-      await setDoc(docRef, tx);
+      await setDoc(docRef, sanitizeFirestoreData(tx));
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `fees/${tx.id}`);
     }
@@ -886,7 +892,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const saveSchoolEvent = async (event: any) => {
     try {
       const docRef = doc(db, 'events', event.id);
-      await setDoc(docRef, event);
+      await setDoc(docRef, sanitizeFirestoreData(event));
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `events/${event.id}`);
     }

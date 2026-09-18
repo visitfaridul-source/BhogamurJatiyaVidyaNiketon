@@ -73,3 +73,30 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
+
+/**
+ * Recursively strips undefined fields from an object or array.
+ * Firestore strictly forbids `undefined` field values in setDoc, addDoc, updateDoc.
+ */
+export function sanitizeFirestoreData<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeFirestoreData(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    // Keep special objects intact (Date, Timestamp, FieldValue, etc.)
+    if (data.constructor && data.constructor.name !== 'Object') {
+      return data;
+    }
+    const sanitized: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        sanitized[key] = sanitizeFirestoreData(value);
+      }
+    }
+    return sanitized;
+  }
+  return data;
+}

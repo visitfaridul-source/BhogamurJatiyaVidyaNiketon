@@ -944,7 +944,7 @@ export default function Students() {
             aadhaar: (formData.get('aadhaar') as string || '-').trim().toUpperCase(),
             pen: (formData.get('pen') as string || '-').trim().toUpperCase(),
             apaar: (formData.get('apaar') as string || '-').trim().toUpperCase(),
-            photoUrl: photoPreview || editingStudent?.photoUrl,
+            ...(photoPreview || editingStudent?.photoUrl ? { photoUrl: photoPreview || editingStudent?.photoUrl } : {}),
           };
 
           if (editingStudent) {
