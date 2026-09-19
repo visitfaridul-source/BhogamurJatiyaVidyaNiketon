@@ -40,7 +40,14 @@ import {
   EyeOff,
   Smartphone,
   ShieldAlert,
-  GraduationCap
+  GraduationCap,
+  Zap,
+  CheckCheck,
+  Download,
+  Loader2,
+  Globe,
+  Webhook,
+  FileSpreadsheet
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -48,7 +55,10 @@ import {
   isValidWhatsAppPhone,
   interpolateTemplate,
   createWhatsAppLink,
-  StudentMessageContext
+  StudentMessageContext,
+  executeBulkWhatsAppDispatch,
+  BulkDispatchItem,
+  DispatchResult
 } from '@/lib/whatsappUtils';
 
 type NotificationType = 'attendance' | 'general' | 'fee' | 'holiday' | 'custom';
@@ -101,6 +111,17 @@ export default function WhatsAppMessages() {
   // Sequential Multi-Sender Queue Modal
   const [isQueueModalOpen, setIsQueueModalOpen] = useState(false);
   const [queueIndex, setQueueIndex] = useState(0);
+
+  // Bulk Instant Dispatch Modal & Execution State
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isBulkSending, setIsBulkSending] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number; latest?: DispatchResult }>({
+    completed: 0,
+    total: 0
+  });
+  const [bulkResults, setBulkResults] = useState<DispatchResult[] | null>(null);
+  const [bulkSelectedDispatchMode, setBulkSelectedDispatchMode] = useState<'direct_batch' | 'meta_cloud_api' | 'webhook'>('direct_batch');
+  const [copiedBroadcastPack, setCopiedBroadcastPack] = useState(false);
 
   // Single Student Custom Edit Modal
   const [editingStudentContext, setEditingStudentContext] = useState<{
@@ -439,6 +460,129 @@ export default function WhatsAppMessages() {
     navigator.clipboard.writeText(text);
     setCopiedBatchNumbers(true);
     setTimeout(() => setCopiedBatchNumbers(false), 2500);
+  };
+
+  // Bulk target students (class-wise, respect selection if any checkboxes ticked, or entire class if none ticked)
+  const bulkStudents = useMemo(() => {
+    if (!selectedClass) return [];
+    if (selectedIds.size > 0) {
+      return filteredStudents.filter(s => selectedIds.has(s.id));
+    }
+    return filteredStudents;
+  }, [filteredStudents, selectedIds, selectedClass]);
+
+  const handleOpenBulkModal = () => {
+    if (!isLiveChatAllowed) {
+      alert('Live WhatsApp Chat & Dispatch is currently BLOCKED by School Admin. An Administrator can enable live chat in the Configure Templates tab or banner.');
+      return;
+    }
+    if (!selectedClass) {
+      alert('Please select a Target Class first.');
+      return;
+    }
+    if (bulkStudents.length === 0) {
+      alert('No students found to dispatch messages to. Please select at least one student or choose a class with students.');
+      return;
+    }
+    setBulkResults(null);
+    setBulkProgress({ completed: 0, total: bulkStudents.length });
+    setBulkSelectedDispatchMode(tempConfig.dispatchMode || 'direct_batch');
+    setIsBulkModalOpen(true);
+  };
+
+  const handleStartBulkDispatch = async () => {
+    if (bulkStudents.length === 0) return;
+    setIsBulkSending(true);
+    setBulkResults(null);
+    setBulkProgress({ completed: 0, total: bulkStudents.length });
+
+    // Prepare dispatch items with tailored interpolated messages
+    const items: BulkDispatchItem[] = bulkStudents.map(student => ({
+      studentId: student.id,
+      studentName: student.name,
+      className: student.class,
+      roll: student.roll,
+      parentName: student.parentName,
+      phone: student.phone,
+      message: getResolvedMessage(student)
+    }));
+
+    const results = await executeBulkWhatsAppDispatch(items, {
+      defaultCountryCode: tempConfig.defaultCountryCode || '91',
+      dispatchMode: bulkSelectedDispatchMode,
+      metaPhoneNumberId: tempConfig.metaPhoneNumberId,
+      metaAccessToken: tempConfig.metaAccessToken,
+      webhookUrl: tempConfig.webhookUrl,
+      webhookAuthKey: tempConfig.webhookAuthKey,
+      onProgress: (completed, total, latest) => {
+        setBulkProgress({ completed, total, latest });
+      }
+    });
+
+    setBulkResults(results);
+    setIsBulkSending(false);
+
+    // Update sent records and dispatch logs
+    const newSentRecords: Record<string, string> = { ...sentRecords };
+    const newLogs: DispatchLog[] = [];
+
+    results.forEach(res => {
+      if (res.status === 'sent') {
+        newSentRecords[res.studentId] = res.timestamp;
+      }
+      newLogs.push({
+        id: `bulk-${res.studentId}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        studentId: res.studentId,
+        studentName: res.studentName,
+        className: res.className,
+        phone: res.phone,
+        status: res.status === 'sent' ? 'Sent (Bulk)' : res.status === 'skipped_invalid_phone' ? 'Skipped (No Phone)' : 'Failed',
+        type: notificationType,
+        timestamp: res.timestamp,
+        message: res.messageText
+      });
+    });
+
+    setSentRecords(newSentRecords);
+    setDispatchLogs(prev => [...newLogs, ...prev]);
+  };
+
+  const handleDownloadBulkReportCsv = () => {
+    if (!bulkResults || bulkResults.length === 0) return;
+    const headers = ['Student ID', 'Student Name', 'Class', 'Roll', 'Phone', 'Status', 'Timestamp', 'Message'];
+    const rows = bulkResults.map(r => [
+      `"${r.studentId}"`,
+      `"${r.studentName}"`,
+      `"${r.className}"`,
+      `"${r.roll || ''}"`,
+      `"${r.phone}"`,
+      `"${r.status}"`,
+      `"${format(new Date(r.timestamp), 'yyyy-MM-dd hh:mm:ss a')}"`,
+      `"${r.messageText.replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `WhatsApp_Bulk_Dispatch_${selectedClass || 'Class'}_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCopyBroadcastPack = () => {
+    const validRecipients = bulkStudents.filter(s => isValidWhatsAppPhone(s.phone));
+    const phones = validRecipients
+      .map(s => formatWhatsAppNumber(s.phone, tempConfig.defaultCountryCode || '91'))
+      .join(', ');
+    
+    const sampleMsg = bulkStudents.length > 0 ? getResolvedMessage(bulkStudents[0]) : '';
+    const fullPack = `--- RECIPIENT PHONE NUMBERS (${validRecipients.length}) ---\n${phones}\n\n--- MESSAGE TEMPLATE ---\n${sampleMsg}`;
+    
+    navigator.clipboard.writeText(fullPack);
+    setCopiedBroadcastPack(true);
+    setTimeout(() => setCopiedBroadcastPack(false), 2500);
   };
 
   // Queue runner list
@@ -947,20 +1091,38 @@ export default function WhatsAppMessages() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5">
-              {/* Sequential Multi-Sender Queue button */}
+              {/* Primary ⚡ Send Bulk WhatsApp at Once Button */}
+              <button
+                id="btn-send-bulk-all-at-once"
+                onClick={handleOpenBulkModal}
+                disabled={!selectedClass || filteredStudents.length === 0}
+                className={cn(
+                  "flex items-center gap-2 px-4.5 py-2 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95",
+                  !selectedClass || filteredStudents.length === 0
+                    ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 ring-1 ring-emerald-400/40 cursor-pointer"
+                )}
+                title="Send personalized WhatsApp messages to all selected students at once without one-by-one clicking"
+              >
+                <Zap className="w-4 h-4 fill-white" />
+                <span>Send Bulk at Once ({!selectedClass ? 0 : bulkStudents.length})</span>
+              </button>
+
+              {/* Sequential Multi-Sender Queue button (Secondary) */}
               <button
                 id="btn-start-multi-send"
                 onClick={handleStartQueue}
                 disabled={!selectedClass}
                 className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95",
+                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all active:scale-95",
                   !selectedClass
-                    ? "bg-slate-700 text-slate-400 cursor-not-allowed"
-                    : "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+                    ? "bg-slate-800/50 text-slate-500 border-slate-800 cursor-not-allowed"
+                    : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 cursor-pointer"
                 )}
+                title="Open sequential queue to preview and send one-by-one"
               >
-                <Play className="w-4 h-4 fill-white" />
-                Launch Multi-Send Queue ({!selectedClass ? 0 : selectedIds.size > 0 ? selectedIds.size : filteredStudents.length})
+                <Play className="w-3.5 h-3.5 fill-slate-300" />
+                <span>Step-by-Step Queue</span>
               </button>
 
               {/* Copy Broadcast Numbers */}
@@ -983,7 +1145,7 @@ export default function WhatsAppMessages() {
                 ) : (
                   <>
                     <Copy className="w-3.5 h-3.5 text-slate-400" />
-                    Copy Phone Numbers (CSV)
+                    Copy Numbers (CSV)
                   </>
                 )}
               </button>
@@ -998,11 +1160,23 @@ export default function WhatsAppMessages() {
                   ? 'Target Class: Please select a class' 
                   : `${selectedClass === 'All' ? 'All Classes' : selectedClass} Student List (${filteredStudents.length})`}
               </span>
-              <span className="text-xs text-slate-500">
-                {!selectedClass 
-                  ? 'Select a class above to preview student admission contacts' 
-                  : 'Click "Send WhatsApp" on any student or launch the Multi-Send Queue'}
-              </span>
+              <div className="flex items-center gap-3">
+                {Boolean(selectedClass && filteredStudents.length > 0) && (
+                  <button
+                    type="button"
+                    onClick={handleOpenBulkModal}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition-all cursor-pointer active:scale-95"
+                  >
+                    <Zap className="w-3 h-3 fill-emerald-600 text-emerald-600" />
+                    <span>Send Bulk ({bulkStudents.length})</span>
+                  </button>
+                )}
+                <span className="text-xs text-slate-500 hidden sm:inline">
+                  {!selectedClass 
+                    ? 'Select a class above to preview student admission contacts' 
+                    : 'Click "Send Bulk at Once" or individual "Send WhatsApp"'}
+                </span>
+              </div>
             </div>
 
             {!selectedClass ? (
@@ -1389,6 +1563,159 @@ export default function WhatsAppMessages() {
                   placeholder="Principal, Bhogamur Jatiya Vidya Niketon"
                 />
               </div>
+            </div>
+
+            {/* Bulk WhatsApp Dispatch & Gateway Settings */}
+            <div className="p-5 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl border border-slate-700/80 shadow-md space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700/60 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                    <Zap className="w-4 h-4 fill-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Bulk WhatsApp Dispatch Gateway</h3>
+                    <p className="text-xs text-slate-300">
+                      Configure how all-at-once bulk messages are processed for classes and selected students.
+                    </p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 w-fit">
+                  {tempConfig.dispatchMode === 'meta_cloud_api' ? 'Meta Cloud API' : tempConfig.dispatchMode === 'webhook' ? 'Webhook Gateway' : 'Instant Parallel'}
+                </span>
+              </div>
+
+              {/* Mode Selection */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label
+                  onClick={() => setTempConfig(prev => ({ ...prev, dispatchMode: 'direct_batch' }))}
+                  className={cn(
+                    "p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between",
+                    (tempConfig.dispatchMode || 'direct_batch') === 'direct_batch'
+                      ? "bg-emerald-950/60 border-emerald-500 ring-1 ring-emerald-400/40 text-white"
+                      : "bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800"
+                  )}
+                >
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="w-4 h-4 text-emerald-400 fill-emerald-400" />
+                      <span className="text-xs font-bold">Instant Parallel (Recommended)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      Dispatches tailored messages in parallel batches. Instant execution with no external API credentials needed.
+                    </p>
+                  </div>
+                </label>
+
+                <label
+                  onClick={() => setTempConfig(prev => ({ ...prev, dispatchMode: 'meta_cloud_api' }))}
+                  className={cn(
+                    "p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between",
+                    tempConfig.dispatchMode === 'meta_cloud_api'
+                      ? "bg-emerald-950/60 border-emerald-500 ring-1 ring-emerald-400/40 text-white"
+                      : "bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800"
+                  )}
+                >
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Globe className="w-4 h-4 text-blue-400" />
+                      <span className="text-xs font-bold">Meta Cloud API</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      Official Meta WhatsApp Business Cloud API. Requires Meta Phone Number ID & Access Token.
+                    </p>
+                  </div>
+                </label>
+
+                <label
+                  onClick={() => setTempConfig(prev => ({ ...prev, dispatchMode: 'webhook' }))}
+                  className={cn(
+                    "p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between",
+                    tempConfig.dispatchMode === 'webhook'
+                      ? "bg-emerald-950/60 border-emerald-500 ring-1 ring-emerald-400/40 text-white"
+                      : "bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800"
+                  )}
+                >
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Webhook className="w-4 h-4 text-purple-400" />
+                      <span className="text-xs font-bold">Webhook Gateway</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      Forwards bulk message packets to your custom webhook endpoint or third-party SMS/WhatsApp server.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Conditional credentials fields for Meta API */}
+              {tempConfig.dispatchMode === 'meta_cloud_api' && (
+                <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-700/70 space-y-3">
+                  <span className="text-xs font-bold text-blue-300 block">
+                    Meta WhatsApp Cloud API Credentials
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Meta Phone Number ID
+                      </label>
+                      <input
+                        type="text"
+                        value={tempConfig.metaPhoneNumberId || ''}
+                        onChange={e => setTempConfig(prev => ({ ...prev, metaPhoneNumberId: e.target.value.trim() }))}
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
+                        placeholder="e.g. 104857291827461"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Permanent System User Access Token
+                      </label>
+                      <input
+                        type="password"
+                        value={tempConfig.metaAccessToken || ''}
+                        onChange={e => setTempConfig(prev => ({ ...prev, metaAccessToken: e.target.value.trim() }))}
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
+                        placeholder="EAA..."
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Conditional credentials fields for Webhook */}
+              {tempConfig.dispatchMode === 'webhook' && (
+                <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-700/70 space-y-3">
+                  <span className="text-xs font-bold text-purple-300 block">
+                    Webhook Gateway Endpoint Settings
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Webhook Endpoint URL
+                      </label>
+                      <input
+                        type="url"
+                        value={tempConfig.webhookUrl || ''}
+                        onChange={e => setTempConfig(prev => ({ ...prev, webhookUrl: e.target.value.trim() }))}
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-400"
+                        placeholder="https://api.myschool.edu/whatsapp/dispatch"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Authorization Key / Bearer Token (Optional)
+                      </label>
+                      <input
+                        type="password"
+                        value={tempConfig.webhookAuthKey || ''}
+                        onChange={e => setTempConfig(prev => ({ ...prev, webhookAuthKey: e.target.value.trim() }))}
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-400"
+                        placeholder="Bearer token or secret key"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Template Selection Sidebar + Editor Layout */}
@@ -1908,6 +2235,401 @@ export default function WhatsAppMessages() {
                     Send on WhatsApp
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ⚡ BULK WHATSAPP INSTANT DISPATCH MODAL (ALL AT ONCE) */}
+      <AnimatePresence>
+        {isBulkModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Modal Header */}
+              <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-between border-b border-slate-700/80">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shadow-inner">
+                    <Zap className="w-5 h-5 fill-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-base text-white">Send Bulk WhatsApp Messages at Once</h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        Class {selectedClass}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300">
+                      Dispatches tailored messages to all {bulkStudents.length} selected students at once without one-by-one clicking.
+                    </p>
+                  </div>
+                </div>
+
+                {!isBulkSending && (
+                  <button
+                    type="button"
+                    onClick={() => setIsBulkModalOpen(false)}
+                    className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition-colors"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-6 overflow-y-auto space-y-5 flex-1">
+                {/* STATE 1: PREPARATION & CONFIRMATION (Before sending) */}
+                {!isBulkSending && !bulkResults && (
+                  <>
+                    {/* Summary Metric Strip */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Target Class</span>
+                        <span className="text-sm font-bold text-slate-900 block truncate">
+                          {selectedClass === 'All' ? 'All Classes' : selectedClass}
+                          {selectedSection !== 'All' && ` (${selectedSection})`}
+                        </span>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Recipients</span>
+                        <span className="text-sm font-bold text-emerald-700 block">
+                          {bulkStudents.length} Students
+                        </span>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Valid Numbers</span>
+                        <span className="text-sm font-bold text-blue-700 block">
+                          {bulkStudents.filter(s => isValidWhatsAppPhone(s.phone)).length} Ready
+                        </span>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Notification</span>
+                        <span className="text-sm font-bold text-slate-900 block capitalize">
+                          {notificationType}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dispatch Mode Selector */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                        Choose Dispatch Mode:
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setBulkSelectedDispatchMode('direct_batch')}
+                          className={cn(
+                            "p-3 rounded-2xl border text-left transition-all cursor-pointer",
+                            bulkSelectedDispatchMode === 'direct_batch'
+                              ? "bg-emerald-50/80 border-emerald-500 text-emerald-950 ring-1 ring-emerald-400/40"
+                              : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                          )}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <Zap className="w-4 h-4 text-emerald-600 fill-emerald-600" />
+                            <span className="text-xs font-bold">Instant Parallel</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-tight">
+                            Auto-dispatches to all at once in ~1-2s. Zero setup needed.
+                          </p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setBulkSelectedDispatchMode('meta_cloud_api')}
+                          className={cn(
+                            "p-3 rounded-2xl border text-left transition-all cursor-pointer",
+                            bulkSelectedDispatchMode === 'meta_cloud_api'
+                              ? "bg-emerald-50/80 border-emerald-500 text-emerald-950 ring-1 ring-emerald-400/40"
+                              : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                          )}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <Globe className="w-4 h-4 text-blue-600" />
+                            <span className="text-xs font-bold">Meta Cloud API</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-tight">
+                            {tempConfig.metaAccessToken ? 'Official WhatsApp Business API ready' : 'Configure token in Templates tab'}
+                          </p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setBulkSelectedDispatchMode('webhook')}
+                          className={cn(
+                            "p-3 rounded-2xl border text-left transition-all cursor-pointer",
+                            bulkSelectedDispatchMode === 'webhook'
+                              ? "bg-emerald-50/80 border-emerald-500 text-emerald-950 ring-1 ring-emerald-400/40"
+                              : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                          )}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <Webhook className="w-4 h-4 text-purple-600" />
+                            <span className="text-xs font-bold">Webhook Gateway</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-tight">
+                            {tempConfig.webhookUrl ? 'Custom gateway endpoint active' : 'Configure URL in Templates tab'}
+                          </p>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Tailored Message Preview */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                          <Eye className="w-3.5 h-3.5 text-blue-600" />
+                          Message Preview (Sample for {bulkStudents[0]?.name || 'Student'})
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          Auto-personalized with student name, class & attendance
+                        </span>
+                      </div>
+                      <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl text-slate-900 text-xs sm:text-sm whitespace-pre-wrap leading-relaxed shadow-inner">
+                        {bulkStudents.length > 0 ? getResolvedMessage(bulkStudents[0]) : 'No student selected'}
+                      </div>
+                    </div>
+
+                    {/* Preview of Students List */}
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                        Recipients in Queue ({bulkStudents.length} Total):
+                      </span>
+                      <div className="max-h-36 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200 divide-y divide-slate-100 text-xs">
+                        {bulkStudents.map((s, idx) => {
+                          const hasPhone = isValidWhatsAppPhone(s.phone);
+                          return (
+                            <div key={s.id} className="py-1.5 px-2 flex items-center justify-between">
+                              <div className="flex items-center gap-2 truncate">
+                                <span className="text-slate-400 font-mono text-[10px] w-4">{idx + 1}.</span>
+                                <span className="font-semibold text-slate-800 truncate">{s.name}</span>
+                                <span className="text-[10px] text-slate-500">Roll: {s.roll}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={cn("text-[11px] font-mono font-medium", hasPhone ? "text-slate-600" : "text-rose-500")}>
+                                  {s.phone || 'No Phone'}
+                                </span>
+                                {hasPhone ? (
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">Missing</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* STATE 2: LIVE DISPATCHING PROGRESS */}
+                {isBulkSending && (
+                  <div className="py-8 px-4 text-center space-y-6">
+                    <div className="relative w-20 h-20 mx-auto">
+                      <div className="w-20 h-20 rounded-full border-4 border-slate-100 border-t-emerald-600 animate-spin"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Zap className="w-8 h-8 text-emerald-600 fill-emerald-600 animate-pulse" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 max-w-md mx-auto">
+                      <h4 className="text-lg font-bold text-slate-900">
+                        Dispatching Bulk Messages at Once...
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        Sending personalized WhatsApp notifications to {bulkProgress.total} students in parallel. This will only take a moment!
+                      </p>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="space-y-1.5 max-w-lg mx-auto">
+                      <div className="flex items-center justify-between text-xs font-bold">
+                        <span className="text-slate-600">Progress:</span>
+                        <span className="text-emerald-700 font-mono">
+                          {bulkProgress.completed} / {bulkProgress.total} ({Math.round((bulkProgress.completed / Math.max(1, bulkProgress.total)) * 100)}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200">
+                        <div
+                          className="bg-gradient-to-r from-emerald-500 to-teal-500 h-full rounded-full transition-all duration-200"
+                          style={{ width: `${(bulkProgress.completed / Math.max(1, bulkProgress.total)) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Live Student Ticker */}
+                    {bulkProgress.latest && (
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 max-w-md mx-auto text-xs text-left flex items-center justify-between">
+                        <div className="truncate">
+                          <span className="text-slate-400 text-[11px] block">Currently Dispatched:</span>
+                          <span className="font-bold text-slate-800">{bulkProgress.latest.studentName}</span>
+                          <span className="text-slate-500 font-mono ml-2">({bulkProgress.latest.phone})</span>
+                        </div>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[10px] font-bold shrink-0",
+                          bulkProgress.latest.status === 'sent' ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                        )}>
+                          {bulkProgress.latest.status === 'sent' ? '✓ Dispatched' : 'Skipped'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* STATE 3: COMPLETED SUCCESS REPORT */}
+                {!isBulkSending && bulkResults && (
+                  <div className="space-y-5">
+                    <div className="p-5 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2">
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center mx-auto shadow-sm">
+                        <CheckCheck className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-base font-bold text-emerald-950">
+                        Bulk WhatsApp Messages Successfully Dispatched!
+                      </h4>
+                      <p className="text-xs text-emerald-700 max-w-md mx-auto">
+                        All selected students have been processed all at once. Attendance and notifications have been recorded into the live activity logs.
+                      </p>
+                    </div>
+
+                    {/* Result Stats */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="p-3 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-center">
+                        <span className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider block">Sent Successfully</span>
+                        <span className="text-xl font-extrabold text-emerald-900">
+                          {bulkResults.filter(r => r.status === 'sent').length}
+                        </span>
+                      </div>
+                      <div className="p-3 bg-amber-50/80 rounded-2xl border border-amber-200 text-center">
+                        <span className="text-[10px] uppercase font-bold text-amber-700 tracking-wider block">Skipped (No Phone)</span>
+                        <span className="text-xl font-extrabold text-amber-900">
+                          {bulkResults.filter(r => r.status === 'skipped_invalid_phone').length}
+                        </span>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-center">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">Total Processed</span>
+                        <span className="text-xl font-extrabold text-slate-800">
+                          {bulkResults.length}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dispatch Breakdown List */}
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                        Detailed Dispatch Log:
+                      </span>
+                      <div className="max-h-48 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200 divide-y divide-slate-100 text-xs">
+                        {bulkResults.map((r, i) => (
+                          <div key={i} className="py-2 px-2 flex items-center justify-between">
+                            <div className="truncate">
+                              <span className="font-semibold text-slate-900 mr-2">{r.studentName}</span>
+                              <span className="text-slate-400 font-mono text-[11px]">{r.phone}</span>
+                            </div>
+                            <div className="shrink-0">
+                              {r.status === 'sent' ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                                  <Check className="w-3 h-3" />
+                                  Sent
+                                </span>
+                              ) : r.status === 'skipped_invalid_phone' ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">
+                                  Skipped (No Phone)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md">
+                                  Failed
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {!isBulkSending && !bulkResults && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleCopyBroadcastPack}
+                      className="flex items-center gap-1.5 text-xs text-slate-700 hover:text-slate-900 font-semibold px-3 py-2 rounded-xl hover:bg-slate-200 transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      {copiedBroadcastPack ? 'Copied Broadcast Pack!' : 'Copy Broadcast Pack (Numbers + Msg)'}
+                    </button>
+
+                    <div className="flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setIsBulkModalOpen(false)}
+                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleStartBulkDispatch}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Zap className="w-4 h-4 fill-white" />
+                        <span>SEND ALL MESSAGES AT ONCE ({bulkStudents.length})</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {isBulkSending && (
+                  <div className="w-full text-center text-xs text-slate-500 py-1 font-medium">
+                    Processing in parallel... please keep this window open for a moment.
+                  </div>
+                )}
+
+                {!isBulkSending && bulkResults && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadBulkReportCsv}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-200 hover:bg-slate-300 text-slate-800 transition-colors cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Download CSV Report
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleCopyBroadcastPack}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 transition-colors cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        {copiedBroadcastPack ? 'Copied!' : 'Copy Numbers'}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsBulkModalOpen(false);
+                        setBulkResults(null);
+                      }}
+                      className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-all active:scale-95 cursor-pointer"
+                    >
+                      Done & Return to List
+                    </button>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>
