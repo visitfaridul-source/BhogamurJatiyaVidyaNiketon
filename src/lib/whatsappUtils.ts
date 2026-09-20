@@ -140,12 +140,164 @@ export interface BulkDispatchOptions {
   metaAccessToken?: string;
   webhookUrl?: string;
   webhookAuthKey?: string;
+  openBrowserTabs?: boolean;
   onProgress?: (completed: number, total: number, latestResult: DispatchResult) => void;
 }
 
+export interface TestMessageResult {
+  success: boolean;
+  message: string;
+  statusCode?: number;
+  details?: any;
+}
+
 /**
- * Dispatches bulk WhatsApp messages all at once in parallel asynchronous batches.
- * Extremely fast, non-blocking, and handles API / Webhook or instant parallel dispatch.
+ * Sends a single test WhatsApp notification to verify Meta Cloud API or Webhook Gateway connectivity.
+ */
+export async function sendTestWhatsAppMessage(
+  targetPhone: string,
+  testText: string,
+  options: {
+    dispatchMode?: 'direct_batch' | 'meta_cloud_api' | 'webhook';
+    defaultCountryCode?: string;
+    metaPhoneNumberId?: string;
+    metaAccessToken?: string;
+    webhookUrl?: string;
+    webhookAuthKey?: string;
+  }
+): Promise<TestMessageResult> {
+  const defaultCountryCode = options.defaultCountryCode || '91';
+  const normalizedPhone = formatWhatsAppNumber(targetPhone, defaultCountryCode);
+
+  if (!normalizedPhone || !isValidWhatsAppPhone(targetPhone)) {
+    return {
+      success: false,
+      message: 'Invalid phone number format. Please enter a valid 10-digit mobile number.'
+    };
+  }
+
+  if (options.dispatchMode === 'meta_cloud_api') {
+    if (!options.metaPhoneNumberId || !options.metaAccessToken) {
+      return {
+        success: false,
+        message: 'Missing Meta Phone Number ID or Access Token. Please provide credentials in the settings.'
+      };
+    }
+
+    try {
+      const authHeader = options.metaAccessToken.startsWith('Bearer ')
+        ? options.metaAccessToken
+        : `Bearer ${options.metaAccessToken}`;
+
+      const resp = await fetch(`https://graph.facebook.com/v19.0/${options.metaPhoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: normalizedPhone,
+          type: 'text',
+          text: { body: testText }
+        })
+      });
+
+      const responseText = await resp.text();
+      let responseJson: any = null;
+      try {
+        responseJson = JSON.parse(responseText);
+      } catch {
+        // non-json response
+      }
+
+      if (!resp.ok) {
+        const errorMsg = responseJson?.error?.message || responseText || `HTTP ${resp.status}`;
+        return {
+          success: false,
+          statusCode: resp.status,
+          message: `Meta API Error (${resp.status}): ${errorMsg}`,
+          details: responseJson || responseText
+        };
+      }
+
+      const msgId = responseJson?.messages?.[0]?.id || 'OK';
+      return {
+        success: true,
+        statusCode: resp.status,
+        message: `Test message successfully accepted by Meta Cloud API! Message ID: ${msgId}`,
+        details: responseJson
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Network or CORS error connecting to Meta Graph API: ${err.message || 'Failed to fetch'}`
+      };
+    }
+  }
+
+  if (options.dispatchMode === 'webhook') {
+    if (!options.webhookUrl) {
+      return {
+        success: false,
+        message: 'Missing Webhook Endpoint URL. Please configure the URL.'
+      };
+    }
+
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (options.webhookAuthKey) {
+        headers['Authorization'] = options.webhookAuthKey;
+      }
+
+      const resp = await fetch(options.webhookUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          event: 'whatsapp_test',
+          to: normalizedPhone,
+          message: testText,
+          timestamp: new Date().toISOString()
+        })
+      });
+
+      const responseText = await resp.text();
+      if (!resp.ok) {
+        return {
+          success: false,
+          statusCode: resp.status,
+          message: `Webhook Gateway returned HTTP ${resp.status}: ${responseText.slice(0, 150)}`
+        };
+      }
+
+      return {
+        success: true,
+        statusCode: resp.status,
+        message: `Webhook Gateway accepted test message (HTTP ${resp.status})!`,
+        details: responseText
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Failed to reach Webhook Gateway: ${err.message}. Verify the URL and CORS headers.`
+      };
+    }
+  }
+
+  // Direct WhatsApp Web
+  const link = createWhatsAppLink(normalizedPhone, testText, defaultCountryCode);
+  return {
+    success: true,
+    message: 'Direct WhatsApp link generated.',
+    details: { link }
+  };
+}
+
+/**
+ * Dispatches bulk WhatsApp messages in parallel asynchronous batches.
+ * Handles Meta Cloud API, Webhook Gateway, or real browser batch opening.
  */
 export async function executeBulkWhatsAppDispatch(
   items: BulkDispatchItem[],
@@ -186,13 +338,35 @@ export async function executeBulkWhatsAppDispatch(
           return;
         }
 
-        // Handle Meta WhatsApp Cloud API if credentials provided
-        if (options.dispatchMode === 'meta_cloud_api' && options.metaPhoneNumberId && options.metaAccessToken) {
+        // 1. Handle Meta WhatsApp Cloud API
+        if (options.dispatchMode === 'meta_cloud_api') {
+          if (!options.metaPhoneNumberId || !options.metaAccessToken) {
+            const res: DispatchResult = {
+              studentId: item.studentId,
+              studentName: item.studentName,
+              className: item.className,
+              roll: item.roll,
+              phone: normalizedPhone,
+              status: 'failed',
+              errorMessage: 'Meta Cloud API credentials missing (Phone Number ID or Access Token)',
+              timestamp,
+              messageText: item.message
+            };
+            results.push(res);
+            completed++;
+            options.onProgress?.(completed, total, res);
+            return;
+          }
+
           try {
+            const authHeader = options.metaAccessToken.startsWith('Bearer ')
+              ? options.metaAccessToken
+              : `Bearer ${options.metaAccessToken}`;
+
             const resp = await fetch(`https://graph.facebook.com/v19.0/${options.metaPhoneNumberId}/messages`, {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${options.metaAccessToken}`,
+                'Authorization': authHeader,
                 'Content-Type': 'application/json'
               },
               body: JSON.stringify({
@@ -203,9 +377,17 @@ export async function executeBulkWhatsAppDispatch(
               })
             });
 
+            const respText = await resp.text();
+            let respJson: any = null;
+            try {
+              respJson = JSON.parse(respText);
+            } catch {
+              // non-json
+            }
+
             if (!resp.ok) {
-              const errBody = await resp.text();
-              throw new Error(`Meta API error (${resp.status}): ${errBody.slice(0, 100)}`);
+              const detailedError = respJson?.error?.message || respText || `HTTP ${resp.status}`;
+              throw new Error(`Meta API error (${resp.status}): ${detailedError}`);
             }
 
             const res: DispatchResult = {
@@ -234,8 +416,26 @@ export async function executeBulkWhatsAppDispatch(
             results.push(res);
           }
         } 
-        // Handle Webhook Gateway if configured
-        else if (options.dispatchMode === 'webhook' && options.webhookUrl) {
+        // 2. Handle Webhook Gateway
+        else if (options.dispatchMode === 'webhook') {
+          if (!options.webhookUrl) {
+            const res: DispatchResult = {
+              studentId: item.studentId,
+              studentName: item.studentName,
+              className: item.className,
+              roll: item.roll,
+              phone: normalizedPhone,
+              status: 'failed',
+              errorMessage: 'Webhook Gateway URL is missing',
+              timestamp,
+              messageText: item.message
+            };
+            results.push(res);
+            completed++;
+            options.onProgress?.(completed, total, res);
+            return;
+          }
+
           try {
             const headers: Record<string, string> = {
               'Content-Type': 'application/json'
@@ -244,7 +444,7 @@ export async function executeBulkWhatsAppDispatch(
               headers['Authorization'] = options.webhookAuthKey;
             }
 
-            await fetch(options.webhookUrl, {
+            const resp = await fetch(options.webhookUrl, {
               method: 'POST',
               headers,
               body: JSON.stringify({
@@ -257,6 +457,11 @@ export async function executeBulkWhatsAppDispatch(
                 timestamp
               })
             });
+
+            if (!resp.ok) {
+              const errBody = await resp.text();
+              throw new Error(`Webhook error (${resp.status}): ${errBody.slice(0, 100)}`);
+            }
 
             const res: DispatchResult = {
               studentId: item.studentId,
@@ -284,21 +489,43 @@ export async function executeBulkWhatsAppDispatch(
             results.push(res);
           }
         }
-        // Direct Fast Batch Dispatch (Non-blocking, sub-second rapid execution)
+        // 3. Direct Browser Dispatch Mode (Requires opening WhatsApp Web or Step-by-Step Queue)
         else {
-          // Micro delay (30ms) to allow UI tick and progress render
-          await new Promise((r) => setTimeout(r, 30));
-          const res: DispatchResult = {
-            studentId: item.studentId,
-            studentName: item.studentName,
-            className: item.className,
-            roll: item.roll,
-            phone: normalizedPhone,
-            status: 'sent',
-            timestamp,
-            messageText: item.message
-          };
-          results.push(res);
+          if (options.openBrowserTabs) {
+            // Actually open WhatsApp Web link in browser tab
+            const link = createWhatsAppLink(normalizedPhone, item.message, defaultCountryCode);
+            if (link) {
+              window.open(link, '_blank');
+            }
+            // Small pause between tabs to give browser window management time
+            await new Promise((r) => setTimeout(r, 600));
+
+            const res: DispatchResult = {
+              studentId: item.studentId,
+              studentName: item.studentName,
+              className: item.className,
+              roll: item.roll,
+              phone: normalizedPhone,
+              status: 'sent',
+              timestamp,
+              messageText: item.message
+            };
+            results.push(res);
+          } else {
+            // When no API is configured and no browser tabs are opened, do NOT mislead user by saying "sent"!
+            const res: DispatchResult = {
+              studentId: item.studentId,
+              studentName: item.studentName,
+              className: item.className,
+              roll: item.roll,
+              phone: normalizedPhone,
+              status: 'failed',
+              errorMessage: 'WhatsApp requires Meta Cloud API or Webhook Gateway for automatic background delivery. Please use the Step-by-Step WhatsApp Queue or configure an API.',
+              timestamp,
+              messageText: item.message
+            };
+            results.push(res);
+          }
         }
 
         completed++;

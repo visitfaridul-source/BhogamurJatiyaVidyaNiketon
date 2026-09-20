@@ -47,7 +47,11 @@ import {
   Loader2,
   Globe,
   Webhook,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Info,
+  XCircle,
+  Key,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -58,7 +62,9 @@ import {
   StudentMessageContext,
   executeBulkWhatsAppDispatch,
   BulkDispatchItem,
-  DispatchResult
+  DispatchResult,
+  sendTestWhatsAppMessage,
+  TestMessageResult
 } from '@/lib/whatsappUtils';
 
 type NotificationType = 'attendance' | 'general' | 'fee' | 'holiday' | 'custom';
@@ -122,6 +128,14 @@ export default function WhatsAppMessages() {
   const [bulkResults, setBulkResults] = useState<DispatchResult[] | null>(null);
   const [bulkSelectedDispatchMode, setBulkSelectedDispatchMode] = useState<'direct_batch' | 'meta_cloud_api' | 'webhook'>('direct_batch');
   const [copiedBroadcastPack, setCopiedBroadcastPack] = useState(false);
+  const [showBulkCredentialsEdit, setShowBulkCredentialsEdit] = useState(false);
+  const [batchTabProgress, setBatchTabProgress] = useState<{ nextIndex: number; total: number } | null>(null);
+
+  // Live Test WhatsApp Connection State
+  const [testTargetPhone, setTestTargetPhone] = useState('');
+  const [testMessageText, setTestMessageText] = useState('Test notification from Bhogamur Jatiya Vidya Niketon WhatsApp System');
+  const [isTestingApi, setIsTestingApi] = useState(false);
+  const [testApiResult, setTestApiResult] = useState<TestMessageResult | null>(null);
 
   // Single Student Custom Edit Modal
   const [editingStudentContext, setEditingStudentContext] = useState<{
@@ -490,8 +504,107 @@ export default function WhatsAppMessages() {
     setIsBulkModalOpen(true);
   };
 
+  const handleLaunchQueueFromBulk = () => {
+    setIsBulkModalOpen(false);
+    setQueueIndex(0);
+    setIsQueueModalOpen(true);
+  };
+
+  const handleOpenBatchWebTabs = (batchSize = 5) => {
+    const validStudents = bulkStudents.filter(s => isValidWhatsAppPhone(s.phone));
+    if (validStudents.length === 0) {
+      alert('No students with valid WhatsApp phone numbers found in the selection.');
+      return;
+    }
+    const startIndex = batchTabProgress?.nextIndex || 0;
+    const batch = validStudents.slice(startIndex, startIndex + batchSize);
+
+    if (batch.length === 0) {
+      alert('All students in the selection have already had their WhatsApp Web chats opened!');
+      setBatchTabProgress(null);
+      return;
+    }
+
+    const countryCode = tempConfig.defaultCountryCode || '91';
+    batch.forEach(student => {
+      const msg = getResolvedMessage(student);
+      const link = createWhatsAppLink(student.phone, msg, countryCode);
+      window.open(link, '_blank');
+    });
+
+    const nextIndex = startIndex + batch.length;
+    setBatchTabProgress({
+      nextIndex: nextIndex >= validStudents.length ? 0 : nextIndex,
+      total: validStudents.length
+    });
+  };
+
+  const handleRunTestMessage = async () => {
+    if (!testTargetPhone.trim()) {
+      alert('Please enter a mobile phone number to receive the test WhatsApp message.');
+      return;
+    }
+    setIsTestingApi(true);
+    setTestApiResult(null);
+    try {
+      const res = await sendTestWhatsAppMessage(testTargetPhone, testMessageText, {
+        dispatchMode: tempConfig.dispatchMode || 'direct_batch',
+        defaultCountryCode: tempConfig.defaultCountryCode || '91',
+        metaPhoneNumberId: tempConfig.metaPhoneNumberId,
+        metaAccessToken: tempConfig.metaAccessToken,
+        webhookUrl: tempConfig.webhookUrl,
+        webhookAuthKey: tempConfig.webhookAuthKey
+      });
+      setTestApiResult(res);
+      if ((tempConfig.dispatchMode || 'direct_batch') === 'direct_batch' && res.details?.link) {
+        window.open(res.details.link, '_blank');
+      }
+    } catch (err: any) {
+      setTestApiResult({
+        success: false,
+        message: err.message || 'Failed to dispatch test message'
+      });
+    } finally {
+      setIsTestingApi(false);
+    }
+  };
+
+  const handleSaveInlineCredentials = async () => {
+    setIsSavingTemplates(true);
+    try {
+      await updateSettings({ whatsappConfig: tempConfig });
+      setShowBulkCredentialsEdit(false);
+      alert('WhatsApp Gateway credentials saved successfully!');
+    } catch (err) {
+      console.error('Error saving credentials:', err);
+      alert('Failed to save credentials.');
+    } finally {
+      setIsSavingTemplates(false);
+    }
+  };
+
   const handleStartBulkDispatch = async () => {
     if (bulkStudents.length === 0) return;
+
+    // Validate credentials for automated background modes
+    if (bulkSelectedDispatchMode === 'meta_cloud_api') {
+      if (!tempConfig.metaPhoneNumberId?.trim() || !tempConfig.metaAccessToken?.trim()) {
+        setShowBulkCredentialsEdit(true);
+        alert('Meta WhatsApp Cloud API credentials missing! Please enter your Meta Phone Number ID and Permanent Access Token below, or launch the Step-by-Step WhatsApp Queue (100% Free).');
+        return;
+      }
+    } else if (bulkSelectedDispatchMode === 'webhook') {
+      if (!tempConfig.webhookUrl?.trim()) {
+        setShowBulkCredentialsEdit(true);
+        alert('Webhook Gateway endpoint URL missing! Please enter your Webhook URL below, or launch the Step-by-Step WhatsApp Queue (100% Free).');
+        return;
+      }
+    } else if (bulkSelectedDispatchMode === 'direct_batch') {
+      // Direct batch without an API: redirect to interactive queue or batch tabs
+      handleLaunchQueueFromBulk();
+      return;
+    }
+
     setIsBulkSending(true);
     setBulkResults(null);
     setBulkProgress({ completed: 0, total: bulkStudents.length });
@@ -536,7 +649,7 @@ export default function WhatsAppMessages() {
         studentName: res.studentName,
         className: res.className,
         phone: res.phone,
-        status: res.status === 'sent' ? 'Sent (Bulk)' : res.status === 'skipped_invalid_phone' ? 'Skipped (No Phone)' : 'Failed',
+        status: res.status === 'sent' ? 'Sent (Bulk)' : res.status === 'skipped_invalid_phone' ? 'Skipped (No Phone)' : `Failed (${res.errorMessage || 'Error'})`,
         type: notificationType,
         timestamp: res.timestamp,
         message: res.messageText
@@ -808,6 +921,72 @@ export default function WhatsAppMessages() {
               </button>
             </div>
           )}
+
+          {/* WhatsApp Delivery Mode & Diagnostic Banner */}
+          <div className="p-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-2xl border border-slate-700/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                <MessageSquare className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-sm font-bold text-white">Bulk WhatsApp Delivery Mode</h4>
+                  {(tempConfig.dispatchMode || 'direct_batch') === 'meta_cloud_api' ? (
+                    tempConfig.metaAccessToken && tempConfig.metaPhoneNumberId ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        Meta Cloud API: Configured
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 text-amber-400" />
+                        Meta Cloud API: Credentials Missing
+                      </span>
+                    )
+                  ) : (tempConfig.dispatchMode || 'direct_batch') === 'webhook' ? (
+                    tempConfig.webhookUrl ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        Webhook Gateway: Configured
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 text-amber-400" />
+                        Webhook: URL Missing
+                      </span>
+                    )
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-blue-400" />
+                      WhatsApp Web Queue (100% Free • No API Key Needed)
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
+                  {(tempConfig.dispatchMode || 'direct_batch') === 'meta_cloud_api'
+                    ? tempConfig.metaAccessToken && tempConfig.metaPhoneNumberId
+                      ? 'Automated background delivery is enabled via official Meta WhatsApp Business Cloud API.'
+                      : 'Meta Cloud API is selected, but Phone Number ID or Access Token is missing. Messages cannot reach students in the background until configured.'
+                    : (tempConfig.dispatchMode || 'direct_batch') === 'webhook'
+                    ? tempConfig.webhookUrl
+                      ? 'Automated dispatch will be forwarded to your custom WhatsApp Webhook server.'
+                      : 'Webhook Gateway is selected, but Endpoint URL is missing.'
+                    : 'WhatsApp does not allow websites to silently send background messages without an official API key. To reach students 100% free with zero setup, use the "Step-by-Step WhatsApp Queue" (pre-fills message for each parent) or copy the "Broadcast Pack".'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start md:self-center shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTab('templates')}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Configure & Test Gateway</span>
+              </button>
+            </div>
+          </div>
 
           {/* Filter & Configuration Control Box */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
@@ -1597,11 +1776,11 @@ export default function WhatsAppMessages() {
                 >
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <Zap className="w-4 h-4 text-emerald-400 fill-emerald-400" />
-                      <span className="text-xs font-bold">Instant Parallel (Recommended)</span>
+                      <Sparkles className="w-4 h-4 text-blue-400" />
+                      <span className="text-xs font-bold">WhatsApp Web Queue (100% Free)</span>
                     </div>
                     <p className="text-[11px] text-slate-400 leading-snug">
-                      Dispatches tailored messages in parallel batches. Instant execution with no external API credentials needed.
+                      Opens WhatsApp Web for each recipient with the personalized message pre-filled. You click Send & Next. 100% reliable, zero API setup.
                     </p>
                   </div>
                 </label>
@@ -1617,11 +1796,11 @@ export default function WhatsAppMessages() {
                 >
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <Globe className="w-4 h-4 text-blue-400" />
-                      <span className="text-xs font-bold">Meta Cloud API</span>
+                      <Globe className="w-4 h-4 text-emerald-400" />
+                      <span className="text-xs font-bold">Meta WhatsApp Cloud API</span>
                     </div>
                     <p className="text-[11px] text-slate-400 leading-snug">
-                      Official Meta WhatsApp Business Cloud API. Requires Meta Phone Number ID & Access Token.
+                      Official background delivery via Meta Cloud API. Meta gives 1,000 free conversations/month. Requires Meta Phone Number ID & Token.
                     </p>
                   </div>
                 </label>
@@ -1638,10 +1817,10 @@ export default function WhatsAppMessages() {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <Webhook className="w-4 h-4 text-purple-400" />
-                      <span className="text-xs font-bold">Webhook Gateway</span>
+                      <span className="text-xs font-bold">Webhook Gateway API</span>
                     </div>
                     <p className="text-[11px] text-slate-400 leading-snug">
-                      Forwards bulk message packets to your custom webhook endpoint or third-party SMS/WhatsApp server.
+                      Forwards message payload to your custom server or third-party WhatsApp Gateway (UltraMsg, Wassenger, WPPConnect, Baileys, etc.).
                     </p>
                   </div>
                 </label>
@@ -1650,48 +1829,63 @@ export default function WhatsAppMessages() {
               {/* Conditional credentials fields for Meta API */}
               {tempConfig.dispatchMode === 'meta_cloud_api' && (
                 <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-700/70 space-y-3">
-                  <span className="text-xs font-bold text-blue-300 block">
-                    Meta WhatsApp Cloud API Credentials
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5" />
+                      Meta WhatsApp Cloud API Credentials
+                    </span>
+                    <a
+                      href="https://developers.facebook.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-blue-400 hover:underline flex items-center gap-1"
+                    >
+                      Meta Developer Portal <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Meta Phone Number ID
+                        Meta Phone Number ID <span className="text-rose-400">*</span>
                       </label>
                       <input
                         type="text"
                         value={tempConfig.metaPhoneNumberId || ''}
                         onChange={e => setTempConfig(prev => ({ ...prev, metaPhoneNumberId: e.target.value.trim() }))}
-                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
                         placeholder="e.g. 104857291827461"
                       />
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Permanent System User Access Token
+                        Permanent System User Access Token <span className="text-rose-400">*</span>
                       </label>
                       <input
                         type="password"
                         value={tempConfig.metaAccessToken || ''}
                         onChange={e => setTempConfig(prev => ({ ...prev, metaAccessToken: e.target.value.trim() }))}
-                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
                         placeholder="EAA..."
                       />
                     </div>
                   </div>
+                  <p className="text-[11px] text-slate-400 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 leading-relaxed">
+                    💡 <strong>Meta Cloud API Rule:</strong> WhatsApp Meta Business API offers 1,000 free conversations every month. For test apps in Developer Mode, your recipient numbers must be added to the allowed phone list in the Meta App Dashboard. For production dispatches, Meta requires a pre-approved template for business-initiated chats.
+                  </p>
                 </div>
               )}
 
               {/* Conditional credentials fields for Webhook */}
               {tempConfig.dispatchMode === 'webhook' && (
                 <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-700/70 space-y-3">
-                  <span className="text-xs font-bold text-purple-300 block">
+                  <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                    <Webhook className="w-3.5 h-3.5" />
                     Webhook Gateway Endpoint Settings
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Webhook Endpoint URL
+                        Webhook Endpoint URL <span className="text-rose-400">*</span>
                       </label>
                       <input
                         type="url"
@@ -1716,6 +1910,98 @@ export default function WhatsAppMessages() {
                   </div>
                 </div>
               )}
+
+              {/* LIVE CONNECTION TEST BENCH */}
+              <div className="p-4 bg-slate-950/80 rounded-xl border border-slate-700/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-2">
+                    <Smartphone className="w-4 h-4 text-emerald-400" />
+                    Test Live WhatsApp Connection
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Verify that messages reach your own WhatsApp number
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Your WhatsApp Mobile Number
+                    </label>
+                    <input
+                      type="text"
+                      value={testTargetPhone}
+                      onChange={e => setTestTargetPhone(e.target.value.replace(/\D/g, ''))}
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 font-mono"
+                      placeholder="e.g. 9876543210"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Test Message
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={testMessageText}
+                        onChange={e => setTestMessageText(e.target.value)}
+                        className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRunTestMessage}
+                        disabled={isTestingApi}
+                        className="px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 flex items-center gap-1.5 shrink-0 transition-all shadow-sm active:scale-95 cursor-pointer"
+                      >
+                        {isTestingApi ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Testing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>Send Test</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Test Feedback Display */}
+                {testApiResult && (
+                  <div
+                    className={cn(
+                      "p-3 rounded-xl border text-xs leading-relaxed space-y-1",
+                      testApiResult.success
+                        ? "bg-emerald-950/60 border-emerald-600/80 text-emerald-200"
+                        : "bg-rose-950/60 border-rose-600/80 text-rose-200"
+                    )}
+                  >
+                    <div className="flex items-center gap-2 font-bold">
+                      {testApiResult.success ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>Test Delivered Successfully!</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                          <span>Test Delivery Failed</span>
+                        </>
+                      )}
+                    </div>
+                    <p className="text-slate-300">{testApiResult.message}</p>
+                    {testApiResult.details && (
+                      <pre className="text-[10px] font-mono bg-black/40 p-2 rounded border border-white/10 overflow-x-auto text-slate-300">
+                        {JSON.stringify(testApiResult.details, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Template Selection Sidebar + Editor Layout */}
@@ -2316,10 +2602,16 @@ export default function WhatsAppMessages() {
                     </div>
 
                     {/* Dispatch Mode Selector */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                        Choose Dispatch Mode:
-                      </label>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                          Choose Delivery Gateway:
+                        </label>
+                        <span className="text-[11px] text-slate-500">
+                          {bulkSelectedDispatchMode === 'direct_batch' ? 'Zero setup • 100% free' : 'Automated background gateway'}
+                        </span>
+                      </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         <button
                           type="button"
@@ -2327,16 +2619,16 @@ export default function WhatsAppMessages() {
                           className={cn(
                             "p-3 rounded-2xl border text-left transition-all cursor-pointer",
                             bulkSelectedDispatchMode === 'direct_batch'
-                              ? "bg-emerald-50/80 border-emerald-500 text-emerald-950 ring-1 ring-emerald-400/40"
+                              ? "bg-blue-50/90 border-blue-500 text-blue-950 ring-2 ring-blue-400/40"
                               : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
                           )}
                         >
                           <div className="flex items-center gap-2 mb-1">
-                            <Zap className="w-4 h-4 text-emerald-600 fill-emerald-600" />
-                            <span className="text-xs font-bold">Instant Parallel</span>
+                            <Sparkles className="w-4 h-4 text-blue-600" />
+                            <span className="text-xs font-bold">WhatsApp Web Queue</span>
                           </div>
-                          <p className="text-[11px] text-slate-500 leading-tight">
-                            Auto-dispatches to all at once in ~1-2s. Zero setup needed.
+                          <p className="text-[11px] text-slate-600 leading-tight">
+                            100% Free & Reliable. Opens WhatsApp Web for each parent with message pre-filled.
                           </p>
                         </button>
 
@@ -2346,16 +2638,18 @@ export default function WhatsAppMessages() {
                           className={cn(
                             "p-3 rounded-2xl border text-left transition-all cursor-pointer",
                             bulkSelectedDispatchMode === 'meta_cloud_api'
-                              ? "bg-emerald-50/80 border-emerald-500 text-emerald-950 ring-1 ring-emerald-400/40"
+                              ? "bg-emerald-50/90 border-emerald-500 text-emerald-950 ring-2 ring-emerald-400/40"
                               : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
                           )}
                         >
                           <div className="flex items-center gap-2 mb-1">
-                            <Globe className="w-4 h-4 text-blue-600" />
+                            <Globe className="w-4 h-4 text-emerald-600" />
                             <span className="text-xs font-bold">Meta Cloud API</span>
                           </div>
-                          <p className="text-[11px] text-slate-500 leading-tight">
-                            {tempConfig.metaAccessToken ? 'Official WhatsApp Business API ready' : 'Configure token in Templates tab'}
+                          <p className="text-[11px] text-slate-600 leading-tight">
+                            {tempConfig.metaAccessToken && tempConfig.metaPhoneNumberId
+                              ? '✓ Official Meta API configured'
+                              : '⚠️ Requires Meta Phone ID & Token'}
                           </p>
                         </button>
 
@@ -2365,7 +2659,7 @@ export default function WhatsAppMessages() {
                           className={cn(
                             "p-3 rounded-2xl border text-left transition-all cursor-pointer",
                             bulkSelectedDispatchMode === 'webhook'
-                              ? "bg-emerald-50/80 border-emerald-500 text-emerald-950 ring-1 ring-emerald-400/40"
+                              ? "bg-purple-50/90 border-purple-500 text-purple-950 ring-2 ring-purple-400/40"
                               : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
                           )}
                         >
@@ -2373,11 +2667,135 @@ export default function WhatsAppMessages() {
                             <Webhook className="w-4 h-4 text-purple-600" />
                             <span className="text-xs font-bold">Webhook Gateway</span>
                           </div>
-                          <p className="text-[11px] text-slate-500 leading-tight">
-                            {tempConfig.webhookUrl ? 'Custom gateway endpoint active' : 'Configure URL in Templates tab'}
+                          <p className="text-[11px] text-slate-600 leading-tight">
+                            {tempConfig.webhookUrl ? '✓ Custom Webhook configured' : '⚠️ Requires Webhook Endpoint URL'}
                           </p>
                         </button>
                       </div>
+
+                      {/* Mode-Specific Guidance / Credentials Config */}
+                      {bulkSelectedDispatchMode === 'direct_batch' && (
+                        <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl text-xs text-blue-900 space-y-2">
+                          <div className="flex items-center gap-2 font-bold text-blue-950">
+                            <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span>Recommended: 100% Free Direct Parent Delivery</span>
+                          </div>
+                          <p className="text-blue-800 leading-relaxed text-[11px]">
+                            Because WhatsApp does not allow arbitrary web browsers to send silent messages directly to parent phones without paid Meta API approval, the <strong>Step-by-Step WhatsApp Queue</strong> prepares each parent’s tailored note with 1-click delivery.
+                          </p>
+                          <div className="flex items-center gap-2 pt-1 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenBatchWebTabs(5)}
+                              className="px-3 py-1 bg-white border border-blue-300 rounded-lg text-[11px] font-semibold text-blue-800 hover:bg-blue-100 transition-colors cursor-pointer"
+                            >
+                              Or Open in Batches of 5 Web Tabs
+                            </button>
+                            {batchTabProgress && (
+                              <span className="text-[11px] font-mono text-blue-700">
+                                (Opened {batchTabProgress.nextIndex} of {batchTabProgress.total})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {bulkSelectedDispatchMode === 'meta_cloud_api' && (!tempConfig.metaAccessToken || !tempConfig.metaPhoneNumberId) && (
+                        <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl text-xs space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span>Meta Cloud API Credentials Required</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowBulkCredentialsEdit(!showBulkCredentialsEdit)}
+                              className="text-[11px] font-bold text-amber-800 hover:underline cursor-pointer"
+                            >
+                              {showBulkCredentialsEdit ? 'Hide Fields' : 'Enter Credentials Here'}
+                            </button>
+                          </div>
+                          <p className="text-amber-800 text-[11px] leading-relaxed">
+                            To deliver automated background messages directly without opening WhatsApp Web, you must provide your Meta Business Phone Number ID and Permanent Access Token.
+                          </p>
+                          {(showBulkCredentialsEdit || (!tempConfig.metaAccessToken || !tempConfig.metaPhoneNumberId)) && (
+                            <div className="space-y-2 pt-1 bg-white p-3 rounded-xl border border-amber-200">
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Meta Phone Number ID</label>
+                                <input
+                                  type="text"
+                                  value={tempConfig.metaPhoneNumberId || ''}
+                                  onChange={e => setTempConfig(prev => ({ ...prev, metaPhoneNumberId: e.target.value.trim() }))}
+                                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                                  placeholder="e.g. 104857291827461"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Permanent Access Token</label>
+                                <input
+                                  type="password"
+                                  value={tempConfig.metaAccessToken || ''}
+                                  onChange={e => setTempConfig(prev => ({ ...prev, metaAccessToken: e.target.value.trim() }))}
+                                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                                  placeholder="EAA..."
+                                />
+                              </div>
+                              <div className="flex items-center justify-between pt-1">
+                                <a
+                                  href="https://developers.facebook.com"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[11px] text-blue-600 hover:underline flex items-center gap-1"
+                                >
+                                  Meta Developer Console <ExternalLink className="w-3 h-3" />
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={handleSaveInlineCredentials}
+                                  disabled={isSavingTemplates}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-sm"
+                                >
+                                  {isSavingTemplates ? 'Saving...' : 'Save Credentials'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {bulkSelectedDispatchMode === 'webhook' && !tempConfig.webhookUrl && (
+                        <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl text-xs space-y-2">
+                          <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>Webhook URL Required</span>
+                          </div>
+                          <p className="text-amber-800 text-[11px] leading-relaxed">
+                            Please provide the endpoint URL of your custom WhatsApp server (UltraMsg, Wassenger, WPPConnect, Baileys, etc.)
+                          </p>
+                          <div className="space-y-2 pt-1 bg-white p-3 rounded-xl border border-amber-200">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Webhook Endpoint URL</label>
+                              <input
+                                type="url"
+                                value={tempConfig.webhookUrl || ''}
+                                onChange={e => setTempConfig(prev => ({ ...prev, webhookUrl: e.target.value.trim() }))}
+                                className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                                placeholder="https://api.yourschool.edu/whatsapp/send"
+                              />
+                            </div>
+                            <div className="flex justify-end pt-1">
+                              <button
+                                type="button"
+                                onClick={handleSaveInlineCredentials}
+                                disabled={isSavingTemplates}
+                                className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold shadow-sm"
+                              >
+                                {isSavingTemplates ? 'Saving...' : 'Save URL'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Tailored Message Preview */}
@@ -2483,75 +2901,120 @@ export default function WhatsAppMessages() {
                   </div>
                 )}
 
-                {/* STATE 3: COMPLETED SUCCESS REPORT */}
+                {/* STATE 3: COMPLETED REPORT WITH DIAGNOSTICS */}
                 {!isBulkSending && bulkResults && (
                   <div className="space-y-5">
-                    <div className="p-5 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2">
-                      <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center mx-auto shadow-sm">
-                        <CheckCheck className="w-6 h-6" />
-                      </div>
-                      <h4 className="text-base font-bold text-emerald-950">
-                        Bulk WhatsApp Messages Successfully Dispatched!
-                      </h4>
-                      <p className="text-xs text-emerald-700 max-w-md mx-auto">
-                        All selected students have been processed all at once. Attendance and notifications have been recorded into the live activity logs.
-                      </p>
-                    </div>
+                    {(() => {
+                      const sentCount = bulkResults.filter(r => r.status === 'sent').length;
+                      const failedCount = bulkResults.filter(r => r.status === 'failed').length;
+                      const skippedCount = bulkResults.filter(r => r.status === 'skipped_invalid_phone').length;
 
-                    {/* Result Stats */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="p-3 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-center">
-                        <span className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider block">Sent Successfully</span>
-                        <span className="text-xl font-extrabold text-emerald-900">
-                          {bulkResults.filter(r => r.status === 'sent').length}
-                        </span>
-                      </div>
-                      <div className="p-3 bg-amber-50/80 rounded-2xl border border-amber-200 text-center">
-                        <span className="text-[10px] uppercase font-bold text-amber-700 tracking-wider block">Skipped (No Phone)</span>
-                        <span className="text-xl font-extrabold text-amber-900">
-                          {bulkResults.filter(r => r.status === 'skipped_invalid_phone').length}
-                        </span>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-center">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">Total Processed</span>
-                        <span className="text-xl font-extrabold text-slate-800">
-                          {bulkResults.length}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Dispatch Breakdown List */}
-                    <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                        Detailed Dispatch Log:
-                      </span>
-                      <div className="max-h-48 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200 divide-y divide-slate-100 text-xs">
-                        {bulkResults.map((r, i) => (
-                          <div key={i} className="py-2 px-2 flex items-center justify-between">
-                            <div className="truncate">
-                              <span className="font-semibold text-slate-900 mr-2">{r.studentName}</span>
-                              <span className="text-slate-400 font-mono text-[11px]">{r.phone}</span>
+                      return (
+                        <>
+                          {sentCount > 0 ? (
+                            <div className="p-5 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2">
+                              <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center mx-auto shadow-sm">
+                                <CheckCheck className="w-6 h-6" />
+                              </div>
+                              <h4 className="text-base font-bold text-emerald-950">
+                                {sentCount} Bulk WhatsApp Messages Successfully Dispatched!
+                              </h4>
+                              <p className="text-xs text-emerald-700 max-w-md mx-auto">
+                                Messages were sent through the selected gateway. Sent status has been logged in activity history.
+                              </p>
                             </div>
-                            <div className="shrink-0">
-                              {r.status === 'sent' ? (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
-                                  <Check className="w-3 h-3" />
-                                  Sent
-                                </span>
-                              ) : r.status === 'skipped_invalid_phone' ? (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">
-                                  Skipped (No Phone)
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md">
-                                  Failed
-                                </span>
-                              )}
+                          ) : (
+                            <div className="p-5 bg-amber-50 rounded-2xl border border-amber-300 text-center space-y-3">
+                              <div className="w-12 h-12 rounded-2xl bg-amber-600 text-white flex items-center justify-center mx-auto shadow-sm">
+                                <AlertCircle className="w-6 h-6" />
+                              </div>
+                              <div className="space-y-1">
+                                <h4 className="text-base font-bold text-amber-950">
+                                  Bulk Messages Could Not Reach WhatsApp
+                                </h4>
+                                <p className="text-xs text-amber-800 max-w-md mx-auto leading-relaxed">
+                                  Automated background API calls require active Meta credentials or an accessible webhook. To guarantee 100% delivery right now with zero setup, use the <strong>Step-by-Step WhatsApp Queue</strong>.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsBulkModalOpen(false);
+                                  setBulkResults(null);
+                                  handleLaunchQueueFromBulk();
+                                }}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer inline-flex items-center gap-1.5"
+                              >
+                                <Sparkles className="w-4 h-4" />
+                                <span>Send via Step-by-Step WhatsApp Queue (100% Free)</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Result Stats */}
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="p-3 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-center">
+                              <span className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider block">Sent Successfully</span>
+                              <span className="text-xl font-extrabold text-emerald-900">
+                                {sentCount}
+                              </span>
+                            </div>
+                            <div className="p-3 bg-rose-50/80 rounded-2xl border border-rose-200 text-center">
+                              <span className="text-[10px] uppercase font-bold text-rose-700 tracking-wider block">Failed / Unreachable</span>
+                              <span className="text-xl font-extrabold text-rose-900">
+                                {failedCount}
+                              </span>
+                            </div>
+                            <div className="p-3 bg-amber-50/80 rounded-2xl border border-amber-200 text-center">
+                              <span className="text-[10px] uppercase font-bold text-amber-700 tracking-wider block">Skipped (No Phone)</span>
+                              <span className="text-xl font-extrabold text-amber-900">
+                                {skippedCount}
+                              </span>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
+
+                          {/* Dispatch Breakdown List with Error Details */}
+                          <div className="space-y-1.5">
+                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                              Detailed Dispatch Log & Diagnosis:
+                            </span>
+                            <div className="max-h-52 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200 divide-y divide-slate-100 text-xs">
+                              {bulkResults.map((r, i) => (
+                                <div key={i} className="py-2 px-2 flex items-start justify-between gap-3">
+                                  <div className="truncate flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-slate-900">{r.studentName}</span>
+                                      <span className="text-slate-400 font-mono text-[11px]">{r.phone}</span>
+                                    </div>
+                                    {r.errorMessage && (
+                                      <p className="text-[10px] text-rose-600 leading-tight mt-0.5 font-sans">
+                                        Reason: {r.errorMessage}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="shrink-0 pt-0.5">
+                                    {r.status === 'sent' ? (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                                        <Check className="w-3 h-3" />
+                                        Sent
+                                      </span>
+                                    ) : r.status === 'skipped_invalid_phone' ? (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">
+                                        Skipped (No Phone)
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md">
+                                        Failed
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -2581,10 +3044,31 @@ export default function WhatsAppMessages() {
                       <button
                         type="button"
                         onClick={handleStartBulkDispatch}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md transition-all active:scale-95 cursor-pointer"
+                        className={cn(
+                          "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-md transition-all active:scale-95 cursor-pointer",
+                          bulkSelectedDispatchMode === 'direct_batch'
+                            ? "bg-blue-600 hover:bg-blue-500"
+                            : bulkSelectedDispatchMode === 'webhook'
+                            ? "bg-purple-600 hover:bg-purple-500"
+                            : "bg-emerald-600 hover:bg-emerald-500"
+                        )}
                       >
-                        <Zap className="w-4 h-4 fill-white" />
-                        <span>SEND ALL MESSAGES AT ONCE ({bulkStudents.length})</span>
+                        {bulkSelectedDispatchMode === 'direct_batch' ? (
+                          <>
+                            <Sparkles className="w-4 h-4 fill-white" />
+                            <span>START WHATSAPP QUEUE ({bulkStudents.length})</span>
+                          </>
+                        ) : bulkSelectedDispatchMode === 'webhook' ? (
+                          <>
+                            <Webhook className="w-4 h-4" />
+                            <span>DISPATCH VIA WEBHOOK ({bulkStudents.length})</span>
+                          </>
+                        ) : (
+                          <>
+                            <Globe className="w-4 h-4" />
+                            <span>DISPATCH VIA META API ({bulkStudents.length})</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </>

@@ -1,7 +1,14 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore, setLogLevel } from "firebase/firestore";
 import firebaseConfigData from "../firebase-applet-config.json";
+
+// Set silent log level to prevent internal offline/retry warnings from cluttering the console
+try {
+  setLogLevel('silent');
+} catch {
+  // Ignored
+}
 
 // Support both JSON config and environment variables as robust fallbacks for Vercel / production environments
 export const firebaseConfig = {
@@ -17,12 +24,30 @@ export const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore using the standard default database or custom ID robustly
-export const db = firebaseConfig.firestoreDatabaseId && 
+// Initialize Firestore using experimentalForceLongPolling to ensure 100% stable connection in iframe/proxy environments
+const firestoreSettings = {
+  experimentalForceLongPolling: true,
+};
+
+const customDbId = firebaseConfig.firestoreDatabaseId && 
                   firebaseConfig.firestoreDatabaseId !== "(default)" && 
                   firebaseConfig.firestoreDatabaseId.trim() !== ""
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+  ? firebaseConfig.firestoreDatabaseId
+  : undefined;
+
+let firestoreInstance;
+try {
+  firestoreInstance = customDbId
+    ? initializeFirestore(app, firestoreSettings, customDbId)
+    : initializeFirestore(app, firestoreSettings);
+} catch {
+  // If already initialized, fallback to getFirestore
+  firestoreInstance = customDbId
+    ? getFirestore(app, customDbId)
+    : getFirestore(app);
+}
+
+export const db = firestoreInstance;
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();

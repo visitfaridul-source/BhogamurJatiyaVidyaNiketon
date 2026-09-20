@@ -21,51 +21,91 @@ const getGradeForPercentage = (pct: number) => {
 
 /**
  * Orders students naturally and assigns clean proper series roll numbers (1, 2, 3, 4, ...)
- * strictly for result generation and marksheet compilation purposes.
+ * strictly section-wise for result generation and marksheet compilation purposes.
+ * Each section starts its series at Roll 1 (e.g. Section A: 1, 2, 3... Section B: 1, 2, 3...).
  * Keeps original student admission profiles intact ("only for generating result").
  */
-export function getStudentsInResultSeries<T extends { id: string; name: string; roll?: string; [key: string]: any }>(
+export function getStudentsInResultSeries<T extends { id: string; name: string; roll?: string; section?: string; class?: string; [key: string]: any }>(
   studentList: T[],
-  mode: 'consecutive' | 'preserve_if_numeric' = 'consecutive'
-): (T & { resultRoll: string; originalRoll?: string })[] {
-  const sorted = [...studentList].sort((a, b) => {
-    const rawA = (a.roll || '').trim();
-    const rawB = (b.roll || '').trim();
-    const numA = parseInt(rawA.replace(/\D/g, ''), 10);
-    const numB = parseInt(rawB.replace(/\D/g, ''), 10);
-    
-    const validA = !isNaN(numA) && numA > 0;
-    const validB = !isNaN(numB) && numB > 0;
+  mode: 'consecutive' | 'preserve_if_numeric' = 'consecutive',
+  targetSection?: string
+): (T & { resultRoll: string; originalRoll?: string; section: string; sectionRollLabel: string })[] {
+  let workingList = [...studentList];
+  if (targetSection && targetSection !== 'ALL' && targetSection.trim() !== '') {
+    const normTarget = targetSection.trim().toLowerCase();
+    workingList = workingList.filter(s => (s.section || '').trim().toLowerCase() === normTarget);
+  }
 
-    if (validA && validB) {
-      if (numA !== numB) return numA - numB;
-      return (a.name || '').localeCompare(b.name || '');
+  // Group students by section
+  const sectionMap = new Map<string, T[]>();
+  workingList.forEach(student => {
+    const sec = (student.section || '').trim();
+    if (!sectionMap.has(sec)) {
+      sectionMap.set(sec, []);
     }
-    if (validA && !validB) return -1;
-    if (!validA && validB) return 1;
-
-    const nameCmp = (a.name || '').localeCompare(b.name || '');
-    if (nameCmp !== 0) return nameCmp;
-    return (a.id || '').localeCompare(b.id || '');
+    sectionMap.get(sec)!.push(student);
   });
 
-  return sorted.map((student, idx) => {
-    const seriesIndex = String(idx + 1);
-    let assignedRoll = seriesIndex;
+  // Sort section keys alphabetically; place empty / unassigned sections at the end
+  const sortedSectionKeys = Array.from(sectionMap.keys()).sort((a, b) => {
+    if (a === '' && b !== '') return 1;
+    if (a !== '' && b === '') return -1;
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  });
 
-    if (mode === 'preserve_if_numeric') {
-      const num = parseInt((student.roll || '').replace(/\D/g, ''), 10);
-      if (!isNaN(num) && num > 0) {
-        assignedRoll = String(num);
+  const finalOutput: (T & { resultRoll: string; originalRoll?: string; section: string; sectionRollLabel: string })[] = [];
+
+  for (const secKey of sortedSectionKeys) {
+    const studentsInSec = sectionMap.get(secKey) || [];
+
+    // Sort students naturally within this section (by valid numeric roll if present, else by name)
+    const sortedInSec = [...studentsInSec].sort((a, b) => {
+      const rawA = (a.roll || '').trim();
+      const rawB = (b.roll || '').trim();
+      const numA = parseInt(rawA.replace(/\D/g, ''), 10);
+      const numB = parseInt(rawB.replace(/\D/g, ''), 10);
+      
+      const validA = !isNaN(numA) && numA > 0;
+      const validB = !isNaN(numB) && numB > 0;
+
+      if (validA && validB) {
+        if (numA !== numB) return numA - numB;
+        return (a.name || '').localeCompare(b.name || '');
       }
-    }
+      if (validA && !validB) return -1;
+      if (!validA && validB) return 1;
 
-    return {
-      ...student,
-      resultRoll: assignedRoll,
-      originalRoll: student.roll
-    };
-  });
+      const nameCmp = (a.name || '').localeCompare(b.name || '');
+      if (nameCmp !== 0) return nameCmp;
+      return (a.id || '').localeCompare(b.id || '');
+    });
+
+    // Assign section-wise roll series (1, 2, 3, 4...) starting at 1 for each section
+    sortedInSec.forEach((student, idx) => {
+      const seriesIndex = String(idx + 1);
+      let assignedRoll = seriesIndex;
+
+      if (mode === 'preserve_if_numeric') {
+        const num = parseInt((student.roll || '').replace(/\D/g, ''), 10);
+        if (!isNaN(num) && num > 0) {
+          assignedRoll = String(num);
+        }
+      }
+
+      const secName = (student.section || '').trim();
+      const label = secName ? `Sec ${secName} - Roll ${assignedRoll}` : `Roll ${assignedRoll}`;
+
+      finalOutput.push({
+        ...student,
+        section: secName,
+        resultRoll: assignedRoll,
+        originalRoll: student.roll,
+        sectionRollLabel: label
+      });
+    });
+  }
+
+  return finalOutput;
 }
 
 export default function ResultsManagement() {
@@ -103,11 +143,13 @@ export default function ResultsManagement() {
   const [newSubjectColMax, setNewSubjectColMax] = useState(100);
 
   const [bulkImportClass, setBulkImportClass] = useState('Class 10');
+  const [bulkImportSection, setBulkImportSection] = useState('ALL');
   const [bulkImportExam, setBulkImportExam] = useState('Half Yearly Examination');
   const [rollSeriesMode, setRollSeriesMode] = useState<'consecutive' | 'preserve_if_numeric'>('consecutive');
 
   const [showBulkDownloadModal, setShowBulkDownloadModal] = useState(false);
   const [bulkDownloadClass, setBulkDownloadClass] = useState('Class 10');
+  const [bulkDownloadSection, setBulkDownloadSection] = useState('ALL');
   const [bulkDownloadType, setBulkDownloadType] = useState<'consolidated' | 'single'>('consolidated');
   const [bulkDownloadExam, setBulkDownloadExam] = useState('Half Yearly Examination');
   const [bulkDownloadWeights, setBulkDownloadWeights] = useState({ ut1: 10, ut2: 10, hy: 30, annual: 50 });
@@ -118,6 +160,7 @@ export default function ResultsManagement() {
   const [showConsolidatedStudio, setShowConsolidatedStudio] = useState(false);
   const [activeStudioTab, setActiveStudioTab] = useState<'dashboard' | 'entry' | 'reportcard'>('dashboard');
   const [consolidatedClass, setConsolidatedClass] = useState('Class 10');
+  const [consolidatedSection, setConsolidatedSection] = useState('ALL');
   const [consolidatedSubject, setConsolidatedSubject] = useState('Mathematics');
   const [consolidatedWeights, setConsolidatedWeights] = useState({
     ut1: 10,
@@ -130,19 +173,37 @@ export default function ResultsManagement() {
     studentId: string;
     studentName: string;
     roll: string;
+    section: string;
     ut1: string;
     ut2: string;
     hy: string;
     annual: string;
   }[]>([]);
 
+  // Unique sections available per selected class
+  const availableBulkSections = React.useMemo(() => {
+    const classStudents = (students || []).filter(s => s.class.toLowerCase().trim() === bulkImportClass.toLowerCase().trim());
+    return Array.from(new Set(classStudents.map(s => (s.section || '').trim()).filter(Boolean))).sort();
+  }, [students, bulkImportClass]);
+
+  const availableBulkDownloadSections = React.useMemo(() => {
+    const classStudents = (students || []).filter(s => s.class.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim());
+    return Array.from(new Set(classStudents.map(s => (s.section || '').trim()).filter(Boolean))).sort();
+  }, [students, bulkDownloadClass]);
+
+  const availableConsolidatedSections = React.useMemo(() => {
+    const classStudents = (students || []).filter(s => s.class.toLowerCase().trim() === consolidatedClass.toLowerCase().trim());
+    return Array.from(new Set(classStudents.map(s => (s.section || '').trim()).filter(Boolean))).sort();
+  }, [students, consolidatedClass]);
+
   const pullEntryData = () => {
     const rawClassSts = (students || []).filter(s => 
       s.class.toLowerCase().trim() === consolidatedClass.toLowerCase().trim() &&
-      s.status.toLowerCase() !== 'inactive'
+      s.status.toLowerCase() !== 'inactive' &&
+      (consolidatedSection === 'ALL' || (s.section || '').trim().toLowerCase() === consolidatedSection.trim().toLowerCase())
     );
-    // Sort and format roll numbers into proper series (Roll 1, Roll 2, Roll 3...) strictly for result generation
-    const classSts = getStudentsInResultSeries(rawClassSts, 'consecutive');
+    // Sort and format roll numbers into proper series (Roll 1, Roll 2, Roll 3...) strictly section-wise for result generation
+    const classSts = getStudentsInResultSeries(rawClassSts, 'consecutive', consolidatedSection);
 
     const ut1Exam = 'Unit Test 1';
     const ut2Exam = 'Unit Test 2';
@@ -170,6 +231,7 @@ export default function ResultsManagement() {
         studentId: st.id,
         studentName: st.name,
         roll: st.resultRoll,
+        section: st.section || '',
         ut1: ut1Mark !== undefined ? String(ut1Mark) : '',
         ut2: ut2Mark !== undefined ? String(ut2Mark) : '',
         hy: hyMark !== undefined ? String(hyMark) : '',
@@ -184,7 +246,7 @@ export default function ResultsManagement() {
     if (showConsolidatedStudio) {
       pullEntryData();
     }
-  }, [showConsolidatedStudio, consolidatedClass, consolidatedSubject, results, students]);
+  }, [showConsolidatedStudio, consolidatedClass, consolidatedSection, consolidatedSubject, results, students]);
 
   const getExamResultForStudent = (studentId: string, type: 'ut1' | 'ut2' | 'hy' | 'annual') => {
     return results.find(r => {
@@ -342,16 +404,17 @@ export default function ResultsManagement() {
     }
     const rawClassStudents = (students || []).filter(s => 
       s.class.toLowerCase().trim() === bulkImportClass.toLowerCase().trim() &&
-      s.status.toLowerCase() !== 'inactive'
+      s.status.toLowerCase() !== 'inactive' &&
+      (bulkImportSection === 'ALL' || (s.section || '').trim().toLowerCase() === bulkImportSection.trim().toLowerCase())
     );
 
     if (rawClassStudents.length === 0) {
-      alert(`No active students found in "${bulkImportClass}". Ensure they are added in Students management with exactly this class set.`);
+      alert(`No active students found in "${bulkImportClass}" ${bulkImportSection !== 'ALL' ? `(Section ${bulkImportSection})` : ''}. Ensure they are added in Students management with this class and section.`);
       return;
     }
 
-    // Sort students and format roll numbers in proper series specifically for result generation
-    const classStudents = getStudentsInResultSeries(rawClassStudents, rollSeriesMode);
+    // Sort students and format roll numbers in proper series section-wise specifically for result generation
+    const classStudents = getStudentsInResultSeries(rawClassStudents, rollSeriesMode, bulkImportSection);
 
     // Keep the first row headers from the current grid (e.g. if the user added/removed columns, we keep them!)
     const headers = [...gridData[0]];
@@ -384,7 +447,7 @@ export default function ResultsManagement() {
     }
 
     setGridData(newGrid);
-    alert(`Successfully loaded ${classStudents.length} students from ${bulkImportClass} in proper roll series (Roll 1 to ${classStudents.length})! You can now easily fill standard marks and hit Import.`);
+    alert(`Successfully loaded ${classStudents.length} students from ${bulkImportClass} ${bulkImportSection !== 'ALL' ? `(Section ${bulkImportSection})` : '(Section-wise series)'}! Roll numbers are ordered in series 1, 2, 3... per section.`);
   };
 
   const addSubjectColumn = (subjectName: string, maxMarks: number = 100) => {
@@ -459,7 +522,15 @@ export default function ResultsManagement() {
       if (a.examName !== b.examName) {
         return (a.examName || '').localeCompare(b.examName || '');
       }
-      // Sort by roll number in proper numerical series
+      // Sort section-wise: compare section from student record or class name suffix
+      const studentA = students.find(s => s.id === a.studentId);
+      const studentB = students.find(s => s.id === b.studentId);
+      const secA = (studentA?.section || '').trim() || (a.className?.includes('-') ? a.className.split('-')[1].trim() : '');
+      const secB = (studentB?.section || '').trim() || (b.className?.includes('-') ? b.className.split('-')[1].trim() : '');
+      if (secA !== secB) {
+        return secA.localeCompare(secB, undefined, { numeric: true, sensitivity: 'base' });
+      }
+      // Sort by roll number in proper numerical series within section
       const numA = parseInt((a.roll || '').replace(/\D/g, ''), 10);
       const numB = parseInt((b.roll || '').replace(/\D/g, ''), 10);
       const hasA = !isNaN(numA) && numA > 0;
@@ -1173,7 +1244,10 @@ export default function ResultsManagement() {
                       <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Select Class</label>
                       <select
                         value={bulkImportClass}
-                        onChange={(e) => setBulkImportClass(e.target.value)}
+                        onChange={(e) => {
+                          setBulkImportClass(e.target.value);
+                          setBulkImportSection('ALL');
+                        }}
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                       >
                         {['Nursery', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'].map(c => (
@@ -1182,7 +1256,21 @@ export default function ResultsManagement() {
                       </select>
                     </div>
 
-                    <div className="min-w-[180px]">
+                    <div className="min-w-[130px]">
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Select Section</label>
+                      <select
+                        value={bulkImportSection}
+                        onChange={(e) => setBulkImportSection(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      >
+                        <option value="ALL">All Sections (Grouped Section-Wise)</option>
+                        {availableBulkSections.map(s => (
+                          <option key={s} value={s}>Section {s}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="min-w-[170px]">
                       <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Select Exam</label>
                       <select
                         value={bulkImportExam}
@@ -1202,7 +1290,7 @@ export default function ResultsManagement() {
                         onChange={(e) => setRollSeriesMode(e.target.value as any)}
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                       >
-                        <option value="consecutive">Proper Series (1, 2, 3, 4...)</option>
+                        <option value="consecutive">Proper Series (1, 2, 3, 4... Section-wise)</option>
                         <option value="preserve_if_numeric">Keep Registered Roll (if set)</option>
                       </select>
                     </div>
@@ -1663,10 +1751,11 @@ export default function ResultsManagement() {
       {showBulkDownloadModal && (() => {
         const rawBulkStudents = (students || []).filter(s =>
           s.class.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim() &&
-          s.active !== false
+          s.active !== false &&
+          (bulkDownloadSection === 'ALL' || (s.section || '').trim().toLowerCase() === bulkDownloadSection.trim().toLowerCase())
         );
-        // Ensure bulk downloaded marksheet PDF is ordered and numbered in proper roll series
-        const bulkStudents = getStudentsInResultSeries(rawBulkStudents, 'consecutive');
+        // Ensure bulk downloaded marksheet PDF is ordered and numbered in proper roll series section-wise
+        const bulkStudents = getStudentsInResultSeries(rawBulkStudents, 'consecutive', bulkDownloadSection);
 
         const handleBulkDownloadPDF = async () => {
           setBulkIsGenerating(true);
@@ -1686,10 +1775,11 @@ export default function ResultsManagement() {
           await new Promise(resolve => setTimeout(resolve, 400));
           setBulkProgressPercent(85);
 
+          const secPart = bulkDownloadSection !== 'ALL' ? `_Sec_${bulkDownloadSection}` : '_All_Sections';
           const typePart = bulkDownloadType === 'consolidated' ? 'Consolidated_Annual' : `${bulkDownloadExam.replace(/\s+/g, '_')}`;
           const opt = {
             margin:       0.3,
-            filename:    `${bulkDownloadClass.replace(/\s+/g, '_')}_Bulk_Marksheets_${typePart}.pdf`,
+            filename:    `${bulkDownloadClass.replace(/\s+/g, '_')}${secPart}_Bulk_Marksheets_${typePart}.pdf`,
             image:        { type: 'jpeg' as const, quality: 0.98 },
             html2canvas:  { scale: 2, useCORS: true },
             jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' as const }
@@ -1774,17 +1864,35 @@ export default function ResultsManagement() {
                 )}
 
                 {/* Form Controls */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* Select Class */}
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 tracking-wider uppercase mb-1.5">Selected Cohort Class</label>
                     <select
                       value={bulkDownloadClass}
-                      onChange={(e) => setBulkDownloadClass(e.target.value)}
+                      onChange={(e) => {
+                        setBulkDownloadClass(e.target.value);
+                        setBulkDownloadSection('ALL');
+                      }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-extrabold text-slate-850 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                     >
                       {uniqueClasses.map(c => (
                         <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Select Section */}
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 tracking-wider uppercase mb-1.5">Selected Section</label>
+                    <select
+                      value={bulkDownloadSection}
+                      onChange={(e) => setBulkDownloadSection(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-extrabold text-slate-850 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                    >
+                      <option value="ALL">All Sections (Section-Wise Series)</option>
+                      {availableBulkDownloadSections.map(s => (
+                        <option key={s} value={s}>Section {s}</option>
                       ))}
                     </select>
                   </div>
@@ -1949,10 +2057,12 @@ export default function ResultsManagement() {
 
       {/* HIDDEN OFFSCREEN RENDER CANVAS FOR COMBINED PDF EXPORT */}
       {showBulkDownloadModal && (() => {
-        const bulkStudents = (students || []).filter(s =>
+        const rawBulkStudents = (students || []).filter(s =>
           s.class.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim() &&
-          s.active !== false
+          s.active !== false &&
+          (bulkDownloadSection === 'ALL' || (s.section || '').trim().toLowerCase() === bulkDownloadSection.trim().toLowerCase())
         );
+        const bulkStudents = getStudentsInResultSeries(rawBulkStudents, 'consecutive', bulkDownloadSection);
 
         return (
           <div 
@@ -2287,12 +2397,31 @@ export default function ResultsManagement() {
                     value={consolidatedClass}
                     onChange={(e) => {
                       setConsolidatedClass(e.target.value);
+                      setConsolidatedSection('ALL');
                       setSelectedConsolStudentId('');
                     }}
                     className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500/20"
                   >
                     {['Nursery', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'].map(c => (
                       <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Select Section */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Section:</span>
+                  <select
+                    value={consolidatedSection}
+                    onChange={(e) => {
+                      setConsolidatedSection(e.target.value);
+                      setSelectedConsolStudentId('');
+                    }}
+                    className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500/20"
+                  >
+                    <option value="ALL">All Sections (Section-Wise Series)</option>
+                    {availableConsolidatedSections.map(s => (
+                      <option key={s} value={s}>Section {s}</option>
                     ))}
                   </select>
                 </div>
@@ -2391,9 +2520,10 @@ export default function ResultsManagement() {
               {activeStudioTab === 'dashboard' && (() => {
                 const rawClassStudents = (students || []).filter(s => 
                   s.class.toLowerCase().trim() === consolidatedClass.toLowerCase().trim() &&
-                  s.status.toLowerCase() !== 'inactive'
+                  s.status.toLowerCase() !== 'inactive' &&
+                  (consolidatedSection === 'ALL' || (s.section || '').trim().toLowerCase() === consolidatedSection.trim().toLowerCase())
                 );
-                const classStudents = getStudentsInResultSeries(rawClassStudents, 'consecutive');
+                const classStudents = getStudentsInResultSeries(rawClassStudents, 'consecutive', consolidatedSection);
 
                 // Compute student stats
                 const processedStudents = classStudents.map(st => {
@@ -2440,6 +2570,7 @@ export default function ResultsManagement() {
                     id: st.id,
                     name: st.name,
                     roll: st.resultRoll,
+                    section: st.section || '',
                     ut1: ut1Res ? `${ut1Res.percentage}%` : 'N/A',
                     ut2: ut2Res ? `${ut2Res.percentage}%` : 'N/A',
                     hy: hyRes ? `${hyRes.percentage}%` : 'N/A',
@@ -2516,6 +2647,7 @@ export default function ResultsManagement() {
                           <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 sticky top-0">
                             <tr>
                               <th className="px-6 py-3">Roll No</th>
+                              <th className="px-6 py-3">Section</th>
                               <th className="px-6 py-3">Student Name</th>
                               <th className="px-6 py-3">UT-1 ({consolidatedWeights.ut1}%)</th>
                               <th className="px-6 py-3">UT-2 ({consolidatedWeights.ut2}%)</th>
@@ -2529,14 +2661,19 @@ export default function ResultsManagement() {
                           <tbody className="divide-y divide-slate-100">
                             {processedStudents.length === 0 ? (
                               <tr>
-                                <td colSpan={9} className="px-6 py-10 text-center font-medium text-slate-400 text-xs">
-                                  No active students found in "{consolidatedClass}". Add them in Students menu.
+                                <td colSpan={10} className="px-6 py-10 text-center font-medium text-slate-400 text-xs">
+                                  No active students found in "{consolidatedClass}" {consolidatedSection !== 'ALL' ? `(Section ${consolidatedSection})` : ''}. Add them in Students menu.
                                 </td>
                               </tr>
                             ) : (
                               processedStudents.map((pst, idx) => (
                                 <tr key={pst.id} className="hover:bg-indigo-50/10">
                                   <td className="px-6 py-3.5 font-bold text-slate-800">{pst.roll}</td>
+                                  <td className="px-6 py-3.5">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                      {pst.section ? `Sec ${pst.section}` : '—'}
+                                    </span>
+                                  </td>
                                   <td className="px-6 py-3.5 font-bold text-slate-850">
                                     <div>{pst.name}</div>
                                     <div className="text-[10px] text-slate-400 font-medium">{pst.id}</div>
@@ -2660,8 +2797,9 @@ export default function ResultsManagement() {
                         <thead className="bg-slate-50 text-slate-500 font-bold sticky top-0 border-b border-slate-200 z-10">
                           <tr>
                             <th className="px-6 py-3 w-[80px]">Roll</th>
-                            <th className="px-6 py-3 w-[250px]">Student Name</th>
-                            <th className="px-6 py-3 w-[150px]">Admission ID</th>
+                            <th className="px-6 py-3 w-[90px]">Section</th>
+                            <th className="px-6 py-3 w-[220px]">Student Name</th>
+                            <th className="px-6 py-3 w-[140px]">Admission ID</th>
                             <th className="px-6 py-3 text-center bg-indigo-50/30">Unit Test 1 (/{newSubjectColMax})</th>
                             <th className="px-6 py-3 text-center bg-indigo-50/50">Unit Test 2 (/{newSubjectColMax})</th>
                             <th className="px-6 py-3 text-center bg-emerald-50/30">Half Yearly (/{newSubjectColMax})</th>
@@ -2672,8 +2810,8 @@ export default function ResultsManagement() {
                         <tbody className="divide-y divide-slate-100 text-slate-755 font-semibold">
                           {entryData.length === 0 ? (
                             <tr>
-                              <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
-                                No active students found in "{consolidatedClass}". Please enroll students first!
+                              <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
+                                No active students found in "{consolidatedClass}" {consolidatedSection !== 'ALL' ? `(Section ${consolidatedSection})` : ''}. Please enroll students first!
                               </td>
                             </tr>
                           ) : (
@@ -2708,7 +2846,12 @@ export default function ResultsManagement() {
                               return (
                                 <tr key={rowData.studentId} className="hover:bg-slate-50/50">
                                   <td className="px-6 py-3 font-bold text-slate-800">{rowData.roll}</td>
-                                  <td className="px-6 py-3 text-slate-900">
+                                  <td className="px-6 py-3">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                      {rowData.section ? `Sec ${rowData.section}` : '—'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-3 text-slate-900 font-bold">
                                     <div>{rowData.studentName}</div>
                                   </td>
                                   <td className="px-6 py-3 font-mono text-slate-500 text-[10px]">{rowData.studentId}</td>
@@ -2815,9 +2958,10 @@ export default function ResultsManagement() {
               {activeStudioTab === 'reportcard' && (() => {
                 const rawClassStudents = (students || []).filter(s => 
                   s.class.toLowerCase().trim() === consolidatedClass.toLowerCase().trim() &&
-                  s.status.toLowerCase() !== 'inactive'
+                  s.status.toLowerCase() !== 'inactive' &&
+                  (consolidatedSection === 'ALL' || (s.section || '').trim().toLowerCase() === consolidatedSection.trim().toLowerCase())
                 );
-                const classStudents = getStudentsInResultSeries(rawClassStudents, 'consecutive');
+                const classStudents = getStudentsInResultSeries(rawClassStudents, 'consecutive', consolidatedSection);
 
                 // Initialize selection if blank
                 if (!selectedConsolStudentId && classStudents.length > 0) {
@@ -2944,7 +3088,9 @@ export default function ResultsManagement() {
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
                           >
                             {classStudents.map(st => (
-                              <option key={st.id} value={st.id}>Roll {st.resultRoll} - {st.name}</option>
+                              <option key={st.id} value={st.id}>
+                                {st.section ? `[Sec ${st.section}] ` : ''}Roll {st.resultRoll} - {st.name}
+                              </option>
                             ))}
                           </select>
                         </div>
