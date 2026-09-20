@@ -19,6 +19,55 @@ const getGradeForPercentage = (pct: number) => {
   return 'F';
 };
 
+/**
+ * Orders students naturally and assigns clean proper series roll numbers (1, 2, 3, 4, ...)
+ * strictly for result generation and marksheet compilation purposes.
+ * Keeps original student admission profiles intact ("only for generating result").
+ */
+export function getStudentsInResultSeries<T extends { id: string; name: string; roll?: string; [key: string]: any }>(
+  studentList: T[],
+  mode: 'consecutive' | 'preserve_if_numeric' = 'consecutive'
+): (T & { resultRoll: string; originalRoll?: string })[] {
+  const sorted = [...studentList].sort((a, b) => {
+    const rawA = (a.roll || '').trim();
+    const rawB = (b.roll || '').trim();
+    const numA = parseInt(rawA.replace(/\D/g, ''), 10);
+    const numB = parseInt(rawB.replace(/\D/g, ''), 10);
+    
+    const validA = !isNaN(numA) && numA > 0;
+    const validB = !isNaN(numB) && numB > 0;
+
+    if (validA && validB) {
+      if (numA !== numB) return numA - numB;
+      return (a.name || '').localeCompare(b.name || '');
+    }
+    if (validA && !validB) return -1;
+    if (!validA && validB) return 1;
+
+    const nameCmp = (a.name || '').localeCompare(b.name || '');
+    if (nameCmp !== 0) return nameCmp;
+    return (a.id || '').localeCompare(b.id || '');
+  });
+
+  return sorted.map((student, idx) => {
+    const seriesIndex = String(idx + 1);
+    let assignedRoll = seriesIndex;
+
+    if (mode === 'preserve_if_numeric') {
+      const num = parseInt((student.roll || '').replace(/\D/g, ''), 10);
+      if (!isNaN(num) && num > 0) {
+        assignedRoll = String(num);
+      }
+    }
+
+    return {
+      ...student,
+      resultRoll: assignedRoll,
+      originalRoll: student.roll
+    };
+  });
+}
+
 export default function ResultsManagement() {
   const { user } = useAuth();
   const isStudentOrParent = user?.role === 'Student' || user?.role === 'Parent';
@@ -55,6 +104,7 @@ export default function ResultsManagement() {
 
   const [bulkImportClass, setBulkImportClass] = useState('Class 10');
   const [bulkImportExam, setBulkImportExam] = useState('Half Yearly Examination');
+  const [rollSeriesMode, setRollSeriesMode] = useState<'consecutive' | 'preserve_if_numeric'>('consecutive');
 
   const [showBulkDownloadModal, setShowBulkDownloadModal] = useState(false);
   const [bulkDownloadClass, setBulkDownloadClass] = useState('Class 10');
@@ -87,10 +137,12 @@ export default function ResultsManagement() {
   }[]>([]);
 
   const pullEntryData = () => {
-    const classSts = (students || []).filter(s => 
+    const rawClassSts = (students || []).filter(s => 
       s.class.toLowerCase().trim() === consolidatedClass.toLowerCase().trim() &&
       s.status.toLowerCase() !== 'inactive'
     );
+    // Sort and format roll numbers into proper series (Roll 1, Roll 2, Roll 3...) strictly for result generation
+    const classSts = getStudentsInResultSeries(rawClassSts, 'consecutive');
 
     const ut1Exam = 'Unit Test 1';
     const ut2Exam = 'Unit Test 2';
@@ -117,7 +169,7 @@ export default function ResultsManagement() {
       return {
         studentId: st.id,
         studentName: st.name,
-        roll: st.roll || '-',
+        roll: st.resultRoll,
         ut1: ut1Mark !== undefined ? String(ut1Mark) : '',
         ut2: ut2Mark !== undefined ? String(ut2Mark) : '',
         hy: hyMark !== undefined ? String(hyMark) : '',
@@ -288,15 +340,18 @@ export default function ResultsManagement() {
       alert('Please select a class first.');
       return;
     }
-    const classStudents = (students || []).filter(s => 
+    const rawClassStudents = (students || []).filter(s => 
       s.class.toLowerCase().trim() === bulkImportClass.toLowerCase().trim() &&
       s.status.toLowerCase() !== 'inactive'
     );
 
-    if (classStudents.length === 0) {
+    if (rawClassStudents.length === 0) {
       alert(`No active students found in "${bulkImportClass}". Ensure they are added in Students management with exactly this class set.`);
       return;
     }
+
+    // Sort students and format roll numbers in proper series specifically for result generation
+    const classStudents = getStudentsInResultSeries(rawClassStudents, rollSeriesMode);
 
     // Keep the first row headers from the current grid (e.g. if the user added/removed columns, we keep them!)
     const headers = [...gridData[0]];
@@ -317,7 +372,7 @@ export default function ResultsManagement() {
       const row = Array(headers.length).fill('');
       row[nameIdx] = st.name;
       row[idIdx] = st.id;
-      if (rollIdx !== -1) row[rollIdx] = st.roll || '-';
+      if (rollIdx !== -1) row[rollIdx] = st.resultRoll;
       if (classIdx !== -1) row[classIdx] = st.section ? `${st.class} - ${st.section}` : st.class;
       if (examIdx !== -1) row[examIdx] = bulkImportExam;
       newGrid.push(row);
@@ -329,7 +384,7 @@ export default function ResultsManagement() {
     }
 
     setGridData(newGrid);
-    alert(`Successfully loaded ${classStudents.length} students from ${bulkImportClass}! You can now easily fill standard marks and hit Import.`);
+    alert(`Successfully loaded ${classStudents.length} students from ${bulkImportClass} in proper roll series (Roll 1 to ${classStudents.length})! You can now easily fill standard marks and hit Import.`);
   };
 
   const addSubjectColumn = (subjectName: string, maxMarks: number = 100) => {
@@ -388,12 +443,32 @@ export default function ResultsManagement() {
     return { totalObtained, percentage, grade, status };
   };
 
-  const filteredResults = results.filter(r => 
-    (selectedClassFilter === '' || (r.className || '').toLowerCase() === selectedClassFilter.toLowerCase()) &&
-    (r.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-     r.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-     r.examName.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredResults = results
+    .filter(r => 
+      (selectedClassFilter === '' || (r.className || '').toLowerCase() === selectedClassFilter.toLowerCase()) &&
+      (r.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+       r.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+       r.examName.toLowerCase().includes(searchTerm.toLowerCase()))
+    )
+    .sort((a, b) => {
+      // Sort by class first if filtering all classes
+      if (!selectedClassFilter && a.className !== b.className) {
+        return (a.className || '').localeCompare(b.className || '');
+      }
+      // Sort by exam name next if multiple exams
+      if (a.examName !== b.examName) {
+        return (a.examName || '').localeCompare(b.examName || '');
+      }
+      // Sort by roll number in proper numerical series
+      const numA = parseInt((a.roll || '').replace(/\D/g, ''), 10);
+      const numB = parseInt((b.roll || '').replace(/\D/g, ''), 10);
+      const hasA = !isNaN(numA) && numA > 0;
+      const hasB = !isNaN(numB) && numB > 0;
+      if (hasA && hasB) return numA - numB;
+      if (hasA && !hasB) return -1;
+      if (!hasA && hasB) return 1;
+      return (a.studentName || '').localeCompare(b.studentName || '');
+    });
 
   const uniqueClasses = ['Nursery', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'];
 
@@ -566,7 +641,7 @@ export default function ResultsManagement() {
           id: `PREVIEW-${i}`,
           studentId: stId,
           studentName: stName,
-          roll: rollIdx !== -1 ? row[rollIdx]?.trim() || '' : '',
+          roll: rollIdx !== -1 ? row[rollIdx]?.trim() || String(i) : String(i),
           className: row[classIdx]?.trim() || '',
           examName: row[examIdx]?.trim() || '',
           remarks: autoRemark,
@@ -903,6 +978,40 @@ export default function ResultsManagement() {
             </div>
             
             <div className="p-6 overflow-y-auto space-y-6">
+              {!editingResult && (
+                <div className="bg-indigo-50/60 border border-indigo-100 p-3.5 rounded-xl">
+                  <label className="block text-xs font-bold text-indigo-950 uppercase tracking-wider mb-1">
+                    Quick Select Enrolled Student (Auto-fills Proper Series Roll No.)
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
+                    onChange={(e) => {
+                      const stId = e.target.value;
+                      if (!stId) return;
+                      const st = students.find(s => s.id === stId);
+                      if (st) {
+                        const classMates = (students || []).filter(s => s.class.toLowerCase().trim() === st.class.toLowerCase().trim() && s.status.toLowerCase() !== 'inactive');
+                        const seriesList = getStudentsInResultSeries(classMates);
+                        const match = seriesList.find(s => s.id === st.id);
+                        setFormData(prev => ({
+                          ...prev,
+                          studentId: st.id,
+                          studentName: st.name,
+                          className: st.section ? `${st.class} - ${st.section}` : st.class,
+                          roll: match?.resultRoll || st.roll || '1'
+                        }));
+                      }
+                    }}
+                    defaultValue=""
+                  >
+                    <option value="">-- Choose student from directory to auto-fill --</option>
+                    {(students || []).map(st => (
+                      <option key={st.id} value={st.id}>{st.name} ({st.class} {st.section ? `- ${st.section}` : ''})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Student Name</label>
@@ -1083,6 +1192,18 @@ export default function ResultsManagement() {
                         {['Unit Test 1', 'Unit Test 2', 'Unit Test 3', 'Unit Test 4', 'Half Yearly Examination', 'Annual Examination', 'Pre-Board Examination', 'Board Examination'].map(ex => (
                           <option key={ex} value={ex}>{ex}</option>
                         ))}
+                      </select>
+                    </div>
+
+                    <div className="min-w-[190px]">
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Roll No. Series</label>
+                      <select
+                        value={rollSeriesMode}
+                        onChange={(e) => setRollSeriesMode(e.target.value as any)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      >
+                        <option value="consecutive">Proper Series (1, 2, 3, 4...)</option>
+                        <option value="preserve_if_numeric">Keep Registered Roll (if set)</option>
                       </select>
                     </div>
 
@@ -1540,10 +1661,12 @@ export default function ResultsManagement() {
 
       {/* Super Admin Bulk Marksheet Downloader Modal */}
       {showBulkDownloadModal && (() => {
-        const bulkStudents = (students || []).filter(s =>
+        const rawBulkStudents = (students || []).filter(s =>
           s.class.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim() &&
           s.active !== false
         );
+        // Ensure bulk downloaded marksheet PDF is ordered and numbered in proper roll series
+        const bulkStudents = getStudentsInResultSeries(rawBulkStudents, 'consecutive');
 
         const handleBulkDownloadPDF = async () => {
           setBulkIsGenerating(true);
@@ -2011,7 +2134,7 @@ export default function ResultsManagement() {
                     </div>
                     <div>
                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Roll Index</p>
-                      <p className="text-slate-800 font-black">{st.roll || '-'}</p>
+                      <p className="text-slate-800 font-black">{st.resultRoll}</p>
                     </div>
                   </div>
 
@@ -2266,10 +2389,11 @@ export default function ResultsManagement() {
             <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
               {/* Tab 1: PROGRESS DASHBOARD */}
               {activeStudioTab === 'dashboard' && (() => {
-                const classStudents = (students || []).filter(s => 
+                const rawClassStudents = (students || []).filter(s => 
                   s.class.toLowerCase().trim() === consolidatedClass.toLowerCase().trim() &&
                   s.status.toLowerCase() !== 'inactive'
                 );
+                const classStudents = getStudentsInResultSeries(rawClassStudents, 'consecutive');
 
                 // Compute student stats
                 const processedStudents = classStudents.map(st => {
@@ -2315,7 +2439,7 @@ export default function ResultsManagement() {
                   return {
                     id: st.id,
                     name: st.name,
-                    roll: st.roll || '-',
+                    roll: st.resultRoll,
                     ut1: ut1Res ? `${ut1Res.percentage}%` : 'N/A',
                     ut2: ut2Res ? `${ut2Res.percentage}%` : 'N/A',
                     hy: hyRes ? `${hyRes.percentage}%` : 'N/A',
@@ -2689,10 +2813,11 @@ export default function ResultsManagement() {
 
               {/* Tab 3: CONSOLIDATED REPORT CARD GENERATOR */}
               {activeStudioTab === 'reportcard' && (() => {
-                const classStudents = (students || []).filter(s => 
+                const rawClassStudents = (students || []).filter(s => 
                   s.class.toLowerCase().trim() === consolidatedClass.toLowerCase().trim() &&
                   s.status.toLowerCase() !== 'inactive'
                 );
+                const classStudents = getStudentsInResultSeries(rawClassStudents, 'consecutive');
 
                 // Initialize selection if blank
                 if (!selectedConsolStudentId && classStudents.length > 0) {
@@ -2819,7 +2944,7 @@ export default function ResultsManagement() {
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
                           >
                             {classStudents.map(st => (
-                              <option key={st.id} value={st.id}>{st.roll} - {st.name}</option>
+                              <option key={st.id} value={st.id}>Roll {st.resultRoll} - {st.name}</option>
                             ))}
                           </select>
                         </div>
@@ -2916,7 +3041,7 @@ export default function ResultsManagement() {
                             </div>
                             <div>
                               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Roll Number</p>
-                              <p className="text-slate-800 text-xs font-black">{currentStudent.roll || '-'}</p>
+                              <p className="text-slate-800 text-xs font-black">{currentStudent.resultRoll}</p>
                             </div>
                           </div>
 

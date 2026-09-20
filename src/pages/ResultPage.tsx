@@ -323,6 +323,10 @@ export default function ResultPage() {
                       <span className="font-bold text-slate-900">{searchedResult.className}</span>
                     </div>
                     <div className="flex items-center">
+                      <span className="font-semibold text-slate-500 w-32 text-xs uppercase tracking-wider">Roll No:</span>
+                      <span className="font-bold text-slate-900">{searchedResult.roll || '-'}</span>
+                    </div>
+                    <div className="flex items-center">
                       <span className="font-semibold text-slate-500 w-32 text-xs uppercase tracking-wider">Date of Issue:</span>
                       <span className="font-bold text-slate-900">{new Date().toLocaleDateString('en-GB')}</span>
                     </div>
