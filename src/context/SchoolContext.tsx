@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, ReactNode, useEffect } from
 import { db, handleFirestoreError, OperationType, sanitizeFirestoreData } from '../firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, getDocs, getDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
+import { formatSerialRoll, findMatchingStudent } from '../lib/utils';
 
 // Common Types
 export interface Student {
@@ -513,6 +514,35 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('bhogamur_school_bootstrapped', 'true');
   }, [isAdminUser]);
 
+  // Auto-sync results roll numbers with students admission register (clean 1, 2, 3... series)
+  useEffect(() => {
+    if (!user || students.length === 0 || results.length === 0) return;
+
+    let hasMismatch = false;
+    const synchronizedResults = results.map(r => {
+      const match = findMatchingStudent(students, r.studentId, r.studentName, r.className);
+      if (match) {
+        const studentAdmRoll = formatSerialRoll(match.roll);
+        const currentResultRoll = formatSerialRoll(r.roll);
+        if (studentAdmRoll && currentResultRoll !== studentAdmRoll) {
+          hasMismatch = true;
+          // Sync to Firestore immediately in the background
+          try {
+            setDoc(doc(db, 'results', r.id), { ...sanitizeFirestoreData(r), roll: studentAdmRoll }, { merge: true }).catch(() => {});
+          } catch (e) {
+            // silent catch
+          }
+          return { ...r, roll: studentAdmRoll };
+        }
+      }
+      return r;
+    });
+
+    if (hasMismatch) {
+      setResultsState(synchronizedResults);
+    }
+  }, [students, results, user]);
+
   // Syncing customized setState actions back to Firestore securely
   const setStudents = async (value: React.SetStateAction<Student[]>) => {
     try {
@@ -554,6 +584,22 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
                 autoRegistered: true,
                 source: "Student Photo Registration"
               });
+            }
+
+            // If student's roll was updated or assigned, synchronize results for this student
+            const studentSerialRoll = formatSerialRoll(s.roll);
+            if (studentSerialRoll) {
+              const matchingResults = results.filter(r => 
+                (r.studentId && r.studentId.trim().toLowerCase() === s.id.trim().toLowerCase()) ||
+                (r.studentName && r.studentName.trim().toLowerCase() === s.name.trim().toLowerCase() && (r.className || '').toLowerCase().includes(s.class.toLowerCase()))
+              );
+              for (const mr of matchingResults) {
+                if (formatSerialRoll(mr.roll) !== studentSerialRoll) {
+                  try {
+                    await setDoc(doc(db, 'results', mr.id), { ...sanitizeFirestoreData(mr), roll: studentSerialRoll }, { merge: true });
+                  } catch (err) {}
+                }
+              }
             }
           } catch (err) {
             handleFirestoreError(err, OperationType.WRITE, `students/${s.id}`);

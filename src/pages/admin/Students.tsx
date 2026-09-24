@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import PhotoEditor from '../../components/PhotoEditor';
 import { useSchool } from '../../context/SchoolContext';
 import { useConfirm } from '../../context/ConfirmationContext';
+import { formatSerialRoll } from '../../lib/utils';
 
 const ensureDDMMYYYY = (dateVal: string | Date | undefined | null) => {
   if (!dateVal) return '-';
@@ -77,7 +78,7 @@ const handleDateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 };
 
 export default function Students() {
-  const { students, setStudents } = useSchool();
+  const { students, setStudents, results, setResults } = useSchool();
   const { confirm } = useConfirm();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState('Nursery');
@@ -592,6 +593,26 @@ export default function Students() {
     });
 
     setStudents([...updatedStudents]);
+
+    // Synchronize result records with new student rolls
+    if (results && results.length > 0) {
+      let resultsUpdated = 0;
+      const updatedResults = results.map(r => {
+        const matchingSt = updatedStudents.find(s => 
+          (s.id && s.id.trim().toLowerCase() === r.studentId?.trim().toLowerCase()) ||
+          (s.name.trim().toLowerCase() === r.studentName?.trim().toLowerCase() && (r.className || '').toLowerCase().includes(s.class.toLowerCase()))
+        );
+        if (matchingSt && matchingSt.roll && matchingSt.roll !== r.roll) {
+          resultsUpdated++;
+          return { ...r, roll: matchingSt.roll };
+        }
+        return r;
+      });
+      if (resultsUpdated > 0) {
+        setResults(updatedResults);
+      }
+    }
+
     alert(`Successfully formatted and sequenced roll numbers into 1, 2, 3... series! (${changedCount} student records updated)`);
   };
 
@@ -1038,6 +1059,21 @@ export default function Students() {
             setStudents(prev => [newStudent, ...prev]);
             setIsAddStudentModalOpen(false);
           }
+
+          // Immediately sync result records for this student
+          if (results && results.length > 0) {
+            const updatedResults = results.map(r => {
+              if (
+                (r.studentId && r.studentId.trim().toLowerCase() === newStudent.id.trim().toLowerCase()) ||
+                (r.studentName && r.studentName.trim().toLowerCase() === newStudent.name.trim().toLowerCase() && (r.className || '').toLowerCase().includes(newStudent.class.toLowerCase()))
+              ) {
+                return { ...r, roll: newStudent.roll };
+              }
+              return r;
+            });
+            setResults(updatedResults);
+          }
+
           setPhotoPreview(null);
         }}>
                  

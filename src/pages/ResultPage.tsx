@@ -4,7 +4,7 @@ import { useWebsite } from '../context/WebsiteContext';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, CheckCircle2, XCircle, Award, Printer, Download, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, formatSerialRoll } from '../lib/utils';
 import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -325,9 +325,7 @@ export default function ResultPage() {
                     <div className="flex items-center">
                       <span className="font-semibold text-slate-500 w-32 text-xs uppercase tracking-wider">Roll No:</span>
                       <span className="font-bold text-slate-900">
-                        {searchedResult.roll && !isNaN(parseInt(searchedResult.roll.replace(/\D/g, ''), 10)) && parseInt(searchedResult.roll.replace(/\D/g, ''), 10) > 0
-                          ? String(parseInt(searchedResult.roll.replace(/\D/g, ''), 10))
-                          : (searchedResult.roll || '-')}
+                        {formatSerialRoll(searchedResult.roll) || searchedResult.roll || '-'}
                       </span>
                     </div>
                     <div className="flex items-center">
