@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Plus, Filter, MoreVertical, Edit, Trash2, Download, Upload, IdCard, X, Printer, UserPlus, Image as ImageIcon, FileSpreadsheet, ClipboardList, Camera, RefreshCcw } from 'lucide-react';
+import { Search, Plus, Filter, MoreVertical, Edit, Trash2, Download, Upload, IdCard, X, Printer, UserPlus, Image as ImageIcon, FileSpreadsheet, ClipboardList, Camera, RefreshCcw, ListOrdered } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import * as XLSX from 'xlsx';
 import PhotoEditor from '../../components/PhotoEditor';
@@ -225,7 +225,9 @@ export default function Students() {
         const name = row[0]?.trim()?.toUpperCase() || 'UNKNOWN STUDENT';
 
         const id = row[1]?.trim()?.toUpperCase() || `ADM${Date.now()}${Math.floor(Math.random() * 1000)}${index}`;
-        const roll = row[2]?.trim()?.toUpperCase() || '-';
+        const rawRoll = row[2]?.trim() || '';
+        const parsedRollNum = parseInt(rawRoll.replace(/\D/g, ''), 10);
+        const roll = !isNaN(parsedRollNum) && parsedRollNum > 0 ? String(parsedRollNum) : String(index + 1);
         const cls = row[3]?.trim()?.toUpperCase() || bulkClass || 'Class 1';
         const sec = row[4]?.trim()?.toUpperCase() || bulkSection || 'A';
         const parentName = row[5]?.trim()?.toUpperCase() || '-';
@@ -375,23 +377,30 @@ export default function Students() {
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
         
-        const importedStudents = data.map((row: any, index) => ({
-          id: row['Admission Id'] || row['Adm Id'] || `IMP${Date.now()}${index}`,
-          name: row['Name'] || 'Unknown',
-          gender: row['Gender'] || row['gender'] || 'Male',
-          class: row['Class'] || 'N/A',
-          section: row['Section'] || 'N/A',
-          admissionDate: ensureDDMMYYYY(row['Date of Admission']),
-          dob: ensureDDMMYYYY(row['DOB']),
-          parentName: row["Father's Name"] || row["Father's name"] || 'N/A',
-          motherName: row["Mother's Name"] || row["Mother's name"] || '',
-          address: row['Address'] || '',
-          phone: row['Mobile No'] || 'N/A',
-          aadhaar: row['Aadhaar No'] || '',
-          pen: row['PEN No'] || '',
-          apaar: row['APAAR ID'] || '',
-          status: row['Status'] || 'Active',
-        }));
+        const importedStudents = data.map((row: any, index) => {
+          const rawRoll = row['Roll No'] || row['Roll'] || row['roll'] || '';
+          const parsedRollNum = parseInt(String(rawRoll).replace(/\D/g, ''), 10);
+          const roll = !isNaN(parsedRollNum) && parsedRollNum > 0 ? String(parsedRollNum) : String(index + 1);
+
+          return {
+            id: row['Admission Id'] || row['Adm Id'] || `IMP${Date.now()}${index}`,
+            name: row['Name'] || 'Unknown',
+            gender: row['Gender'] || row['gender'] || 'Male',
+            roll,
+            class: row['Class'] || 'N/A',
+            section: row['Section'] || 'N/A',
+            admissionDate: ensureDDMMYYYY(row['Date of Admission']),
+            dob: ensureDDMMYYYY(row['DOB']),
+            parentName: row["Father's Name"] || row["Father's name"] || 'N/A',
+            motherName: row["Mother's Name"] || row["Mother's name"] || '',
+            address: row['Address'] || '',
+            phone: row['Mobile No'] || 'N/A',
+            aadhaar: row['Aadhaar No'] || '',
+            pen: row['PEN No'] || '',
+            apaar: row['APAAR ID'] || '',
+            status: row['Status'] || 'Active',
+          };
+        });
         
         setStudents(prev => [...importedStudents, ...prev]);
         
@@ -425,6 +434,7 @@ export default function Students() {
     Object.entries(studentsByGroup).forEach(([groupName, classStudentsList]) => {
       const formattedData = (classStudentsList as any[]).map(s => ({
         'Admission Id': s.id,
+        'Roll No': s.roll || '',
         'Date of Admission': ensureDDMMYYYY(s.admissionDate),
         'Class': s.class,
         'Section': s.section,
@@ -540,6 +550,51 @@ export default function Students() {
     .filter(s => selectedSectionFilter ? (s.section || '').toUpperCase().trim() === selectedSectionFilter.toUpperCase().trim() : true)
     .filter(s => selectedStatusFilter ? s.status === selectedStatusFilter : true);
 
+  const handleAutoSequenceRolls = async () => {
+    const scopeLabel = selectedClassFilter ? `${selectedClassFilter}${selectedSectionFilter ? ` (Section ${selectedSectionFilter})` : ''}` : 'All Classes';
+    const isConfirmed = await confirm({
+      title: 'Auto-Sequence Roll Numbers (1, 2, 3...)',
+      message: `Do you want to re-sequence students in ${scopeLabel} into clean 1, 2, 3... serial roll numbers section-wise? This ensures perfect alignment and zero roll mismatch with the result section.`,
+      variant: 'info',
+      confirmLabel: 'Sequence (1, 2, 3...)',
+      cancelLabel: 'Cancel'
+    });
+    if (!isConfirmed) return;
+
+    const updatedStudents = [...students];
+    const targetClasses = selectedClassFilter ? [selectedClassFilter] : Array.from(new Set(students.map(s => s.class)));
+
+    let changedCount = 0;
+    targetClasses.forEach(cls => {
+      const classStudents = updatedStudents.filter(s => s.class.toLowerCase().trim() === cls.toLowerCase().trim());
+      const targetSections = selectedSectionFilter ? [selectedSectionFilter] : Array.from(new Set(classStudents.map(s => (s.section || '').trim().toUpperCase())));
+      
+      targetSections.forEach(sec => {
+        const secStudents = classStudents.filter(s => (s.section || '').trim().toUpperCase() === sec);
+        secStudents.sort((a, b) => {
+          const numA = parseInt((a.roll || '').replace(/\D/g, ''), 10);
+          const numB = parseInt((b.roll || '').replace(/\D/g, ''), 10);
+          if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+          if (!isNaN(numA) && isNaN(numB)) return -1;
+          if (isNaN(numA) && !isNaN(numB)) return 1;
+          return (a.name || '').localeCompare(b.name || '');
+        });
+
+        secStudents.forEach((st, idx) => {
+          const serialRoll = String(idx + 1);
+          const found = updatedStudents.find(s => s.id === st.id);
+          if (found && found.roll !== serialRoll) {
+            found.roll = serialRoll;
+            changedCount++;
+          }
+        });
+      });
+    });
+
+    setStudents([...updatedStudents]);
+    alert(`Successfully formatted and sequenced roll numbers into 1, 2, 3... series! (${changedCount} student records updated)`);
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -557,6 +612,15 @@ export default function Students() {
               Delete {selectedStudentIds.size}
             </button>
           )}
+          <button 
+            onClick={handleAutoSequenceRolls}
+            className="flex items-center gap-2 bg-amber-50 text-amber-800 px-3.5 py-2.5 rounded-xl text-sm font-bold hover:bg-amber-100 transition-colors border border-amber-200 shadow-sm"
+            title="Auto-format and sequence roll numbers into 1, 2, 3... serial format section-wise"
+          >
+            <ListOrdered className="w-4 h-4 text-amber-700" />
+            <span className="hidden sm:inline">Sequence Rolls (1, 2, 3...)</span>
+            <span className="sm:hidden">Rolls 1,2,3...</span>
+          </button>
           <input 
             type="file" 
             accept=".xlsx, .xls" 
@@ -659,6 +723,7 @@ export default function Students() {
                 </th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Photo</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Adm Id</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Roll No</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Name</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Class</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Gender</th>
@@ -692,6 +757,11 @@ export default function Students() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-slate-800 font-bold">{student.id}</td>
+                  <td className="px-6 py-4">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-850 font-black text-xs border border-indigo-200">
+                      Roll {student.roll || '-'}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 text-slate-900 font-bold">{student.name}</td>
                   <td className="px-6 py-4 text-slate-600 font-medium">
                     {student.class} {student.section && `- ${student.section}`}
@@ -927,13 +997,27 @@ export default function Students() {
             return;
           }
 
+          const targetClass = (formData.get('class') as string || 'Class 1').trim();
+          const targetSec = (formData.get('section') as string || 'A').toUpperCase().trim();
+          const rawRoll = (formData.get('roll') as string || editingStudent?.roll || '').trim();
+          let finalRoll = rawRoll;
+          const parsedRollInt = parseInt(rawRoll.replace(/\D/g, ''), 10);
+          if (!isNaN(parsedRollInt) && parsedRollInt > 0) {
+            finalRoll = String(parsedRollInt);
+          } else {
+            const classMates = students.filter(s => s.class.toLowerCase().trim() === targetClass.toLowerCase() && (s.section || '').toUpperCase().trim() === targetSec && s.id !== admId);
+            const mateRolls = classMates.map(s => parseInt((s.roll || '').replace(/\D/g, ''), 10)).filter(n => !isNaN(n) && n > 0);
+            const nextSerial = mateRolls.length > 0 ? Math.max(...mateRolls) + 1 : 1;
+            finalRoll = String(nextSerial);
+          }
+
           const newStudent = {
             id: admId,
             name: (formData.get('fullName') as string || 'UNKNOWN STUDENT').trim().toUpperCase(),
             gender: (formData.get('gender') as string || 'Male'),
-            class: (formData.get('class') as string || 'Class 1'),
-            section: (formData.get('section') as string || 'A').toUpperCase(),
-            roll: (formData.get('roll') as string || editingStudent?.roll || '-').trim().toUpperCase(),
+            class: targetClass,
+            section: targetSec,
+            roll: finalRoll,
             parentName: (formData.get('fatherName') as string || '-').trim().toUpperCase(),
             phone: (formData.get('mobile') as string || '-').trim(),
             status: (formData.get('status') as string || 'Active'),

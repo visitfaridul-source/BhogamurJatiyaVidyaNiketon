@@ -152,8 +152,8 @@ interface SchoolContextType {
 }
 
 const mockStudents: Student[] = [
-  { id: 'ADM2023001', name: 'AARAV SHARMA', gender: 'Male', class: 'Class 10', section: 'A', roll: '101', parentName: 'RAJESH SHARMA', phone: '+1 (555) 123-4567', dob: '15/08/2008', admissionDate: '24/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aarav' },
-  { id: 'ADM2023002', name: 'SOPHIA CHEN', gender: 'Female', class: 'Class 10', section: 'A', roll: '102', parentName: 'DAVID CHEN', phone: '+1 (555) 987-6543', dob: '12/10/2008', admissionDate: '25/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sophia' }
+  { id: 'ADM2023001', name: 'AARAV SHARMA', gender: 'Male', class: 'Class 10', section: 'A', roll: '1', parentName: 'RAJESH SHARMA', phone: '+1 (555) 123-4567', dob: '15/08/2008', admissionDate: '24/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aarav' },
+  { id: 'ADM2023002', name: 'SOPHIA CHEN', gender: 'Female', class: 'Class 10', section: 'A', roll: '2', parentName: 'DAVID CHEN', phone: '+1 (555) 987-6543', dob: '12/10/2008', admissionDate: '25/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sophia' }
 ];
 
 const mockTeachers: Teacher[] = [
@@ -185,6 +185,7 @@ const mockResults: StudentResult[] = [
     id: 'RES-001',
     studentId: 'ADM2023001',
     studentName: 'AARAV SHARMA',
+    roll: '1',
     className: 'Class 10 - A',
     examName: 'Final Examination 2023-2024',
     subjects: [

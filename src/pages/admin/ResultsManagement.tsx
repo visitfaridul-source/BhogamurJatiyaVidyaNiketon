@@ -3,7 +3,7 @@ import { useSchool, StudentResult, SubjectMark } from '../../context/SchoolConte
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmationContext';
 import { useWebsite } from '../../context/WebsiteContext';
-import { Search, Plus, Edit2, Trash2, CheckCircle2, XCircle, FileSpreadsheet, ChevronDown, Download, Award, BookOpen, Printer, Sparkles, TrendingUp, ExternalLink, Lock, Unlock, ShieldAlert } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, CheckCircle2, XCircle, FileSpreadsheet, ChevronDown, Download, Award, BookOpen, Printer, Sparkles, TrendingUp, ExternalLink, Lock, Unlock, ShieldAlert, ListOrdered } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import html2pdf from 'html2pdf.js';
@@ -20,14 +20,13 @@ const getGradeForPercentage = (pct: number) => {
 };
 
 /**
- * Orders students naturally and assigns clean proper series roll numbers (1, 2, 3, 4, ...)
- * strictly section-wise for result generation and marksheet compilation purposes.
+ * Orders students section-wise and ensures proper serial roll numbers (1, 2, 3, 4, ...)
+ * that match students entry profiles while formatting them cleanly into 1, 2, 3... series.
  * Each section starts its series at Roll 1 (e.g. Section A: 1, 2, 3... Section B: 1, 2, 3...).
- * Keeps original student admission profiles intact ("only for generating result").
  */
 export function getStudentsInResultSeries<T extends { id: string; name: string; roll?: string; section?: string; class?: string; [key: string]: any }>(
   studentList: T[],
-  mode: 'consecutive' | 'preserve_if_numeric' = 'consecutive',
+  mode: 'consecutive' | 'preserve_if_numeric' = 'preserve_if_numeric',
   targetSection?: string
 ): (T & { resultRoll: string; originalRoll?: string; section: string; sectionRollLabel: string })[] {
   let workingList = [...studentList];
@@ -80,16 +79,22 @@ export function getStudentsInResultSeries<T extends { id: string; name: string; 
       return (a.id || '').localeCompare(b.id || '');
     });
 
-    // Assign section-wise roll series (1, 2, 3, 4...) starting at 1 for each section
+    // Assign section-wise roll series (1, 2, 3, 4...) matching student entry
     sortedInSec.forEach((student, idx) => {
       const seriesIndex = String(idx + 1);
       let assignedRoll = seriesIndex;
 
-      if (mode === 'preserve_if_numeric') {
-        const num = parseInt((student.roll || '').replace(/\D/g, ''), 10);
-        if (!isNaN(num) && num > 0) {
-          assignedRoll = String(num);
-        }
+      // Always match student entry roll if numeric (in clean 1,2,3... format)
+      const num = parseInt((student.roll || '').replace(/\D/g, ''), 10);
+      if (!isNaN(num) && num > 0) {
+        assignedRoll = String(num);
+      } else {
+        assignedRoll = seriesIndex;
+      }
+
+      // If consecutive is strictly requested, use serial index (1, 2, 3...)
+      if (mode === 'consecutive') {
+        assignedRoll = seriesIndex;
       }
 
       const secName = (student.section || '').trim();
@@ -202,8 +207,8 @@ export default function ResultsManagement() {
       s.status.toLowerCase() !== 'inactive' &&
       (consolidatedSection === 'ALL' || (s.section || '').trim().toLowerCase() === consolidatedSection.trim().toLowerCase())
     );
-    // Sort and format roll numbers into proper series (Roll 1, Roll 2, Roll 3...) strictly section-wise for result generation
-    const classSts = getStudentsInResultSeries(rawClassSts, 'consecutive', consolidatedSection);
+    // Sort and format roll numbers matching student entry (Roll 1, Roll 2, Roll 3... serial series)
+    const classSts = getStudentsInResultSeries(rawClassSts, 'preserve_if_numeric', consolidatedSection);
 
     const ut1Exam = 'Unit Test 1';
     const ut2Exam = 'Unit Test 2';
@@ -227,10 +232,12 @@ export default function ResultsManagement() {
       const annualRes = results.find(r => r.studentId === st.id && r.className === consolidatedClass && r.examName === annualExam);
       const annualMark = annualRes?.subjects.find(s => s.subject.toLowerCase() === consolidatedSubject.toLowerCase())?.obtainedMarks;
 
+      const studentRoll = (st.roll && st.roll !== '-') ? st.roll : st.resultRoll;
+
       return {
         studentId: st.id,
         studentName: st.name,
-        roll: st.resultRoll,
+        roll: studentRoll,
         section: st.section || '',
         ut1: ut1Mark !== undefined ? String(ut1Mark) : '',
         ut2: ut2Mark !== undefined ? String(ut2Mark) : '',
@@ -292,6 +299,8 @@ export default function ResultsManagement() {
 
     studentMarksList.forEach(item => {
       const { studentId, studentName, roll, ut1, ut2, hy, annual } = item;
+      const matchedStudent = students.find(s => s.id === studentId);
+      const studentRoll = (matchedStudent?.roll && matchedStudent.roll !== '-') ? matchedStudent.roll : roll;
 
       // For each exam, check if we need to update
       const examsToUpdate = [
@@ -334,7 +343,7 @@ export default function ResultsManagement() {
 
           const calculated = calculateResults(subjectsCopy);
           existingResult.subjects = subjectsCopy;
-          existingResult.roll = roll;
+          existingResult.roll = studentRoll;
           existingResult.totalMarks = calculated.totalObtained;
           existingResult.percentage = Number(calculated.percentage.toFixed(2));
           existingResult.grade = calculated.grade;
@@ -371,7 +380,7 @@ export default function ResultsManagement() {
             id: `RES-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
             studentId,
             studentName,
-            roll,
+            roll: studentRoll,
             className: consolidatedClass,
             examName: exam.name,
             subjects,
@@ -511,7 +520,8 @@ export default function ResultsManagement() {
       (selectedClassFilter === '' || (r.className || '').toLowerCase() === selectedClassFilter.toLowerCase()) &&
       (r.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || 
        r.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-       r.examName.toLowerCase().includes(searchTerm.toLowerCase()))
+       r.examName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+       (r.roll && r.roll.toLowerCase().includes(searchTerm.toLowerCase())))
     )
     .sort((a, b) => {
       // Sort by class first if filtering all classes
@@ -530,9 +540,11 @@ export default function ResultsManagement() {
       if (secA !== secB) {
         return secA.localeCompare(secB, undefined, { numeric: true, sensitivity: 'base' });
       }
-      // Sort by roll number in proper numerical series within section
-      const numA = parseInt((a.roll || '').replace(/\D/g, ''), 10);
-      const numB = parseInt((b.roll || '').replace(/\D/g, ''), 10);
+      // Sort by roll number matching student entry in serial 1, 2, 3... order
+      const rollA = studentA?.roll && studentA.roll !== '-' ? studentA.roll : (a.roll || '');
+      const rollB = studentB?.roll && studentB.roll !== '-' ? studentB.roll : (b.roll || '');
+      const numA = parseInt(rollA.replace(/\D/g, ''), 10);
+      const numB = parseInt(rollB.replace(/\D/g, ''), 10);
       const hasA = !isNaN(numA) && numA > 0;
       const hasB = !isNaN(numB) && numB > 0;
       if (hasA && hasB) return numA - numB;
@@ -545,11 +557,12 @@ export default function ResultsManagement() {
 
   const handleOpenModal = (result?: StudentResult) => {
     if (result) {
+      const matchedStudent = students.find(s => s.id === result.studentId);
       setEditingResult(result);
       setFormData({
         studentId: result.studentId,
         studentName: result.studentName,
-        roll: result.roll || '',
+        roll: matchedStudent?.roll && matchedStudent.roll !== '-' ? matchedStudent.roll : (result.roll || ''),
         className: result.className,
         examName: result.examName,
         subjects: [...result.subjects],
@@ -586,10 +599,13 @@ export default function ResultsManagement() {
 
   const handleSave = () => {
     const { totalObtained, percentage, grade, status } = calculateResults(formData.subjects);
+    const matchedStudent = students.find(s => s.id === formData.studentId);
+    const resolvedRoll = matchedStudent?.roll && matchedStudent.roll !== '-' ? matchedStudent.roll : (formData.roll || '1');
 
     const newResult: StudentResult = {
       id: editingResult ? editingResult.id : `RES-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       ...formData,
+      roll: resolvedRoll,
       totalMarks: totalObtained,
       percentage: Number(percentage.toFixed(2)),
       grade,
@@ -708,11 +724,16 @@ export default function ResultsManagement() {
           else autoRemark = 'Needs regular guidance and vigorous improvement.';
         }
 
+        const matchedStudent = students.find(s => s.id === stId);
+        const resolvedRoll = (matchedStudent?.roll && matchedStudent.roll !== '-') 
+          ? matchedStudent.roll 
+          : ((rollIdx !== -1 && row[rollIdx]?.trim()) ? row[rollIdx]?.trim() : String(i));
+
         newResults.push({
           id: `PREVIEW-${i}`,
           studentId: stId,
           studentName: stName,
-          roll: rollIdx !== -1 ? row[rollIdx]?.trim() || String(i) : String(i),
+          roll: resolvedRoll,
           className: row[classIdx]?.trim() || '',
           examName: row[examIdx]?.trim() || '',
           remarks: autoRemark,
@@ -730,16 +751,20 @@ export default function ResultsManagement() {
       setParseError('Error parsing grid data.');
       setParsedPreview([]);
     }
-  }, [gridData]);
+  }, [gridData, students]);
 
   const handleBulkImport = () => {
     if (parsedPreview.length === 0) return;
     
-    // Generate actual unique IDs before saving
-    const resultsToSave = parsedPreview.map((res, i) => ({
-      ...res,
-      id: `RES-${Date.now()}-${Math.floor(Math.random() * 1000)}-${i}`
-    }));
+    // Generate actual unique IDs before saving, ensuring roll matches student entry
+    const resultsToSave = parsedPreview.map((res, i) => {
+      const matchedStudent = students.find(s => s.id === res.studentId);
+      return {
+        ...res,
+        roll: (matchedStudent?.roll && matchedStudent.roll !== '-') ? matchedStudent.roll : res.roll,
+        id: `RES-${Date.now()}-${Math.floor(Math.random() * 1000)}-${i}`
+      };
+    });
 
     setResults([...results, ...resultsToSave]);
     setShowBulkModal(false);
@@ -790,6 +815,35 @@ export default function ResultsManagement() {
     setGridData(newGrid);
   };
 
+  const syncAllRollNumbersWithStudents = async () => {
+    const isConfirmed = await confirm({
+      title: 'Sync Roll Numbers with Student Entry',
+      message: 'Do you want to synchronize all result records so their roll numbers match the student entry profiles (1, 2, 3... series)?',
+      variant: 'info',
+      confirmLabel: 'Sync Roll Numbers',
+      cancelLabel: 'Cancel'
+    });
+    if (!isConfirmed) return;
+
+    let updatedCount = 0;
+    const updated = results.map(r => {
+      const student = students.find(s => s.id === r.studentId);
+      const studentRoll = student?.roll && student.roll !== '-' ? student.roll : r.roll;
+      if (studentRoll && studentRoll !== r.roll) {
+        updatedCount++;
+        return { ...r, roll: studentRoll };
+      }
+      return r;
+    });
+
+    if (updatedCount > 0) {
+      setResults(updated);
+      alert(`Successfully synchronized ${updatedCount} result records with student entry roll numbers!`);
+    } else {
+      alert('All result records already match student entry roll numbers perfectly.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -826,6 +880,15 @@ export default function ResultsManagement() {
           )}
           {!isStudentOrParent && (
             <>
+              <button
+                onClick={syncAllRollNumbersWithStudents}
+                className="flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200 px-3.5 py-2 rounded-xl hover:bg-amber-100 transition-colors font-bold shadow-xs text-sm"
+                title="Sync result records with student entry roll numbers (1, 2, 3... series)"
+              >
+                <ListOrdered className="w-4 h-4 text-amber-700" />
+                <span className="hidden lg:inline">Sync Rolls (1, 2, 3...)</span>
+                <span className="lg:hidden">Sync</span>
+              </button>
               <button
                 onClick={() => setShowConsolidatedStudio(true)}
                 className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-colors font-bold shadow-xs text-sm"
@@ -881,6 +944,7 @@ export default function ResultsManagement() {
           <table className="w-full text-left text-sm text-slate-600 relative border-collapse">
             <thead className="bg-indigo-50/95 backdrop-blur text-indigo-800 font-semibold border-b border-indigo-100 sticky top-0 z-10 shadow-sm">
               <tr>
+                <th className="px-6 py-4">Roll No</th>
                 <th className="px-6 py-4">Student</th>
                 <th className="px-6 py-4">Class</th>
                 <th className="px-6 py-4">Exam</th>
@@ -891,11 +955,19 @@ export default function ResultsManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-indigo-50">
-              {filteredResults.map((result, idx) => (
+              {filteredResults.map((result, idx) => {
+                const matchedStudent = students.find(s => s.id === result.studentId);
+                const displayRoll = (matchedStudent?.roll && matchedStudent.roll !== '-') ? matchedStudent.roll : (result.roll || '-');
+                return (
                 <tr key={result.id} className={cn(
                   "transition-colors hover:bg-indigo-50/50",
                   idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"
                 )}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-850 font-black text-xs border border-indigo-200">
+                      {displayRoll !== '-' ? `Roll ${displayRoll}` : '-'}
+                    </span>
+                  </td>
                   <td className="px-6 py-4">
                     <div className="font-semibold text-slate-800">{result.studentName}</div>
                     <div className="text-xs text-slate-500">ID: {result.studentId}</div>
@@ -948,7 +1020,7 @@ export default function ResultsManagement() {
                                       <td style="padding: 10px; border: 1px solid #cbd5e1; font-weight: bold; background: #f8fafc;">Class</td>
                                       <td style="padding: 10px; border: 1px solid #cbd5e1;">${result.className}</td>
                                       <td style="padding: 10px; border: 1px solid #cbd5e1; font-weight: bold; background: #f8fafc;">Roll No</td>
-                                      <td style="padding: 10px; border: 1px solid #cbd5e1;">${result.roll || '-'}</td>
+                                      <td style="padding: 10px; border: 1px solid #cbd5e1;">${displayRoll}</td>
                                     </tr>
                                   </table>
 
@@ -1021,10 +1093,11 @@ export default function ResultsManagement() {
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {filteredResults.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
                     No results found
                   </td>
                 </tr>
@@ -1069,7 +1142,7 @@ export default function ResultsManagement() {
                           studentId: st.id,
                           studentName: st.name,
                           className: st.section ? `${st.class} - ${st.section}` : st.class,
-                          roll: match?.resultRoll || st.roll || '1'
+                          roll: (st.roll && st.roll !== '-') ? st.roll : (match?.resultRoll || '1')
                         }));
                       }
                     }}
@@ -2243,8 +2316,8 @@ export default function ResultsManagement() {
                       <p className="text-slate-800">{st.section ? `${st.class} - ${st.section}` : st.class}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Roll Index</p>
-                      <p className="text-slate-800 font-black">{st.resultRoll}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Roll No</p>
+                      <p className="text-slate-800 font-black">{(st.roll && st.roll !== '-') ? st.roll : st.resultRoll}</p>
                     </div>
                   </div>
 
@@ -2569,7 +2642,7 @@ export default function ResultsManagement() {
                   return {
                     id: st.id,
                     name: st.name,
-                    roll: st.resultRoll,
+                    roll: (st.roll && st.roll !== '-') ? st.roll : st.resultRoll,
                     section: st.section || '',
                     ut1: ut1Res ? `${ut1Res.percentage}%` : 'N/A',
                     ut2: ut2Res ? `${ut2Res.percentage}%` : 'N/A',
@@ -3089,7 +3162,7 @@ export default function ResultsManagement() {
                           >
                             {classStudents.map(st => (
                               <option key={st.id} value={st.id}>
-                                {st.section ? `[Sec ${st.section}] ` : ''}Roll {st.resultRoll} - {st.name}
+                                {st.section ? `[Sec ${st.section}] ` : ''}Roll {(st.roll && st.roll !== '-') ? st.roll : st.resultRoll} - {st.name}
                               </option>
                             ))}
                           </select>
@@ -3187,7 +3260,7 @@ export default function ResultsManagement() {
                             </div>
                             <div>
                               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Roll Number</p>
-                              <p className="text-slate-800 text-xs font-black">{currentStudent.resultRoll}</p>
+                              <p className="text-slate-800 text-xs font-black">{(currentStudent.roll && currentStudent.roll !== '-') ? currentStudent.roll : currentStudent.resultRoll}</p>
                             </div>
                           </div>
 

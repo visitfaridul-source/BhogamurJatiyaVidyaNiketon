@@ -324,7 +324,11 @@ export default function ResultPage() {
                     </div>
                     <div className="flex items-center">
                       <span className="font-semibold text-slate-500 w-32 text-xs uppercase tracking-wider">Roll No:</span>
-                      <span className="font-bold text-slate-900">{searchedResult.roll || '-'}</span>
+                      <span className="font-bold text-slate-900">
+                        {searchedResult.roll && !isNaN(parseInt(searchedResult.roll.replace(/\D/g, ''), 10)) && parseInt(searchedResult.roll.replace(/\D/g, ''), 10) > 0
+                          ? String(parseInt(searchedResult.roll.replace(/\D/g, ''), 10))
+                          : (searchedResult.roll || '-')}
+                      </span>
                     </div>
                     <div className="flex items-center">
                       <span className="font-semibold text-slate-500 w-32 text-xs uppercase tracking-wider">Date of Issue:</span>
