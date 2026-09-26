@@ -133,11 +133,25 @@ export default function ResultsManagement() {
   };
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClassFilter, setSelectedClassFilter] = useState('Nursery');
+  const [selectedClassFilter, setSelectedClassFilter] = useState('Class 10');
+  const [selectedExamFilter, setSelectedExamFilter] = useState('ALL');
   const [showModal, setShowModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [newSubjectColName, setNewSubjectColName] = useState('English');
   const [newSubjectColMax, setNewSubjectColMax] = useState(100);
+
+  // Flexible exam matcher for individual exam sections (Unit 1, Unit 2, Half Yearly, Annually)
+  const isMatchingExam = (examName: string, filter: string) => {
+    if (!filter || filter === 'ALL') return true;
+    const e = (examName || '').toLowerCase().trim();
+    const f = filter.toLowerCase().trim();
+    if (e === f) return true;
+    if (f === 'unit test 1' && (e.includes('unit test 1') || e.includes('unit 1') || e.includes('ut 1') || e.includes('ut-1') || e === 'ut1')) return true;
+    if (f === 'unit test 2' && (e.includes('unit test 2') || e.includes('unit 2') || e.includes('ut 2') || e.includes('ut-2') || e === 'ut2')) return true;
+    if (f === 'half yearly examination' && (e.includes('half yearly') || e.includes('half') || e.includes('mid') || e.includes('term 1'))) return true;
+    if (f === 'annual examination' && (e.includes('annual') || e.includes('final') || e.includes('yearly') || e.includes('term 2'))) return true;
+    return false;
+  };
 
   const [bulkImportClass, setBulkImportClass] = useState('Class 10');
   const [bulkImportSection, setBulkImportSection] = useState('ALL');
@@ -562,7 +576,8 @@ export default function ResultsManagement() {
 
   const filteredResults = results
     .filter(r => 
-      (selectedClassFilter === '' || (r.className || '').toLowerCase() === selectedClassFilter.toLowerCase()) &&
+      (selectedClassFilter === '' || isTargetClassMatch(r.className, selectedClassFilter)) &&
+      (selectedExamFilter === 'ALL' || isMatchingExam(r.examName, selectedExamFilter)) &&
       (r.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || 
        r.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
        r.examName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -598,6 +613,37 @@ export default function ResultsManagement() {
       return (a.studentName || '').localeCompare(b.studentName || '');
     });
 
+  // Dynamic counts per individual exam for selected class
+  const examCounts = React.useMemo(() => {
+    const classResults = results.filter(r => isTargetClassMatch(r.className, selectedClassFilter));
+    return {
+      ALL: classResults.length,
+      ut1: classResults.filter(r => isMatchingExam(r.examName, 'Unit Test 1')).length,
+      ut2: classResults.filter(r => isMatchingExam(r.examName, 'Unit Test 2')).length,
+      hy: classResults.filter(r => isMatchingExam(r.examName, 'Half Yearly Examination')).length,
+      annual: classResults.filter(r => isMatchingExam(r.examName, 'Annual Examination')).length,
+    };
+  }, [results, selectedClassFilter]);
+
+  // Statistics for active individual exam section
+  const currentExamStats = React.useMemo(() => {
+    if (selectedExamFilter === 'ALL') return null;
+    const classResults = results.filter(r => isTargetClassMatch(r.className, selectedClassFilter));
+    const examResults = classResults.filter(r => isMatchingExam(r.examName, selectedExamFilter));
+    const totalCount = examResults.length;
+    if (totalCount === 0) return null;
+
+    const avgPct = examResults.reduce((acc, curr) => acc + (curr.percentage || 0), 0) / totalCount;
+    const passedCount = examResults.filter(r => r.status?.toLowerCase() === 'pass').length;
+    const passPct = (passedCount / totalCount) * 100;
+
+    return {
+      total: totalCount,
+      avgPct: avgPct.toFixed(1),
+      passPct: passPct.toFixed(1)
+    };
+  }, [results, selectedClassFilter, selectedExamFilter]);
+
   const uniqueClasses = ['Nursery', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'];
 
   const handleOpenModal = (result?: StudentResult) => {
@@ -615,7 +661,11 @@ export default function ResultsManagement() {
       });
     } else {
       setEditingResult(null);
-      setFormData(initialFormState);
+      setFormData({
+        ...initialFormState,
+        className: selectedClassFilter || 'Class 10',
+        examName: selectedExamFilter !== 'ALL' ? selectedExamFilter : 'Annual Examination'
+      });
     }
     setShowModal(true);
   };
@@ -1305,6 +1355,118 @@ export default function ResultsManagement() {
         </div>
       </div>
 
+      {/* Individual Result Management Navigation: Unit 1, Unit 2, Half Yearly, Annually */}
+      <div className="bg-white rounded-2xl p-2 sm:p-2.5 shadow-xs border border-slate-200">
+        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+          <div className="flex items-center gap-1.5 min-w-max">
+            {[
+              { id: 'ALL', label: 'All Examinations', badge: examCounts.ALL, icon: BookOpen },
+              { id: 'Unit Test 1', label: 'Unit Test 1 (Unit 1)', badge: examCounts.ut1, icon: Sparkles },
+              { id: 'Unit Test 2', label: 'Unit Test 2 (Unit 2)', badge: examCounts.ut2, icon: Sparkles },
+              { id: 'Half Yearly Examination', label: 'Half Yearly Exam', badge: examCounts.hy, icon: Award },
+              { id: 'Annual Examination', label: 'Annual Exam (Annually)', badge: examCounts.annual, icon: TrendingUp },
+            ].map(tab => {
+              const isActive = selectedExamFilter === tab.id;
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setSelectedExamFilter(tab.id);
+                    if (tab.id !== 'ALL') {
+                      setExportExcelExam(tab.id);
+                    }
+                  }}
+                  className={cn(
+                    "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
+                    isActive
+                      ? "bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-600/20"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                  )}
+                >
+                  <Icon className={cn("w-3.5 h-3.5", isActive ? "text-white" : "text-slate-400")} />
+                  <span>{tab.label}</span>
+                  <span className={cn(
+                    "px-1.5 py-0.5 rounded-md text-[10px] font-black",
+                    isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                  )}>
+                    {tab.badge}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Individual Exam Management Banner when an individual exam is active */}
+      {selectedExamFilter !== 'ALL' && (
+        <div className="bg-gradient-to-r from-indigo-50/90 via-sky-50/60 to-white rounded-2xl p-4 border border-indigo-150 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black shadow-sm shrink-0">
+              <Award className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 uppercase tracking-wider">
+                  Individual Section
+                </span>
+                <span className="text-xs font-bold text-slate-600">{selectedClassFilter}</span>
+              </div>
+              <h3 className="text-base font-black text-slate-900 mt-0.5">
+                {selectedExamFilter} Results
+              </h3>
+              <p className="text-xs text-slate-500">
+                Viewing individual result entries for {selectedExamFilter} in {selectedClassFilter}.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            {currentExamStats && (
+              <div className="hidden lg:flex items-center gap-3 px-3 py-1.5 bg-white rounded-xl border border-indigo-100 shadow-2xs text-xs font-semibold mr-1">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Evaluated</span>
+                  <span className="text-slate-800 font-black">{currentExamStats.total} Students</span>
+                </div>
+                <div className="h-6 w-px bg-slate-200" />
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Class Avg</span>
+                  <span className="text-indigo-600 font-black">{currentExamStats.avgPct}%</span>
+                </div>
+                <div className="h-6 w-px bg-slate-200" />
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Pass Rate</span>
+                  <span className="text-emerald-600 font-black">{currentExamStats.passPct}%</span>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                setBulkImportExam(selectedExamFilter);
+                setBulkImportClass(selectedClassFilter);
+                setShowBulkModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Bulk Import</span>
+            </button>
+
+            <button
+              onClick={() => {
+                handleOpenModal();
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Result</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[calc(100vh-220px)]">
         <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row gap-4 justify-between items-center bg-white z-20">
           <div className="relative w-full sm:max-w-md">
@@ -1318,7 +1480,7 @@ export default function ResultsManagement() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-            <div className="w-full sm:w-auto min-w-[180px]">
+            <div className="w-full sm:w-auto min-w-[150px]">
               <select
                 value={selectedClassFilter}
                 onChange={(e) => {
@@ -1332,22 +1494,32 @@ export default function ResultsManagement() {
                 ))}
               </select>
             </div>
+            <div className="w-full sm:w-auto min-w-[180px]">
+              <select
+                value={selectedExamFilter}
+                onChange={(e) => {
+                  setSelectedExamFilter(e.target.value);
+                  if (e.target.value !== 'ALL') {
+                    setExportExcelExam(e.target.value);
+                  }
+                }}
+                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none font-semibold text-slate-700"
+              >
+                <option value="ALL">All Examinations</option>
+                <option value="Unit Test 1">Unit Test 1 (Unit 1)</option>
+                <option value="Unit Test 2">Unit Test 2 (Unit 2)</option>
+                <option value="Half Yearly Examination">Half Yearly Examination</option>
+                <option value="Annual Examination">Annual Examination (Annually)</option>
+              </select>
+            </div>
             <button
               onClick={() => {
-                const classExams: string[] = Array.from(new Set(
-                  results
-                    .filter(r => isTargetClassMatch(r.className, selectedClassFilter))
-                    .map(r => (r.examName || '').trim())
-                    .filter(Boolean) as string[]
-                ));
-                const targetExam = classExams.length === 1 
-                  ? classExams[0] 
-                  : (classExams.find(e => e.toLowerCase().includes('annual')) || classExams.find(e => e.toLowerCase().includes('half')) || 'ALL');
+                const targetExam = selectedExamFilter !== 'ALL' ? selectedExamFilter : 'ALL';
                 handleExportClassExcel(selectedClassFilter, targetExam, 'ALL');
               }}
               disabled={isExportingExcel}
               className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
-              title={`Quick export ${selectedClassFilter} result sheet to Excel (Single Student per Row)`}
+              title={`Quick export ${selectedClassFilter} ${selectedExamFilter !== 'ALL' ? selectedExamFilter : ''} result sheet to Excel`}
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export {selectedClassFilter} Excel</span>
