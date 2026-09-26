@@ -180,54 +180,70 @@ export default function ResultsManagement() {
   // Export Class Result Sheet in Excel States
   const [showExportExcelModal, setShowExportExcelModal] = useState(false);
   const [exportExcelClass, setExportExcelClass] = useState('Class 10');
-  const [exportExcelExam, setExportExcelExam] = useState('ALL');
+  const [exportExcelExam, setExportExcelExam] = useState('Annual Examination');
   const [exportExcelSection, setExportExcelSection] = useState('ALL');
   const [isExportingExcel, setIsExportingExcel] = useState(false);
 
+  // Accurate class matching helper without substring collisions (e.g. Class 10 matching Class 1)
+  const isTargetClassMatch = (itemClass: string, targetCls: string) => {
+    if (!targetCls || targetCls === 'ALL') return true;
+    const baseTarget = targetCls.split('-')[0].trim().toLowerCase();
+    const baseItem = (itemClass || '').split('-')[0].trim().toLowerCase();
+    return baseItem === baseTarget;
+  };
+
   // Unique sections available per selected class
   const availableBulkSections = React.useMemo(() => {
-    const classStudents = (students || []).filter(s => s.class.toLowerCase().trim() === bulkImportClass.toLowerCase().trim());
+    const classStudents = (students || []).filter(s => isTargetClassMatch(s.class, bulkImportClass));
     return Array.from(new Set(classStudents.map(s => (s.section || '').trim()).filter(Boolean))).sort();
   }, [students, bulkImportClass]);
 
   const availableBulkDownloadSections = React.useMemo(() => {
-    const classStudents = (students || []).filter(s => s.class.toLowerCase().trim() === bulkDownloadClass.toLowerCase().trim());
+    const classStudents = (students || []).filter(s => isTargetClassMatch(s.class, bulkDownloadClass));
     return Array.from(new Set(classStudents.map(s => (s.section || '').trim()).filter(Boolean))).sort();
   }, [students, bulkDownloadClass]);
 
   const availableConsolidatedSections = React.useMemo(() => {
-    const classStudents = (students || []).filter(s => s.class.toLowerCase().trim() === consolidatedClass.toLowerCase().trim());
+    const classStudents = (students || []).filter(s => isTargetClassMatch(s.class, consolidatedClass));
     return Array.from(new Set(classStudents.map(s => (s.section || '').trim()).filter(Boolean))).sort();
   }, [students, consolidatedClass]);
 
   const availableExamsForExport = React.useMemo(() => {
     const examSet = new Set<string>();
     (results || []).forEach(r => {
-      const e = (r.examName || '').trim();
-      if (e) examSet.add(e);
+      if (exportExcelClass === 'ALL' || isTargetClassMatch(r.className, exportExcelClass)) {
+        const e = (r.examName || '').trim();
+        if (e) examSet.add(e);
+      }
     });
-    ['Half Yearly Examination', 'Annual Examination', 'Unit Test 1', 'Unit Test 2'].forEach(e => examSet.add(e));
+    ['Annual Examination', 'Half Yearly Examination', 'Unit Test 1', 'Unit Test 2'].forEach(e => examSet.add(e));
     return Array.from(examSet).sort();
-  }, [results]);
+  }, [results, exportExcelClass]);
 
   const availableSectionsForExport = React.useMemo(() => {
     if (exportExcelClass === 'ALL') return [];
-    const classStudents = (students || []).filter(s => s.class.toLowerCase().trim() === exportExcelClass.toLowerCase().trim());
+    const classStudents = (students || []).filter(s => isTargetClassMatch(s.class, exportExcelClass));
     return Array.from(new Set(classStudents.map(s => (s.section || '').trim()).filter(Boolean))).sort();
   }, [students, exportExcelClass]);
 
+  // Strict unique student count preview (Never count duplicate records for same student)
   const exportPreviewMatchingCount = React.useMemo(() => {
-    return results.filter(r => {
-      const classMatch = exportExcelClass === 'ALL' || (r.className || '').toLowerCase().includes(exportExcelClass.toLowerCase());
-      const examMatch = exportExcelExam === 'ALL' || (r.examName || '').toLowerCase().trim() === exportExcelExam.toLowerCase().trim();
-      if (!classMatch || !examMatch) return false;
+    const uniqueStudentKeys = new Set<string>();
+    results.forEach(r => {
+      const classMatch = exportExcelClass === 'ALL' || isTargetClassMatch(r.className, exportExcelClass);
+      const examMatch = exportExcelExam === 'ALL' || exportExcelExam === 'CONSOLIDATED' || (r.examName || '').toLowerCase().trim() === exportExcelExam.toLowerCase().trim();
+      if (!classMatch || !examMatch) return;
       if (exportExcelSection !== 'ALL') {
         const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
         const sec = (student?.section || (r.className?.includes('-') ? r.className.split('-')[1].trim() : '')).trim().toUpperCase();
-        return sec === exportExcelSection.trim().toUpperCase();
+        if (sec !== exportExcelSection.trim().toUpperCase()) return;
       }
-      return true;
-    }).length;
+      const stKey = (r.studentId && r.studentId.trim() !== '')
+        ? r.studentId.trim().toLowerCase()
+        : `${(r.studentName || '').trim().toLowerCase()}_${(r.className || '').trim().toLowerCase()}`;
+      uniqueStudentKeys.add(stKey);
+    });
+    return uniqueStudentKeys.size;
   }, [results, students, exportExcelClass, exportExcelExam, exportExcelSection]);
 
   const pullEntryData = () => {
@@ -929,144 +945,274 @@ export default function ResultsManagement() {
     try {
       setIsExportingExcel(true);
 
-      // Filter matching results
-      let exportResults = results.filter(r => {
-        const classMatch = !targetClass || targetClass === 'ALL' || (r.className || '').toLowerCase().includes(targetClass.toLowerCase());
-        const examMatch = !targetExam || targetExam === 'ALL' || (r.examName || '').toLowerCase().trim() === targetExam.toLowerCase().trim();
-        return classMatch && examMatch;
+      const wb = XLSX.utils.book_new();
+      const usedSheetNames = new Set<string>();
+
+      // Determine classes to process (never collide Class 10 with Class 1)
+      const classesToProcess: string[] = (targetClass && targetClass !== 'ALL')
+        ? [targetClass]
+        : (Array.from(new Set(results.map(r => r.className?.split('-')[0].trim() || r.className))).filter(Boolean) as string[]).sort();
+
+      let totalSheetsAdded = 0;
+
+      classesToProcess.forEach(cls => {
+        // All raw results for this specific class
+        let classResults = results.filter(r => isTargetClassMatch(r.className, cls));
+
+        if (targetSection && targetSection !== 'ALL') {
+          classResults = classResults.filter(r => {
+            const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
+            const sec = (student?.section || (r.className?.includes('-') ? r.className.split('-')[1].trim() : '')).trim().toUpperCase();
+            return sec === targetSection.trim().toUpperCase();
+          });
+        }
+
+        if (classResults.length === 0) return;
+
+        // If targetExam is CONSOLIDATED, create a 4-exam consolidated single-student sheet
+        if (targetExam === 'CONSOLIDATED') {
+          // Get all students for this class
+          const rawClassSts = (students || []).filter(s => 
+            isTargetClassMatch(s.class, cls) && 
+            s.status?.toLowerCase() !== 'inactive' &&
+            (targetSection === 'ALL' || (s.section || '').trim().toLowerCase() === targetSection.trim().toLowerCase())
+          );
+          
+          // Also include any students present in results who might not be in students array
+          const studentKeys = new Set(rawClassSts.map(s => s.id));
+          classResults.forEach(r => {
+            if (r.studentId && !studentKeys.has(r.studentId)) {
+              studentKeys.add(r.studentId);
+              rawClassSts.push({
+                id: r.studentId,
+                name: r.studentName,
+                roll: r.roll || '',
+                class: cls,
+                section: r.className?.includes('-') ? r.className.split('-')[1].trim() : 'A',
+                status: 'Active'
+              } as any);
+            }
+          });
+
+          // Sort students by section, then roll, then name
+          rawClassSts.sort((a, b) => {
+            const secA = (a.section || '').trim();
+            const secB = (b.section || '').trim();
+            if (secA !== secB) return secA.localeCompare(secB, undefined, { numeric: true, sensitivity: 'base' });
+            const rollA = formatSerialRoll(a.roll);
+            const rollB = formatSerialRoll(b.roll);
+            const numA = parseInt(rollA, 10);
+            const numB = parseInt(rollB, 10);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            if (!isNaN(numA)) return -1;
+            if (!isNaN(numB)) return 1;
+            return (a.name || '').localeCompare(b.name || '');
+          });
+
+          const consolRows = rawClassSts.map((st, idx) => {
+            const displayRoll = formatSerialRoll(st.roll);
+            const ut1Res = classResults.find(r => r.studentId === st.id && (r.examName?.toLowerCase().includes('unit test 1') || r.examName?.toLowerCase().includes('ut 1')));
+            const ut2Res = classResults.find(r => r.studentId === st.id && (r.examName?.toLowerCase().includes('unit test 2') || r.examName?.toLowerCase().includes('ut 2')));
+            const hyRes = classResults.find(r => r.studentId === st.id && (r.examName?.toLowerCase().includes('half yearly') || r.examName?.toLowerCase().includes('half')));
+            const annualRes = classResults.find(r => r.studentId === st.id && (r.examName?.toLowerCase().includes('annual') || r.examName?.toLowerCase().includes('final')));
+
+            // Best available score for consolidated calculation
+            const availablePcts = [ut1Res?.percentage, ut2Res?.percentage, hyRes?.percentage, annualRes?.percentage].filter((p): p is number => typeof p === 'number');
+            const avgPct = availablePcts.length > 0 ? (availablePcts.reduce((a, b) => a + b, 0) / availablePcts.length) : null;
+            
+            const grade = avgPct !== null 
+              ? (avgPct >= 90 ? 'A+' : avgPct >= 80 ? 'A' : avgPct >= 70 ? 'B+' : avgPct >= 60 ? 'B' : avgPct >= 50 ? 'C' : avgPct >= 40 ? 'D' : 'F')
+              : '-';
+
+            return {
+              'Sl No': idx + 1,
+              'Roll No': displayRoll && !isNaN(parseInt(displayRoll, 10)) ? parseInt(displayRoll, 10) : (displayRoll || '-'),
+              'Admission ID': st.id,
+              'Student Name': st.name,
+              'Class': cls,
+              'Section': st.section || 'A',
+              'Unit Test 1 (%)': ut1Res ? `${ut1Res.percentage}%` : 'N/A',
+              'Unit Test 2 (%)': ut2Res ? `${ut2Res.percentage}%` : 'N/A',
+              'Half Yearly (%)': hyRes ? `${hyRes.percentage}%` : 'N/A',
+              'Annual Exam (%)': annualRes ? `${annualRes.percentage}%` : 'N/A',
+              'Consolidated Average (%)': avgPct !== null ? `${avgPct.toFixed(1)}%` : 'N/A',
+              'Overall Grade': grade,
+              'Result Status': avgPct !== null ? (avgPct >= 40 ? 'Pass' : 'Fail') : '-'
+            };
+          });
+
+          if (consolRows.length > 0) {
+            const ws = XLSX.utils.json_to_sheet(consolRows);
+            const colKeys = Object.keys(consolRows[0] || {});
+            ws['!cols'] = colKeys.map(k => ({ wch: Math.min(Math.max(k.length + 3, 12), 35) }));
+            let sheetName = `${cls} Consolidated`.substring(0, 31);
+            let counter = 1;
+            while (usedSheetNames.has(sheetName.toUpperCase())) {
+              sheetName = `${cls} Consol (${counter})`.substring(0, 31);
+              counter++;
+            }
+            usedSheetNames.add(sheetName.toUpperCase());
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            totalSheetsAdded++;
+          }
+          return;
+        }
+
+        // Standard Examination Export (Single student per sheet guaranteed)
+        // Determine exams for this class
+        let examsToExport: string[] = [];
+        if (targetExam && targetExam !== 'ALL') {
+          examsToExport = [targetExam];
+        } else {
+          // If 'ALL', extract all distinct exams for this class so EACH exam gets its OWN sheet!
+          const distinctExams: string[] = Array.from(new Set(classResults.map(r => (r.examName || '').trim()).filter(Boolean) as string[]));
+          examsToExport = distinctExams.length > 0 ? distinctExams : ['Annual Examination'];
+        }
+
+        examsToExport.forEach(currentExam => {
+          // Filter results for this exam
+          const examResults = classResults.filter(r => (r.examName || '').toLowerCase().trim() === currentExam.toLowerCase().trim());
+          if (examResults.length === 0) return;
+
+          // Collect all unique subjects across this exam's results
+          const subjectNamesMap = new Map<string, number>();
+          examResults.forEach(r => {
+            (r.subjects || []).forEach(sub => {
+              const sName = (sub.subject || '').trim();
+              if (sName) {
+                const currentMax = subjectNamesMap.get(sName) || 0;
+                if (sub.maxMarks && sub.maxMarks > currentMax) {
+                  subjectNamesMap.set(sName, sub.maxMarks);
+                } else if (!subjectNamesMap.has(sName)) {
+                  subjectNamesMap.set(sName, 100);
+                }
+              }
+            });
+          });
+          const subjectList = Array.from(subjectNamesMap.keys());
+
+          // Sort section-wise, then natural numeric roll, then student name
+          examResults.sort((a, b) => {
+            const studentA = findMatchingStudent(students, a.studentId, a.studentName, a.className);
+            const studentB = findMatchingStudent(students, b.studentId, b.studentName, b.className);
+            const secA = (studentA?.section || (a.className?.includes('-') ? a.className.split('-')[1].trim() : '')).trim();
+            const secB = (studentB?.section || (b.className?.includes('-') ? b.className.split('-')[1].trim() : '')).trim();
+            if (secA !== secB) {
+              return secA.localeCompare(secB, undefined, { numeric: true, sensitivity: 'base' });
+            }
+
+            const rollA = resolveResultRoll(studentA, a);
+            const rollB = resolveResultRoll(studentB, b);
+            const numA = parseInt(rollA, 10);
+            const numB = parseInt(rollB, 10);
+            const hasA = !isNaN(numA) && numA > 0;
+            const hasB = !isNaN(numB) && numB > 0;
+            if (hasA && hasB) return numA - numB;
+            if (hasA && !hasB) return -1;
+            if (!hasA && hasB) return 1;
+            return (a.studentName || '').localeCompare(b.studentName || '');
+          });
+
+          // STRICT SINGLE STUDENT DEDUPLICATION:
+          // Guarantee that each student is entered EXACTLY ONCE!
+          const seenStudentKeys = new Set<string>();
+          const singleStudentResults: typeof examResults = [];
+
+          for (const r of examResults) {
+            const key = (r.studentId && r.studentId.trim() !== '')
+              ? r.studentId.trim().toLowerCase()
+              : `${(r.studentName || '').trim().toLowerCase()}_${(r.className || '').trim().toLowerCase()}`;
+
+            if (!seenStudentKeys.has(key)) {
+              seenStudentKeys.add(key);
+              singleStudentResults.push(r);
+            }
+          }
+
+          // Format rows: strictly 1 row per student
+          const rows = singleStudentResults.map((r, index) => {
+            const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
+            const displayRoll = resolveResultRoll(student, r);
+            const sec = (student?.section || (r.className?.includes('-') ? r.className.split('-')[1].trim() : '')).trim();
+
+            const rowObj: Record<string, any> = {
+              'Sl No': index + 1,
+              'Roll No': displayRoll && !isNaN(parseInt(displayRoll, 10)) ? parseInt(displayRoll, 10) : (displayRoll || '-'),
+              'Admission ID': r.studentId,
+              'Student Name': r.studentName,
+              'Class': cls,
+              'Section': sec || 'A',
+              'Exam Name': r.examName
+            };
+
+            // Subject columns
+            let calcMaxTotal = 0;
+            subjectList.forEach(subName => {
+              const sub = (r.subjects || []).find(s => s.subject?.toLowerCase().trim() === subName.toLowerCase().trim());
+              const maxM = subjectNamesMap.get(subName) || 100;
+              calcMaxTotal += maxM;
+              const colHeader = `${subName} [${maxM}]`;
+              rowObj[colHeader] = sub !== undefined ? sub.obtainedMarks : '-';
+            });
+
+            rowObj['Total Obtained'] = r.totalMarks;
+            rowObj['Total Max'] = (r.subjects || []).reduce((sum, s) => sum + (Number(s.maxMarks) || 100), 0) || calcMaxTotal;
+            rowObj['Percentage (%)'] = r.percentage;
+            rowObj['Grade'] = r.grade;
+            rowObj['Result Status'] = r.status;
+            rowObj['Remarks'] = r.remarks || '';
+
+            return rowObj;
+          });
+
+          if (rows.length === 0) return;
+
+          const ws = XLSX.utils.json_to_sheet(rows);
+
+          // Auto-adjust column widths
+          const colKeys = Object.keys(rows[0] || {});
+          ws['!cols'] = colKeys.map(k => {
+            const maxLen = Math.max(
+              k.length,
+              ...rows.map(r => String(r[k] !== undefined ? r[k] : '').length)
+            );
+            return { wch: Math.min(Math.max(maxLen + 3, 10), 38) };
+          });
+
+          // Unique, clean sheet tab name (Excel max 31 characters)
+          let baseTabName = '';
+          if (classesToProcess.length === 1) {
+            baseTabName = currentExam.replace(/Examination/i, 'Exam').substring(0, 31);
+          } else {
+            baseTabName = `${cls} - ${currentExam.replace(/Examination/i, '').trim()}`.substring(0, 31);
+          }
+          baseTabName = baseTabName.replace(/[\\/?*[\]]/g, ' ').trim() || 'Result Sheet';
+
+          let finalSheetName = baseTabName;
+          let counter = 1;
+          while (usedSheetNames.has(finalSheetName.toUpperCase())) {
+            const suffix = ` (${counter})`;
+            finalSheetName = baseTabName.substring(0, 31 - suffix.length) + suffix;
+            counter++;
+          }
+          usedSheetNames.add(finalSheetName.toUpperCase());
+
+          XLSX.utils.book_append_sheet(wb, ws, finalSheetName);
+          totalSheetsAdded++;
+        });
       });
 
-      if (targetSection && targetSection !== 'ALL') {
-        exportResults = exportResults.filter(r => {
-          const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
-          const sec = (student?.section || (r.className?.includes('-') ? r.className.split('-')[1].trim() : '')).trim().toUpperCase();
-          return sec === targetSection.trim().toUpperCase();
-        });
-      }
-
-      if (exportResults.length === 0) {
+      if (totalSheetsAdded === 0) {
         alert(`No results found for ${targetClass !== 'ALL' ? targetClass : 'the selected criteria'}.`);
         setIsExportingExcel(false);
         return;
       }
 
-      const wb = XLSX.utils.book_new();
-
-      // Determine classes to process (either single selected class or distinct classes for 'ALL')
-      const classesToProcess: string[] = (targetClass && targetClass !== 'ALL')
-        ? [targetClass]
-        : (Array.from(new Set(exportResults.map(r => r.className?.split('-')[0].trim() || r.className))).filter(Boolean) as string[]).sort();
-
-      const usedSheetNames = new Set<string>();
-
-      classesToProcess.forEach(cls => {
-        const clsResults = exportResults.filter(r => (r.className || '').toLowerCase().includes(cls.toLowerCase()));
-        if (clsResults.length === 0) return;
-
-        // Collect all unique subjects across this class results
-        const subjectNamesMap = new Map<string, number>();
-        clsResults.forEach(r => {
-          (r.subjects || []).forEach(sub => {
-            const sName = (sub.subject || '').trim();
-            if (sName) {
-              const currentMax = subjectNamesMap.get(sName) || 0;
-              if (sub.maxMarks && sub.maxMarks > currentMax) {
-                subjectNamesMap.set(sName, sub.maxMarks);
-              } else if (!subjectNamesMap.has(sName)) {
-                subjectNamesMap.set(sName, 100);
-              }
-            }
-          });
-        });
-        const subjectList = Array.from(subjectNamesMap.keys());
-
-        // Sort section-wise, then natural numeric serial roll, then student name
-        clsResults.sort((a, b) => {
-          const studentA = findMatchingStudent(students, a.studentId, a.studentName, a.className);
-          const studentB = findMatchingStudent(students, b.studentId, b.studentName, b.className);
-          const secA = (studentA?.section || (a.className?.includes('-') ? a.className.split('-')[1].trim() : '')).trim();
-          const secB = (studentB?.section || (b.className?.includes('-') ? b.className.split('-')[1].trim() : '')).trim();
-          if (secA !== secB) {
-            return secA.localeCompare(secB, undefined, { numeric: true, sensitivity: 'base' });
-          }
-
-          const rollA = resolveResultRoll(studentA, a);
-          const rollB = resolveResultRoll(studentB, b);
-          const numA = parseInt(rollA, 10);
-          const numB = parseInt(rollB, 10);
-          const hasA = !isNaN(numA) && numA > 0;
-          const hasB = !isNaN(numB) && numB > 0;
-          if (hasA && hasB) return numA - numB;
-          if (hasA && !hasB) return -1;
-          if (!hasA && hasB) return 1;
-          return (a.studentName || '').localeCompare(b.studentName || '');
-        });
-
-        // Format data rows
-        const rows = clsResults.map((r, index) => {
-          const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
-          const displayRoll = resolveResultRoll(student, r);
-          const sec = (student?.section || (r.className?.includes('-') ? r.className.split('-')[1].trim() : '')).trim();
-
-          const rowObj: Record<string, any> = {
-            'Sl No': index + 1,
-            'Roll No': displayRoll && !isNaN(parseInt(displayRoll, 10)) ? parseInt(displayRoll, 10) : (displayRoll || '-'),
-            'Admission ID': r.studentId,
-            'Student Name': r.studentName,
-            'Class': cls,
-            'Section': sec || 'A',
-            'Exam Name': r.examName
-          };
-
-          // Subject columns
-          let calcMaxTotal = 0;
-          subjectList.forEach(subName => {
-            const sub = (r.subjects || []).find(s => s.subject?.toLowerCase().trim() === subName.toLowerCase().trim());
-            const maxM = subjectNamesMap.get(subName) || 100;
-            calcMaxTotal += maxM;
-            const colHeader = `${subName} [${maxM}]`;
-            rowObj[colHeader] = sub !== undefined ? sub.obtainedMarks : '-';
-          });
-
-          rowObj['Total Obtained'] = r.totalMarks;
-          rowObj['Total Max'] = (r.subjects || []).reduce((sum, s) => sum + (Number(s.maxMarks) || 100), 0) || calcMaxTotal;
-          rowObj['Percentage (%)'] = r.percentage;
-          rowObj['Grade'] = r.grade;
-          rowObj['Result Status'] = r.status;
-          rowObj['Remarks'] = r.remarks || '';
-
-          return rowObj;
-        });
-
-        const ws = XLSX.utils.json_to_sheet(rows);
-
-        // Column widths
-        const colKeys = Object.keys(rows[0] || {});
-        ws['!cols'] = colKeys.map(k => {
-          const maxLen = Math.max(
-            k.length,
-            ...rows.map(r => String(r[k] !== undefined ? r[k] : '').length)
-          );
-          return { wch: Math.min(Math.max(maxLen + 3, 10), 38) };
-        });
-
-        let safeSheetName = cls.substring(0, 31).replace(/[\\/?*[\]]/g, ' ').trim();
-        if (!safeSheetName) safeSheetName = 'Result Sheet';
-        let finalSheetName = safeSheetName;
-        let counter = 1;
-        while (usedSheetNames.has(finalSheetName.toUpperCase())) {
-          const suffix = ` (${counter})`;
-          finalSheetName = safeSheetName.substring(0, 31 - suffix.length) + suffix;
-          counter++;
-        }
-        usedSheetNames.add(finalSheetName.toUpperCase());
-
-        XLSX.utils.book_append_sheet(wb, ws, finalSheetName);
-      });
-
       const today = new Date().toISOString().split('T')[0];
       const classLabel = targetClass && targetClass !== 'ALL' ? targetClass.replace(/\s+/g, '_') : 'All_Classes';
-      const examLabel = targetExam && targetExam !== 'ALL' ? `_${targetExam.replace(/\s+/g, '_')}` : '';
+      const examLabel = targetExam === 'CONSOLIDATED' 
+        ? '_Consolidated' 
+        : (targetExam && targetExam !== 'ALL' ? `_${targetExam.replace(/\s+/g, '_')}` : '_All_Exams');
       const filename = `Bhogamur_Result_Sheet_${classLabel}${examLabel}_${today}.xlsx`;
 
       XLSX.writeFile(wb, filename);
@@ -1187,10 +1333,21 @@ export default function ResultsManagement() {
               </select>
             </div>
             <button
-              onClick={() => handleExportClassExcel(selectedClassFilter, 'ALL', 'ALL')}
+              onClick={() => {
+                const classExams: string[] = Array.from(new Set(
+                  results
+                    .filter(r => isTargetClassMatch(r.className, selectedClassFilter))
+                    .map(r => (r.examName || '').trim())
+                    .filter(Boolean) as string[]
+                ));
+                const targetExam = classExams.length === 1 
+                  ? classExams[0] 
+                  : (classExams.find(e => e.toLowerCase().includes('annual')) || classExams.find(e => e.toLowerCase().includes('half')) || 'ALL');
+                handleExportClassExcel(selectedClassFilter, targetExam, 'ALL');
+              }}
               disabled={isExportingExcel}
               className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
-              title={`Quick export ${selectedClassFilter} result sheet to Excel`}
+              title={`Quick export ${selectedClassFilter} result sheet to Excel (Single Student per Row)`}
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export {selectedClassFilter} Excel</span>
@@ -1609,10 +1766,11 @@ export default function ResultsManagement() {
                     onChange={(e) => setExportExcelExam(e.target.value)}
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                   >
-                    <option value="ALL">All Examinations</option>
                     {availableExamsForExport.map(exam => (
-                      <option key={exam} value={exam}>{exam}</option>
+                      <option key={exam} value={exam}>{exam} (Single Student Sheet)</option>
                     ))}
+                    <option value="CONSOLIDATED">★ Consolidated 4-Exam Sheet (Single Row per Student)</option>
+                    <option value="ALL">★ All Exams (Separate Sheet per Exam - Single Student per Tab)</option>
                   </select>
                 </div>
 
@@ -1642,10 +1800,10 @@ export default function ResultsManagement() {
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide">
-                      Matching Student Results Found
+                      {exportPreviewMatchingCount} Unique Students Found
                     </h4>
                     <p className="text-[11px] text-emerald-700">
-                      Roll numbers strictly match student admission register (1, 2, 3... series)
+                      Strict single student entry per sheet — no duplicate student records.
                     </p>
                   </div>
                 </div>
