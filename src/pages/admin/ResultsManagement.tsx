@@ -5,7 +5,7 @@ import { useConfirm } from '../../context/ConfirmationContext';
 import { useWebsite } from '../../context/WebsiteContext';
 import { Search, Plus, Edit2, Trash2, CheckCircle2, XCircle, FileSpreadsheet, ChevronDown, Download, Award, BookOpen, Printer, Sparkles, TrendingUp, ExternalLink, Lock, Unlock, ShieldAlert, ListOrdered } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn, formatSerialRoll, findMatchingStudent } from '../../lib/utils';
+import { cn, formatSerialRoll, findMatchingStudent, resolveResultRoll } from '../../lib/utils';
 import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
@@ -80,16 +80,17 @@ export function getStudentsInResultSeries<T extends { id: string; name: string; 
       return (a.id || '').localeCompare(b.id || '');
     });
 
-    // Assign section-wise roll series matching student entry in clean 1, 2, 3... series
-    sortedInSec.forEach((student, idx) => {
-      const seriesIndex = String(idx + 1);
-      
-      // Strict rule: Roll number MUST match student entry / admission register if present
+    // Assign section-wise roll matching student entry in clean 1, 2, 3... series
+    sortedInSec.forEach((student) => {
+      // Strict rule: Roll number MUST come from student admission register if defined.
+      // If student has no roll defined in register, do NOT fabricate or auto-assign a roll number!
       const cleanStudentRoll = formatSerialRoll(student.roll);
-      const assignedRoll = cleanStudentRoll || seriesIndex;
+      const assignedRoll = cleanStudentRoll || '';
 
       const secName = (student.section || '').trim();
-      const label = secName ? `Sec ${secName} - Roll ${assignedRoll}` : `Roll ${assignedRoll}`;
+      const label = assignedRoll 
+        ? (secName ? `Sec ${secName} - Roll ${assignedRoll}` : `Roll ${assignedRoll}`)
+        : (secName ? `Sec ${secName} - No Roll` : 'No Roll');
 
       finalOutput.push({
         ...student,
@@ -328,7 +329,7 @@ export default function ResultsManagement() {
     studentMarksList.forEach(item => {
       const { studentId, studentName, roll, ut1, ut2, hy, annual } = item;
       const matchedStudent = findMatchingStudent(students, studentId, studentName, consolidatedClass);
-      const studentRoll = formatSerialRoll(matchedStudent?.roll) || formatSerialRoll(roll) || '1';
+      const studentRoll = formatSerialRoll(matchedStudent?.roll) || formatSerialRoll(roll) || '';
 
       // For each exam, check if we need to update
       const examsToUpdate = [
@@ -569,8 +570,8 @@ export default function ResultsManagement() {
         return secA.localeCompare(secB, undefined, { numeric: true, sensitivity: 'base' });
       }
       // Sort by roll number matching student entry in serial 1, 2, 3... order
-      const rollA = formatSerialRoll(studentA?.roll) || formatSerialRoll(a.roll);
-      const rollB = formatSerialRoll(studentB?.roll) || formatSerialRoll(b.roll);
+      const rollA = resolveResultRoll(studentA, a);
+      const rollB = resolveResultRoll(studentB, b);
       const numA = parseInt(rollA, 10);
       const numB = parseInt(rollB, 10);
       const hasA = !isNaN(numA) && numA > 0;
@@ -590,7 +591,7 @@ export default function ResultsManagement() {
       setFormData({
         studentId: result.studentId,
         studentName: result.studentName,
-        roll: formatSerialRoll(matchedStudent?.roll) || formatSerialRoll(result.roll) || '',
+        roll: resolveResultRoll(matchedStudent, result),
         className: result.className,
         examName: result.examName,
         subjects: [...result.subjects],
@@ -628,12 +629,18 @@ export default function ResultsManagement() {
   const handleSave = () => {
     const { totalObtained, percentage, grade, status } = calculateResults(formData.subjects);
     const matchedStudent = findMatchingStudent(students, formData.studentId, formData.studentName, formData.className);
-    const resolvedRoll = formatSerialRoll(matchedStudent?.roll) || formatSerialRoll(formData.roll) || '1';
+    const registerRoll = formatSerialRoll(matchedStudent?.roll);
+    const manualRoll = formatSerialRoll(formData.roll);
+
+    // If manual roll is entered, prioritize it. Otherwise use register roll. If neither defined, leave blank!
+    const resolvedRoll = manualRoll || registerRoll || '';
+    const isManual = Boolean(manualRoll && manualRoll !== registerRoll);
 
     const newResult: StudentResult = {
       id: editingResult ? editingResult.id : `RES-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       ...formData,
       roll: resolvedRoll,
+      isManualRoll: isManual,
       totalMarks: totalObtained,
       percentage: Number(percentage.toFixed(2)),
       grade,
@@ -753,15 +760,16 @@ export default function ResultsManagement() {
         }
 
         const matchedStudent = findMatchingStudent(students, stId, stName, row[classIdx]?.trim());
-        const resolvedRoll = formatSerialRoll(matchedStudent?.roll) || 
-          formatSerialRoll(rollIdx !== -1 ? row[rollIdx]?.trim() : '') || 
-          String(i);
+        const explicitGridRoll = rollIdx !== -1 ? formatSerialRoll(row[rollIdx]?.trim()) : '';
+        const registerRoll = formatSerialRoll(matchedStudent?.roll);
+        const resolvedRoll = registerRoll || explicitGridRoll || '';
 
         newResults.push({
           id: `PREVIEW-${i}`,
           studentId: stId,
           studentName: stName,
           roll: resolvedRoll,
+          isManualRoll: Boolean(explicitGridRoll && explicitGridRoll !== registerRoll),
           className: row[classIdx]?.trim() || '',
           examName: row[examIdx]?.trim() || '',
           remarks: autoRemark,
@@ -787,9 +795,12 @@ export default function ResultsManagement() {
     // Generate actual unique IDs before saving, ensuring roll matches student admission register entry
     const resultsToSave = parsedPreview.map((res, i) => {
       const matchedStudent = findMatchingStudent(students, res.studentId, res.studentName, res.className);
+      const registerRoll = formatSerialRoll(matchedStudent?.roll);
+      const manualRoll = formatSerialRoll(res.roll);
       return {
         ...res,
-        roll: formatSerialRoll(matchedStudent?.roll) || formatSerialRoll(res.roll) || '1',
+        roll: registerRoll || manualRoll || '',
+        isManualRoll: Boolean(manualRoll && manualRoll !== registerRoll),
         id: `RES-${Date.now()}-${Math.floor(Math.random() * 1000)}-${i}`
       };
     });
@@ -856,10 +867,20 @@ export default function ResultsManagement() {
     let updatedCount = 0;
     const updated = results.map(r => {
       const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
-      const studentRoll = formatSerialRoll(student?.roll) || formatSerialRoll(r.roll);
-      if (studentRoll && studentRoll !== r.roll) {
-        updatedCount++;
-        return { ...r, roll: studentRoll };
+      if (student) {
+        const studentAdmRoll = formatSerialRoll(student.roll);
+        if (studentAdmRoll) {
+          if (r.roll !== studentAdmRoll) {
+            updatedCount++;
+            return { ...r, roll: studentAdmRoll };
+          }
+        } else {
+          // If roll is not defined in student register, do not assign roll unless manually set
+          if (!r.isManualRoll && r.roll && r.roll !== '' && r.roll !== '-') {
+            updatedCount++;
+            return { ...r, roll: '' };
+          }
+        }
       }
       return r;
     });
@@ -878,10 +899,20 @@ export default function ResultsManagement() {
     let needsUpdate = false;
     const synced = results.map(r => {
       const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
-      const expectedRoll = formatSerialRoll(student?.roll);
-      if (expectedRoll && formatSerialRoll(r.roll) !== expectedRoll) {
-        needsUpdate = true;
-        return { ...r, roll: expectedRoll };
+      if (student) {
+        const expectedRoll = formatSerialRoll(student.roll);
+        if (expectedRoll) {
+          if (formatSerialRoll(r.roll) !== expectedRoll) {
+            needsUpdate = true;
+            return { ...r, roll: expectedRoll };
+          }
+        } else {
+          // If roll is not defined in register, do not keep auto-assigned rolls unless manually set
+          if (!r.isManualRoll && r.roll && r.roll !== '' && r.roll !== '-') {
+            needsUpdate = true;
+            return { ...r, roll: '' };
+          }
+        }
       }
       return r;
     });
@@ -959,8 +990,8 @@ export default function ResultsManagement() {
             return secA.localeCompare(secB, undefined, { numeric: true, sensitivity: 'base' });
           }
 
-          const rollA = formatSerialRoll(studentA?.roll) || formatSerialRoll(a.roll);
-          const rollB = formatSerialRoll(studentB?.roll) || formatSerialRoll(b.roll);
+          const rollA = resolveResultRoll(studentA, a);
+          const rollB = resolveResultRoll(studentB, b);
           const numA = parseInt(rollA, 10);
           const numB = parseInt(rollB, 10);
           const hasA = !isNaN(numA) && numA > 0;
@@ -974,12 +1005,12 @@ export default function ResultsManagement() {
         // Format data rows
         const rows = clsResults.map((r, index) => {
           const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
-          const displayRoll = formatSerialRoll(student?.roll) || formatSerialRoll(r.roll) || String(index + 1);
+          const displayRoll = resolveResultRoll(student, r);
           const sec = (student?.section || (r.className?.includes('-') ? r.className.split('-')[1].trim() : '')).trim();
 
           const rowObj: Record<string, any> = {
             'Sl No': index + 1,
-            'Roll No': !isNaN(parseInt(displayRoll, 10)) ? parseInt(displayRoll, 10) : displayRoll,
+            'Roll No': displayRoll && !isNaN(parseInt(displayRoll, 10)) ? parseInt(displayRoll, 10) : (displayRoll || '-'),
             'Admission ID': r.studentId,
             'Student Name': r.studentName,
             'Class': cls,
@@ -1184,16 +1215,22 @@ export default function ResultsManagement() {
             <tbody className="divide-y divide-indigo-50">
               {filteredResults.map((result, idx) => {
                 const matchedStudent = findMatchingStudent(students, result.studentId, result.studentName, result.className);
-                const displayRoll = formatSerialRoll(matchedStudent?.roll) || formatSerialRoll(result.roll) || '-';
+                const displayRoll = resolveResultRoll(matchedStudent, result);
                 return (
                 <tr key={result.id} className={cn(
                   "transition-colors hover:bg-indigo-50/50",
                   idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"
                 )}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-850 font-black text-xs border border-indigo-200">
-                      {displayRoll !== '-' ? `Roll ${displayRoll}` : '-'}
-                    </span>
+                    {displayRoll ? (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-850 font-black text-xs border border-indigo-200">
+                        Roll {displayRoll}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-slate-100 text-slate-400 font-semibold text-xs border border-slate-200">
+                        -
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <div className="font-semibold text-slate-800">{result.studentName}</div>
@@ -1369,7 +1406,7 @@ export default function ResultsManagement() {
                           studentId: st.id,
                           studentName: st.name,
                           className: st.section ? `${st.class} - ${st.section}` : st.class,
-                          roll: (st.roll && st.roll !== '-') ? st.roll : (match?.resultRoll || '1')
+                          roll: formatSerialRoll(st.roll) || ''
                         }));
                       }
                     }}
@@ -2672,7 +2709,7 @@ export default function ResultsManagement() {
                     </div>
                     <div>
                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Roll No</p>
-                      <p className="text-slate-800 font-black">{(st.roll && st.roll !== '-') ? st.roll : st.resultRoll}</p>
+                      <p className="text-slate-800 font-black">{formatSerialRoll(st.roll) || formatSerialRoll(st.resultRoll) || '-'}</p>
                     </div>
                   </div>
 
@@ -2997,7 +3034,7 @@ export default function ResultsManagement() {
                   return {
                     id: st.id,
                     name: st.name,
-                    roll: (st.roll && st.roll !== '-') ? st.roll : st.resultRoll,
+                    roll: formatSerialRoll(st.roll) || formatSerialRoll(st.resultRoll) || '-',
                     section: st.section || '',
                     ut1: ut1Res ? `${ut1Res.percentage}%` : 'N/A',
                     ut2: ut2Res ? `${ut2Res.percentage}%` : 'N/A',
@@ -3615,7 +3652,7 @@ export default function ResultsManagement() {
                             </div>
                             <div>
                               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Roll Number</p>
-                              <p className="text-slate-800 text-xs font-black">{(currentStudent.roll && currentStudent.roll !== '-') ? currentStudent.roll : currentStudent.resultRoll}</p>
+                              <p className="text-slate-800 text-xs font-black">{formatSerialRoll(currentStudent.roll) || formatSerialRoll(currentStudent.resultRoll) || '-'}</p>
                             </div>
                           </div>
 

@@ -60,6 +60,33 @@ export function findMatchingStudent<T extends { id: string; name: string; class?
   return undefined;
 }
 
+/**
+ * Resolves the roll number for a student result.
+ * - If student is found in register and has a defined roll in register: returns that roll (1, 2, 3...).
+ * - If student is found in register but has NO roll defined in register:
+ *     does NOT auto-assign any roll! Only returns a roll if explicitly manually set. Otherwise empty string ''.
+ * - If student is not in register:
+ *     returns the result roll if present, else ''.
+ */
+export function resolveResultRoll(
+  matchedStudent?: { roll?: string | null } | null,
+  result?: { roll?: string | null; isManualRoll?: boolean } | null
+): string {
+  const registerRoll = formatSerialRoll(matchedStudent?.roll);
+  if (registerRoll) return registerRoll;
+
+  // Student exists in student admission register, but roll is NOT defined in register
+  if (matchedStudent) {
+    if (result?.isManualRoll && result.roll) {
+      return formatSerialRoll(result.roll);
+    }
+    return '';
+  }
+
+  // Fallback for results where student profile is not in students table
+  return formatSerialRoll(result?.roll);
+}
+
 export function compressImage(base64Str: string, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();

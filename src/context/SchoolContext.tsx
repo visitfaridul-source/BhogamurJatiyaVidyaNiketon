@@ -73,6 +73,7 @@ export interface StudentResult {
   studentId: string;
   studentName: string;
   roll?: string;
+  isManualRoll?: boolean;
   className: string;
   examName: string;
   subjects: SubjectMark[];
@@ -524,15 +525,28 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       if (match) {
         const studentAdmRoll = formatSerialRoll(match.roll);
         const currentResultRoll = formatSerialRoll(r.roll);
-        if (studentAdmRoll && currentResultRoll !== studentAdmRoll) {
-          hasMismatch = true;
-          // Sync to Firestore immediately in the background
-          try {
-            setDoc(doc(db, 'results', r.id), { ...sanitizeFirestoreData(r), roll: studentAdmRoll }, { merge: true }).catch(() => {});
-          } catch (e) {
-            // silent catch
+        if (studentAdmRoll) {
+          if (currentResultRoll !== studentAdmRoll) {
+            hasMismatch = true;
+            try {
+              setDoc(doc(db, 'results', r.id), { ...sanitizeFirestoreData(r), roll: studentAdmRoll }, { merge: true }).catch(() => {});
+            } catch (e) {
+              // silent catch
+            }
+            return { ...r, roll: studentAdmRoll };
           }
-          return { ...r, roll: studentAdmRoll };
+        } else {
+          // Student is in admission register, but has NO roll defined in register.
+          // Unless explicitly manually set, clear any auto-assigned roll from result!
+          if (!r.isManualRoll && r.roll && r.roll !== '' && r.roll !== '-') {
+            hasMismatch = true;
+            try {
+              setDoc(doc(db, 'results', r.id), { ...sanitizeFirestoreData(r), roll: '' }, { merge: true }).catch(() => {});
+            } catch (e) {
+              // silent catch
+            }
+            return { ...r, roll: '' };
+          }
         }
       }
       return r;
