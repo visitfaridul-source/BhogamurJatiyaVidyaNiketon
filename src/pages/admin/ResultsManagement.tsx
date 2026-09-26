@@ -7,6 +7,7 @@ import { Search, Plus, Edit2, Trash2, CheckCircle2, XCircle, FileSpreadsheet, Ch
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatSerialRoll, findMatchingStudent } from '../../lib/utils';
 import html2pdf from 'html2pdf.js';
+import * as XLSX from 'xlsx';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 
 const getGradeForPercentage = (pct: number) => {
@@ -175,6 +176,13 @@ export default function ResultsManagement() {
     annual: string;
   }[]>([]);
 
+  // Export Class Result Sheet in Excel States
+  const [showExportExcelModal, setShowExportExcelModal] = useState(false);
+  const [exportExcelClass, setExportExcelClass] = useState('Class 10');
+  const [exportExcelExam, setExportExcelExam] = useState('ALL');
+  const [exportExcelSection, setExportExcelSection] = useState('ALL');
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+
   // Unique sections available per selected class
   const availableBulkSections = React.useMemo(() => {
     const classStudents = (students || []).filter(s => s.class.toLowerCase().trim() === bulkImportClass.toLowerCase().trim());
@@ -190,6 +198,36 @@ export default function ResultsManagement() {
     const classStudents = (students || []).filter(s => s.class.toLowerCase().trim() === consolidatedClass.toLowerCase().trim());
     return Array.from(new Set(classStudents.map(s => (s.section || '').trim()).filter(Boolean))).sort();
   }, [students, consolidatedClass]);
+
+  const availableExamsForExport = React.useMemo(() => {
+    const examSet = new Set<string>();
+    (results || []).forEach(r => {
+      const e = (r.examName || '').trim();
+      if (e) examSet.add(e);
+    });
+    ['Half Yearly Examination', 'Annual Examination', 'Unit Test 1', 'Unit Test 2'].forEach(e => examSet.add(e));
+    return Array.from(examSet).sort();
+  }, [results]);
+
+  const availableSectionsForExport = React.useMemo(() => {
+    if (exportExcelClass === 'ALL') return [];
+    const classStudents = (students || []).filter(s => s.class.toLowerCase().trim() === exportExcelClass.toLowerCase().trim());
+    return Array.from(new Set(classStudents.map(s => (s.section || '').trim()).filter(Boolean))).sort();
+  }, [students, exportExcelClass]);
+
+  const exportPreviewMatchingCount = React.useMemo(() => {
+    return results.filter(r => {
+      const classMatch = exportExcelClass === 'ALL' || (r.className || '').toLowerCase().includes(exportExcelClass.toLowerCase());
+      const examMatch = exportExcelExam === 'ALL' || (r.examName || '').toLowerCase().trim() === exportExcelExam.toLowerCase().trim();
+      if (!classMatch || !examMatch) return false;
+      if (exportExcelSection !== 'ALL') {
+        const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
+        const sec = (student?.section || (r.className?.includes('-') ? r.className.split('-')[1].trim() : '')).trim().toUpperCase();
+        return sec === exportExcelSection.trim().toUpperCase();
+      }
+      return true;
+    }).length;
+  }, [results, students, exportExcelClass, exportExcelExam, exportExcelSection]);
 
   const pullEntryData = () => {
     const rawClassSts = (students || []).filter(s => 
@@ -852,6 +890,164 @@ export default function ResultsManagement() {
     }
   }, [students, results]);
 
+  const handleExportClassExcel = (
+    targetClass: string = exportExcelClass,
+    targetExam: string = exportExcelExam,
+    targetSection: string = exportExcelSection
+  ) => {
+    try {
+      setIsExportingExcel(true);
+
+      // Filter matching results
+      let exportResults = results.filter(r => {
+        const classMatch = !targetClass || targetClass === 'ALL' || (r.className || '').toLowerCase().includes(targetClass.toLowerCase());
+        const examMatch = !targetExam || targetExam === 'ALL' || (r.examName || '').toLowerCase().trim() === targetExam.toLowerCase().trim();
+        return classMatch && examMatch;
+      });
+
+      if (targetSection && targetSection !== 'ALL') {
+        exportResults = exportResults.filter(r => {
+          const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
+          const sec = (student?.section || (r.className?.includes('-') ? r.className.split('-')[1].trim() : '')).trim().toUpperCase();
+          return sec === targetSection.trim().toUpperCase();
+        });
+      }
+
+      if (exportResults.length === 0) {
+        alert(`No results found for ${targetClass !== 'ALL' ? targetClass : 'the selected criteria'}.`);
+        setIsExportingExcel(false);
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+
+      // Determine classes to process (either single selected class or distinct classes for 'ALL')
+      const classesToProcess: string[] = (targetClass && targetClass !== 'ALL')
+        ? [targetClass]
+        : (Array.from(new Set(exportResults.map(r => r.className?.split('-')[0].trim() || r.className))).filter(Boolean) as string[]).sort();
+
+      const usedSheetNames = new Set<string>();
+
+      classesToProcess.forEach(cls => {
+        const clsResults = exportResults.filter(r => (r.className || '').toLowerCase().includes(cls.toLowerCase()));
+        if (clsResults.length === 0) return;
+
+        // Collect all unique subjects across this class results
+        const subjectNamesMap = new Map<string, number>();
+        clsResults.forEach(r => {
+          (r.subjects || []).forEach(sub => {
+            const sName = (sub.subject || '').trim();
+            if (sName) {
+              const currentMax = subjectNamesMap.get(sName) || 0;
+              if (sub.maxMarks && sub.maxMarks > currentMax) {
+                subjectNamesMap.set(sName, sub.maxMarks);
+              } else if (!subjectNamesMap.has(sName)) {
+                subjectNamesMap.set(sName, 100);
+              }
+            }
+          });
+        });
+        const subjectList = Array.from(subjectNamesMap.keys());
+
+        // Sort section-wise, then natural numeric serial roll, then student name
+        clsResults.sort((a, b) => {
+          const studentA = findMatchingStudent(students, a.studentId, a.studentName, a.className);
+          const studentB = findMatchingStudent(students, b.studentId, b.studentName, b.className);
+          const secA = (studentA?.section || (a.className?.includes('-') ? a.className.split('-')[1].trim() : '')).trim();
+          const secB = (studentB?.section || (b.className?.includes('-') ? b.className.split('-')[1].trim() : '')).trim();
+          if (secA !== secB) {
+            return secA.localeCompare(secB, undefined, { numeric: true, sensitivity: 'base' });
+          }
+
+          const rollA = formatSerialRoll(studentA?.roll) || formatSerialRoll(a.roll);
+          const rollB = formatSerialRoll(studentB?.roll) || formatSerialRoll(b.roll);
+          const numA = parseInt(rollA, 10);
+          const numB = parseInt(rollB, 10);
+          const hasA = !isNaN(numA) && numA > 0;
+          const hasB = !isNaN(numB) && numB > 0;
+          if (hasA && hasB) return numA - numB;
+          if (hasA && !hasB) return -1;
+          if (!hasA && hasB) return 1;
+          return (a.studentName || '').localeCompare(b.studentName || '');
+        });
+
+        // Format data rows
+        const rows = clsResults.map((r, index) => {
+          const student = findMatchingStudent(students, r.studentId, r.studentName, r.className);
+          const displayRoll = formatSerialRoll(student?.roll) || formatSerialRoll(r.roll) || String(index + 1);
+          const sec = (student?.section || (r.className?.includes('-') ? r.className.split('-')[1].trim() : '')).trim();
+
+          const rowObj: Record<string, any> = {
+            'Sl No': index + 1,
+            'Roll No': !isNaN(parseInt(displayRoll, 10)) ? parseInt(displayRoll, 10) : displayRoll,
+            'Admission ID': r.studentId,
+            'Student Name': r.studentName,
+            'Class': cls,
+            'Section': sec || 'A',
+            'Exam Name': r.examName
+          };
+
+          // Subject columns
+          let calcMaxTotal = 0;
+          subjectList.forEach(subName => {
+            const sub = (r.subjects || []).find(s => s.subject?.toLowerCase().trim() === subName.toLowerCase().trim());
+            const maxM = subjectNamesMap.get(subName) || 100;
+            calcMaxTotal += maxM;
+            const colHeader = `${subName} [${maxM}]`;
+            rowObj[colHeader] = sub !== undefined ? sub.obtainedMarks : '-';
+          });
+
+          rowObj['Total Obtained'] = r.totalMarks;
+          rowObj['Total Max'] = (r.subjects || []).reduce((sum, s) => sum + (Number(s.maxMarks) || 100), 0) || calcMaxTotal;
+          rowObj['Percentage (%)'] = r.percentage;
+          rowObj['Grade'] = r.grade;
+          rowObj['Result Status'] = r.status;
+          rowObj['Remarks'] = r.remarks || '';
+
+          return rowObj;
+        });
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+
+        // Column widths
+        const colKeys = Object.keys(rows[0] || {});
+        ws['!cols'] = colKeys.map(k => {
+          const maxLen = Math.max(
+            k.length,
+            ...rows.map(r => String(r[k] !== undefined ? r[k] : '').length)
+          );
+          return { wch: Math.min(Math.max(maxLen + 3, 10), 38) };
+        });
+
+        let safeSheetName = cls.substring(0, 31).replace(/[\\/?*[\]]/g, ' ').trim();
+        if (!safeSheetName) safeSheetName = 'Result Sheet';
+        let finalSheetName = safeSheetName;
+        let counter = 1;
+        while (usedSheetNames.has(finalSheetName.toUpperCase())) {
+          const suffix = ` (${counter})`;
+          finalSheetName = safeSheetName.substring(0, 31 - suffix.length) + suffix;
+          counter++;
+        }
+        usedSheetNames.add(finalSheetName.toUpperCase());
+
+        XLSX.utils.book_append_sheet(wb, ws, finalSheetName);
+      });
+
+      const today = new Date().toISOString().split('T')[0];
+      const classLabel = targetClass && targetClass !== 'ALL' ? targetClass.replace(/\s+/g, '_') : 'All_Classes';
+      const examLabel = targetExam && targetExam !== 'ALL' ? `_${targetExam.replace(/\s+/g, '_')}` : '';
+      const filename = `Bhogamur_Result_Sheet_${classLabel}${examLabel}_${today}.xlsx`;
+
+      XLSX.writeFile(wb, filename);
+      setShowExportExcelModal(false);
+    } catch (err) {
+      console.error('Failed to export results to Excel:', err);
+      alert('An error occurred while generating the Excel sheet. Please try again.');
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -905,6 +1101,15 @@ export default function ResultsManagement() {
                 <span>4-Exam Studio</span>
               </button>
               <button
+                onClick={() => setShowExportExcelModal(true)}
+                className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3.5 py-2 rounded-xl hover:bg-emerald-100 transition-colors font-bold shadow-xs text-sm cursor-pointer"
+                title="Export class-wise result sheet in Excel format (.xlsx)"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                <span className="hidden lg:inline">Export Excel Sheet</span>
+                <span className="lg:hidden">Excel</span>
+              </button>
+              <button
                 onClick={() => setShowBulkModal(true)}
                 className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 transition-colors font-bold shadow-xs text-sm"
               >
@@ -935,16 +1140,30 @@ export default function ResultsManagement() {
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 transition-colors"
             />
           </div>
-          <div className="w-full sm:w-auto min-w-[200px]">
-            <select
-              value={selectedClassFilter}
-              onChange={(e) => setSelectedClassFilter(e.target.value)}
-              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <div className="w-full sm:w-auto min-w-[180px]">
+              <select
+                value={selectedClassFilter}
+                onChange={(e) => {
+                  setSelectedClassFilter(e.target.value);
+                  setExportExcelClass(e.target.value);
+                }}
+                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none font-semibold text-slate-700"
+              >
+                {uniqueClasses.map(className => (
+                  <option key={className} value={className}>{className}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={() => handleExportClassExcel(selectedClassFilter, 'ALL', 'ALL')}
+              disabled={isExportingExcel}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+              title={`Quick export ${selectedClassFilter} result sheet to Excel`}
             >
-              {uniqueClasses.map(className => (
-                <option key={className} value={className}>{className}</option>
-              ))}
-            </select>
+              <Download className="w-3.5 h-3.5" />
+              <span>Export {selectedClassFilter} Excel</span>
+            </button>
           </div>
         </div>
 
@@ -1289,6 +1508,134 @@ export default function ResultsManagement() {
               </button>
             </div>
 
+          </motion.div>
+        </div>
+      )}
+
+      {/* Export Class Wise Result Sheet Modal */}
+      {showExportExcelModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col border border-slate-200"
+          >
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-xs">
+                  <FileSpreadsheet className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 tracking-tight">Export Class Result Sheet</h2>
+                  <p className="text-xs text-slate-500 font-medium">Download complete Excel tabulator sheet with rolls and subject marks</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowExportExcelModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Select Target Class
+                </label>
+                <select
+                  value={exportExcelClass}
+                  onChange={(e) => {
+                    setExportExcelClass(e.target.value);
+                    setExportExcelSection('ALL');
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                >
+                  <option value="ALL">★ All Classes (Multi-sheet Workbook)</option>
+                  {uniqueClasses.map(cls => (
+                    <option key={cls} value={cls}>{cls}</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Selecting &apos;All Classes&apos; exports an organized workbook with a separate tab for each class.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                    Select Examination
+                  </label>
+                  <select
+                    value={exportExcelExam}
+                    onChange={(e) => setExportExcelExam(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  >
+                    <option value="ALL">All Examinations</option>
+                    {availableExamsForExport.map(exam => (
+                      <option key={exam} value={exam}>{exam}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                    Section Filter
+                  </label>
+                  <select
+                    value={exportExcelSection}
+                    onChange={(e) => setExportExcelSection(e.target.value)}
+                    disabled={exportExcelClass === 'ALL' || availableSectionsForExport.length === 0}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 disabled:opacity-50"
+                  >
+                    <option value="ALL">All Sections</option>
+                    {availableSectionsForExport.map(sec => (
+                      <option key={sec} value={sec}>Section {sec}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Status summary card */}
+              <div className="bg-emerald-50/70 border border-emerald-150 rounded-2xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm">
+                    {exportPreviewMatchingCount}
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide">
+                      Matching Student Results Found
+                    </h4>
+                    <p className="text-[11px] text-emerald-700">
+                      Roll numbers strictly match student admission register (1, 2, 3... series)
+                    </p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 bg-white border border-emerald-200 text-emerald-800 text-[10px] font-black rounded-lg uppercase tracking-wider">
+                  Ready (.xlsx)
+                </span>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowExportExcelModal(false)}
+                className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-sm font-bold transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportClassExcel(exportExcelClass, exportExcelExam, exportExcelSection)}
+                disabled={isExportingExcel || exportPreviewMatchingCount === 0}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>{isExportingExcel ? 'Generating Excel...' : 'Download Excel Sheet'}</span>
+              </button>
+            </div>
           </motion.div>
         </div>
       )}
