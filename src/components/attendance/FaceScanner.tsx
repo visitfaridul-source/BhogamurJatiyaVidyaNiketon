@@ -677,7 +677,7 @@ export default function FaceScanner({
               hasAlreadyScanned = true;
             }
 
-            const isLate = scanTimeStr >= "10:00";
+            const isLate = scanTimeStr > "08:45";
             const isEarlyLeave = scanTimeStr < "14:30";
             const finalStatus = hasAlreadyScanned
               ? "ALREADY LOGGED"
@@ -709,11 +709,14 @@ export default function FaceScanner({
               if (hasAlreadyScanned) {
                 playWebAudioSound("warning");
                 speakVoice(`${matchedPerson.name}, Already Marked!`);
-              } else {
+              } else if (curScannerMode === "Entry") {
                 playWebAudioSound("success");
-                speakVoice(`${matchedPerson.name}, Present!`);
+                speakVoice(isLate ? `${matchedPerson.name}, Late arrival marked!` : `${matchedPerson.name}, Present!`);
                 const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3");
                 audio.play().catch((e) => console.log("Audio play failed:", e));
+              } else {
+                playWebAudioSound("success");
+                speakVoice(isEarlyLeave ? `${matchedPerson.name}, Early leave marked!` : `${matchedPerson.name}, Checked out!`);
               }
             }
 
@@ -746,6 +749,7 @@ export default function FaceScanner({
                   saveAttendanceRecord(matchedPerson.id, todayDate, {
                     status: isLate ? "Late" : "Present",
                     inTime: scanTimeStr,
+                    remarks: isLate ? "Late Face ID Check-In" : "Regular Face ID Check-In",
                   }).catch((e) =>
                     console.error("Failed to save entry attendance:", e),
                   );
@@ -764,11 +768,15 @@ export default function FaceScanner({
                   // Mark the write in local in-memory cache to prevent race triggers before DB updates
                   lastWriteTimes.current[writeKey] = Date.now();
 
+                  const exitStatus = isEarlyLeave
+                    ? "Early Leave"
+                    : (currentRecord?.status === "Late" ? "Late" : "Present");
+
                   saveAttendanceRecord(matchedPerson.id, todayDate, {
+                    status: exitStatus,
                     outTime: scanTimeStr,
-                    ...(isEarlyLeave
-                      ? { earlyOutReason: "Early Leave (Auto)" }
-                      : {}),
+                    earlyOutReason: isEarlyLeave ? "Early Exit (Face Scan)" : (currentRecord?.earlyOutReason || ""),
+                    remarks: isEarlyLeave ? "Early Exit Scanned" : "Regular Check-Out",
                   }).catch((e) =>
                     console.error("Failed to save exit attendance:", e),
                   );

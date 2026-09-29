@@ -142,8 +142,8 @@ interface SchoolContextType {
     fees: number;
     events: number;
   };
-  attendanceMap: Record<string, { status: 'Present' | 'Absent' | 'Late'; remarks: string; inTime?: string; outTime?: string; earlyOutReason?: string }>;
-  saveAttendanceRecord: (memberId: string, date: string, fields: { status?: 'Present' | 'Absent' | 'Late'; remarks?: string; inTime?: string; outTime?: string; earlyOutReason?: string }) => Promise<void>;
+  attendanceMap: Record<string, { status: 'Present' | 'Absent' | 'Late' | 'Early Leave' | 'Half Day'; remarks: string; inTime?: string; outTime?: string; earlyOutReason?: string }>;
+  saveAttendanceRecord: (memberId: string, date: string, fields: { status?: 'Present' | 'Absent' | 'Late' | 'Early Leave' | 'Half Day'; remarks?: string; inTime?: string; outTime?: string; earlyOutReason?: string }) => Promise<void>;
   deleteAttendanceRecord: (memberId: string, date: string) => Promise<void>;
   feesTransactions: any[];
   saveFeeTransaction: (tx: any) => Promise<void>;
@@ -265,7 +265,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessionsState] = useState<AcademicSession[]>([]);
   const [courses, setCoursesState] = useState<Course[]>([]);
   
-  const [attendanceMap, setAttendanceMapState] = useState<Record<string, { status: 'Present' | 'Absent' | 'Late'; remarks: string; inTime?: string; outTime?: string; earlyOutReason?: string }>>({});
+  const [attendanceMap, setAttendanceMapState] = useState<Record<string, { status: 'Present' | 'Absent' | 'Late' | 'Early Leave' | 'Half Day'; remarks: string; inTime?: string; outTime?: string; earlyOutReason?: string }>>({});
   const [feesTransactions, setFeesTransactionsState] = useState<any[]>([]);
   const [schoolEvents, setSchoolEventsState] = useState<any[]>([]);
 
@@ -899,7 +899,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const saveAttendanceRecord = async (memberId: string, date: string, fields: { status?: 'Present' | 'Absent' | 'Late'; remarks?: string; inTime?: string; outTime?: string; earlyOutReason?: string }) => {
+  const saveAttendanceRecord = async (memberId: string, date: string, fields: { status?: 'Present' | 'Absent' | 'Late' | 'Early Leave' | 'Half Day'; remarks?: string; inTime?: string; outTime?: string; earlyOutReason?: string }) => {
     try {
       const docId = `${date}_${memberId}`;
       const docRef = doc(db, 'attendance', docId);

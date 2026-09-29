@@ -504,11 +504,11 @@ export default function FaceRecognitionAttendance() {
     saveRegistry(updated);
 
     // Save to Firestore SchoolContext database
-    const isLate = currentTime >= "10:00";
+    const isLate = currentTime > "08:45";
     saveAttendanceRecord(personId, todayDateStr, {
       status: isLate ? "Late" : "Present",
       inTime: currentTime,
-      remarks: `Checked in via Face ID`,
+      remarks: isLate ? `Late Face ID Check-In` : `Checked in via Face ID`,
     }).catch((err) => {
       console.error(
         "Failed to save check-in through Face ID to Firestore:",
@@ -544,11 +544,16 @@ export default function FaceRecognitionAttendance() {
         return `${hours}:${minutes}`;
       })();
 
+    const isEarlyLeave = finalOutTime < "14:30";
+    const checkoutStatus: "Early Leave" | "Present" | "Late" = isEarlyLeave
+      ? "Early Leave"
+      : (currentRecord.status === "Late" ? "Late" : "Present");
+
     const updated = {
       ...attendanceRegistry,
       [key]: {
         ...currentRecord,
-        status: currentRecord.status || "Present",
+        status: checkoutStatus,
         outTime: finalOutTime,
         earlyOutReason: reason || "Early leave",
       },
@@ -559,7 +564,8 @@ export default function FaceRecognitionAttendance() {
     saveAttendanceRecord(selectedPerson.id, todayDateStr, {
       outTime: finalOutTime,
       earlyOutReason: reason || "Early leave",
-      status: currentRecord.status || "Present",
+      status: checkoutStatus,
+      remarks: isEarlyLeave ? `Early Exit (${reason || "Personal"})` : "Regular Check-Out",
     }).catch((err) => {
       console.error(
         "Failed to save early check-out through Face ID to Firestore:",
