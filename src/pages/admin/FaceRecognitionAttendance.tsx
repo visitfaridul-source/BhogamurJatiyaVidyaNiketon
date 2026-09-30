@@ -3,6 +3,7 @@ import * as faceapi from "@vladmandic/face-api";
 import { useSchool } from "../../context/SchoolContext";
 import { useWebsite } from "../../context/WebsiteContext";
 import { useAuth } from "../../context/AuthContext";
+import { loadAttendanceTimingConfig, resolveTimingForMember } from "../../lib/attendanceTiming";
 import {
   Camera,
   CheckCircle2,
@@ -504,7 +505,10 @@ export default function FaceRecognitionAttendance() {
     saveRegistry(updated);
 
     // Save to Firestore SchoolContext database
-    const isLate = currentTime > "08:45";
+    const timingConfig = loadAttendanceTimingConfig();
+    const matchedClass = students.find((s) => s.id === personId)?.class;
+    const timing = resolveTimingForMember(timingConfig, matchedClass);
+    const isLate = currentTime > timing.lateCutoff;
     saveAttendanceRecord(personId, todayDateStr, {
       status: isLate ? "Late" : "Present",
       inTime: currentTime,
@@ -544,7 +548,10 @@ export default function FaceRecognitionAttendance() {
         return `${hours}:${minutes}`;
       })();
 
-    const isEarlyLeave = finalOutTime < "14:30";
+    const timingConfig = loadAttendanceTimingConfig();
+    const matchedClass = selectedPerson.class;
+    const timing = resolveTimingForMember(timingConfig, matchedClass);
+    const isEarlyLeave = finalOutTime < timing.earlyLeaveCutoff;
     const checkoutStatus: "Early Leave" | "Present" | "Late" = isEarlyLeave
       ? "Early Leave"
       : (currentRecord.status === "Late" ? "Late" : "Present");

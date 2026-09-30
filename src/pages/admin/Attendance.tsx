@@ -4105,7 +4105,8 @@ export default function Attendance() {
                                 let cellColorClass = "text-slate-300";
 
                                 if (record && record.status) {
-                                  const isEarlyOut = record.status === "EARLY LEAVE" || !!record.earlyOutReason || (record.outTime && record.outTime < "14:30");
+                                  const timing = resolveForClass(member.class);
+                                  const isEarlyOut = record.status === "EARLY LEAVE" || !!record.earlyOutReason || (record.outTime && record.outTime < timing.earlyLeaveCutoff);
                                   if (isEarlyOut) {
                                     symbol = "E";
                                     earlyOutCount++;

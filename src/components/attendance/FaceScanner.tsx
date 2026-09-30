@@ -14,11 +14,14 @@ import {
   Volume2,
   VolumeX,
   Filter,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { useSchool } from "@/context/SchoolContext";
 import { useWebsite } from "@/context/WebsiteContext";
+import { useAttendanceTiming, formatTime12h } from "@/lib/attendanceTiming";
+import AttendanceTimeManagerModal from "@/components/attendance/AttendanceTimeManagerModal";
 import * as faceapi from "@vladmandic/face-api";
 import { db, auth, handleFirestoreError, OperationType } from "@/firebase";
 import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
@@ -55,6 +58,8 @@ export default function FaceScanner({
   const { students, teachers, saveAttendanceRecord, attendanceMap } =
     useSchool();
   const { settings } = useWebsite();
+  const { timingConfig, updateTimingConfig, resolveForClass } = useAttendanceTiming();
+  const [isTimeManagerModalOpen, setIsTimeManagerModalOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [attendanceCategory, setAttendanceCategory] = useState<
     "All" | "Students" | "Teachers"
@@ -677,8 +682,9 @@ export default function FaceScanner({
               hasAlreadyScanned = true;
             }
 
-            const isLate = scanTimeStr > "08:45";
-            const isEarlyLeave = scanTimeStr < "14:30";
+            const timing = resolveForClass(matchedPerson.class);
+            const isLate = scanTimeStr > timing.lateCutoff;
+            const isEarlyLeave = scanTimeStr < timing.earlyLeaveCutoff;
             const finalStatus = hasAlreadyScanned
               ? "ALREADY LOGGED"
               : (curScannerMode === "Entry"
@@ -749,7 +755,9 @@ export default function FaceScanner({
                   saveAttendanceRecord(matchedPerson.id, todayDate, {
                     status: isLate ? "Late" : "Present",
                     inTime: scanTimeStr,
-                    remarks: isLate ? "Late Face ID Check-In" : "Regular Face ID Check-In",
+                    remarks: isLate 
+                      ? (timing.isExamMode ? `Late Exam Arrival [${timing.sessionName}]` : "Late Face ID Check-In") 
+                      : (timing.isExamMode ? `Exam Arrival [${timing.sessionName}]` : "Regular Face ID Check-In"),
                   }).catch((e) =>
                     console.error("Failed to save entry attendance:", e),
                   );
@@ -775,8 +783,12 @@ export default function FaceScanner({
                   saveAttendanceRecord(matchedPerson.id, todayDate, {
                     status: exitStatus,
                     outTime: scanTimeStr,
-                    earlyOutReason: isEarlyLeave ? "Early Exit (Face Scan)" : (currentRecord?.earlyOutReason || ""),
-                    remarks: isEarlyLeave ? "Early Exit Scanned" : "Regular Check-Out",
+                    earlyOutReason: isEarlyLeave 
+                      ? (timing.isExamMode ? `Exam Departure before ${formatTime12h(timing.earlyLeaveCutoff)}` : "Early Exit (Face Scan)") 
+                      : (currentRecord?.earlyOutReason || ""),
+                    remarks: isEarlyLeave 
+                      ? `Early Exit (Before ${formatTime12h(timing.earlyLeaveCutoff)})` 
+                      : (timing.isExamMode ? `Exam Dismissal [${timing.sessionName}]` : "Regular Check-Out"),
                   }).catch((e) =>
                     console.error("Failed to save exit attendance:", e),
                   );
@@ -860,6 +872,21 @@ export default function FaceScanner({
                 </div>
 
                 <div className="h-6 w-px bg-slate-700 mx-1"></div>
+
+                {/* Time Management Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsTimeManagerModalOpen(true)}
+                  className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-indigo-300 hover:text-white border border-indigo-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  title="Configure Attendance Timings, Exam Hours (e.g. 4:30 PM), Shifts"
+                >
+                  <Clock className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                  <span className="hidden sm:inline">Timing:</span>
+                  <span className="font-extrabold text-white truncate max-w-[120px]">{timingConfig.activeSessionName.split(' ')[0]}</span>
+                  <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded font-mono font-bold border border-indigo-500/30">
+                    {formatTime12h(timingConfig.closingTime)}
+                  </span>
+                </button>
 
                 <button
                   onClick={() => setSoundEnabled(!soundEnabled)}
@@ -1261,6 +1288,15 @@ export default function FaceScanner({
           />
         )}
       </AnimatePresence>
+
+      {isTimeManagerModalOpen && (
+        <AttendanceTimeManagerModal
+          isOpen={isTimeManagerModalOpen}
+          onClose={() => setIsTimeManagerModalOpen(false)}
+          config={timingConfig}
+          onSave={updateTimingConfig}
+        />
+      )}
     </div>
   );
 }

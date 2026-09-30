@@ -24,6 +24,8 @@ import {
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { useSchool } from "@/context/SchoolContext";
+import { useAttendanceTiming, formatTime12h } from "@/lib/attendanceTiming";
+import AttendanceTimeManagerModal from "@/components/attendance/AttendanceTimeManagerModal";
 
 interface ScanLog {
   id: string;
@@ -39,6 +41,8 @@ interface ScanLog {
 
 export default function QRScanner({ onExit }: { onExit?: () => void }) {
   const { students, teachers, attendanceMap, saveAttendanceRecord } = useSchool();
+  const { timingConfig, updateTimingConfig, resolveForClass } = useAttendanceTiming();
+  const [isTimeManagerModalOpen, setIsTimeManagerModalOpen] = useState(false);
   
   // Real-time scanner state
   const [scanLogs, setScanLogs] = useState<ScanLog[]>([]);
@@ -447,10 +451,13 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
         return;
       }
 
-      // Late check (Late limit is set to 08:45 AM)
-      const isLate = curTimeStr > "08:45";
+      // Late check with dynamic session timing
+      const timing = resolveForClass(member.class);
+      const isLate = curTimeStr > timing.lateCutoff;
       const finalStatus: "Present" | "Late" = isLate ? "Late" : "Present";
-      const recordRemarks = isLate ? "Late QR Check-In" : "Regular QR Check-In";
+      const recordRemarks = isLate 
+        ? (timing.isExamMode ? `Late Exam Arrival [${timing.sessionName}]` : "Late QR Check-In") 
+        : (timing.isExamMode ? `Exam Arrival [${timing.sessionName}]` : "Regular QR Check-In");
 
       // Save record into Firestore via handle
       await saveAttendanceRecord(member.id, todayDateStr, {
@@ -488,16 +495,21 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
         return;
       }
 
-      // Early Leave calculation (Standard exit is after 14:30 PM)
-      const isEarlyLeave = curTimeStr < "14:30";
+      // Early Leave calculation with dynamic session timing
+      const timing = resolveForClass(member.class);
+      const isEarlyLeave = curTimeStr < timing.earlyLeaveCutoff;
       const exitStatus: "Early Leave" | "Present" | "Late" = isEarlyLeave ? "Early Leave" : (todayRecord?.status === "Late" ? "Late" : "Present");
-      const earlyLeaveReasonStr = isEarlyLeave ? "Self QR Early Departure" : "";
+      const earlyLeaveReasonStr = isEarlyLeave 
+        ? (timing.isExamMode ? `Left before Exam Dismissal (${formatTime12h(timing.earlyLeaveCutoff)})` : "Self QR Early Departure") 
+        : "";
       
       await saveAttendanceRecord(member.id, todayDateStr, {
         status: exitStatus,
         outTime: curTimeStr,
         earlyOutReason: earlyLeaveReasonStr || (isEarlyLeave ? "Early Exit Scanned" : ""),
-        remarks: isEarlyLeave ? "Early Exit Scanned" : "Regular Check-Out"
+        remarks: isEarlyLeave 
+          ? `Early Exit (Before ${formatTime12h(timing.earlyLeaveCutoff)})` 
+          : (timing.isExamMode ? `Exam Dismissal [${timing.sessionName}]` : "Regular Check-Out")
       });
 
       playBeep("success");
@@ -546,6 +558,21 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              {/* Time Management Shift Controls Button */}
+              <button
+                type="button"
+                onClick={() => setIsTimeManagerModalOpen(true)}
+                className="px-3.5 py-2 bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-700 border border-indigo-200/80 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Configure Attendance Timings, Exam Hours (e.g. 4:30 PM), Shifts"
+              >
+                <Clock className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+                <span className="hidden sm:inline">Timing:</span>
+                <span className="font-extrabold text-indigo-950 truncate max-w-[120px]">{timingConfig.activeSessionName.split(' ')[0]}</span>
+                <span className="text-[10px] bg-indigo-200/70 text-indigo-900 px-1.5 py-0.5 rounded font-mono font-bold">
+                  {formatTime12h(timingConfig.closingTime)}
+                </span>
+              </button>
+
               {/* Sound toggle button */}
               <button 
                 onClick={() => setSoundEnabled(!soundEnabled)}
@@ -1012,6 +1039,15 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
         </div>
 
       </div>
+
+      {isTimeManagerModalOpen && (
+        <AttendanceTimeManagerModal
+          isOpen={isTimeManagerModalOpen}
+          onClose={() => setIsTimeManagerModalOpen(false)}
+          config={timingConfig}
+          onSave={updateTimingConfig}
+        />
+      )}
 
     </div>
   );

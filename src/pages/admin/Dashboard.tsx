@@ -25,6 +25,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { format } from 'date-fns';
 import { useSchool } from '@/context/SchoolContext';
 import { useWebsite } from '@/context/WebsiteContext';
+import { loadAttendanceTimingConfig } from '@/lib/attendanceTiming';
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -303,6 +304,7 @@ export default function Dashboard() {
     let late = 0;
     let earlyOut = 0;
     const today = format(new Date(), 'yyyy-MM-dd');
+    const timingConfig = loadAttendanceTimingConfig();
     filteredTeachers.forEach(teacher => {
       const record = attendanceMap[`${today}:${teacher.id}`];
       if (record) {
@@ -312,7 +314,7 @@ export default function Dashboard() {
         if (record.status === 'Late') {
           late++;
         }
-        if (record.status === 'EARLY LEAVE' || !!record.earlyOutReason || (record.outTime && record.outTime < '14:30')) {
+        if (record.status === 'EARLY LEAVE' || !!record.earlyOutReason || (record.outTime && record.outTime < timingConfig.earlyLeaveCutoff)) {
           earlyOut++;
         }
       }
