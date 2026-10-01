@@ -49,7 +49,7 @@ export interface OtherStaffMember {
   emergencyContact?: string;
 }
 
-const DEFAULT_STAFF_LIST: OtherStaffMember[] = [
+export const DEFAULT_STAFF_LIST: OtherStaffMember[] = [
   {
     id: 'STF-GRD-01',
     name: 'RAMESHWAR BORA',

@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, ChangeEvent } from "react";
+import { useState, useRef, useMemo, ChangeEvent, useEffect } from "react";
 import {
   Users,
   FileDown,
@@ -9,6 +9,9 @@ import {
   Search,
   Filter,
   PackageOpen,
+  Briefcase,
+  ShieldCheck,
+  GraduationCap
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as htmlToImage from "html-to-image";
@@ -18,15 +21,24 @@ import { saveAs } from "file-saver";
 import IdCardTemplate, { CardTheme } from "@/components/id-card/IdCardTemplate";
 import { useSchool } from "../../context/SchoolContext";
 import { useWebsite } from "@/context/WebsiteContext";
-import { useEffect } from "react";
+import { db } from "@/firebase";
+import { collection, onSnapshot } from "firebase/firestore";
+import { OtherStaffMember, DEFAULT_STAFF_LIST } from "./OtherStaff";
+import { AdministratorMember, DEFAULT_ADMINISTRATORS } from "./Administrators";
+
+export type IdCardTargetGroup =
+  | "students"
+  | "teachers"
+  | "other-staff"
+  | "administrators"
+  | "all-staff"
+  | "staff";
 
 export default function IdCardGenerator() {
   const { students: contextStudents, teachers: contextTeachers } = useSchool();
   const { settings } = useWebsite();
 
-  const [targetGroup, setTargetGroup] = useState<
-    "students" | "teachers" | "staff"
-  >("students");
+  const [targetGroup, setTargetGroup] = useState<IdCardTargetGroup>("students");
   const [theme, setTheme] = useState<CardTheme>("blue");
   const [activeTab, setActiveTab] = useState<"select" | "preview" | "batch">(
     "select",
@@ -39,6 +51,51 @@ export default function IdCardGenerator() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [classFilter, setClassFilter] = useState("Nursery");
+  const [roleOrDeptFilter, setRoleOrDeptFilter] = useState("All");
+
+  // Other staff & Administrators list with real-time Firestore sync & LocalStorage fallback
+  const [otherStaffList, setOtherStaffList] = useState<OtherStaffMember[]>(() => {
+    try {
+      const local = localStorage.getItem('school_other_staff_v1');
+      if (local) return JSON.parse(local);
+    } catch (e) {}
+    return DEFAULT_STAFF_LIST;
+  });
+
+  const [adminList, setAdminList] = useState<AdministratorMember[]>(() => {
+    try {
+      const local = localStorage.getItem('school_administrators_v1');
+      if (local) return JSON.parse(local);
+    } catch (e) {}
+    return DEFAULT_ADMINISTRATORS;
+  });
+
+  useEffect(() => {
+    const unsubStaff = onSnapshot(collection(db, 'other_staff'), (snapshot) => {
+      if (!snapshot.empty) {
+        const list: OtherStaffMember[] = [];
+        snapshot.forEach((docSnap) => list.push({ id: docSnap.id, ...(docSnap.data() as any) }));
+        setOtherStaffList(list);
+      }
+    }, (err) => {
+      console.warn("Silent fallback to local other-staff:", err);
+    });
+
+    const unsubAdmins = onSnapshot(collection(db, 'administrators'), (snapshot) => {
+      if (!snapshot.empty) {
+        const list: AdministratorMember[] = [];
+        snapshot.forEach((docSnap) => list.push({ id: docSnap.id, ...(docSnap.data() as any) }));
+        setAdminList(list);
+      }
+    }, (err) => {
+      console.warn("Silent fallback to local administrators:", err);
+    });
+
+    return () => {
+      unsubStaff();
+      unsubAdmins();
+    };
+  }, []);
 
   const printGridRef = useRef<HTMLDivElement>(null);
 
@@ -75,37 +132,113 @@ export default function IdCardGenerator() {
         ...t,
         type: "teacher",
         photoUrl: t.avatar,
+        designation: `${t.subject} Faculty`,
         dob: t.dob || "01-Jan-1980",
         phone: t.phone || "N/A",
       }));
-    } else if (targetGroup === "staff") {
-      list = (settings.staffMembers || []).map((st) => ({
-        ...st,
-        type: "staff",
-        photoUrl: st.imageUrl,
+    } else if (targetGroup === "other-staff" || targetGroup === "staff") {
+      list = otherStaffList.map((st) => ({
+        id: st.id,
+        name: st.name,
+        type: "other-staff",
+        role: st.role,
+        designation: st.role, // Designation instead of subject
+        department: st.department,
         phone: st.phone || "N/A",
-        dob: "01-Jan-1980", // Staff missing dob in context generally, use fallback
+        photoUrl: st.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${st.name}`,
+        dob: "01-Jan-1985",
+        address: st.address || "Bhogamur Village, Ward 4",
+        status: st.status || "Active",
       }));
+    } else if (targetGroup === "administrators") {
+      list = adminList.map((adm) => ({
+        id: adm.id,
+        name: adm.name,
+        type: "administrator",
+        role: adm.designation,
+        designation: adm.designation, // Designation instead of subject
+        qualification: adm.qualification,
+        phone: adm.phone || "N/A",
+        photoUrl: adm.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${adm.name}`,
+        dob: "01-Jan-1975",
+        address: adm.officeLocation || "Administrative Wing",
+        status: adm.status || "Active",
+      }));
+    } else if (targetGroup === "all-staff") {
+      // Unified All Staff list combining Teachers, Other Staff, and Administrators
+      const faculty = contextTeachers.map((t) => ({
+        ...t,
+        type: "teacher",
+        staffCategory: "Teacher",
+        photoUrl: t.avatar,
+        designation: `${t.subject} Faculty`,
+        dob: t.dob || "01-Jan-1980",
+        phone: t.phone || "N/A",
+      }));
+
+      const others = otherStaffList.map((st) => ({
+        id: st.id,
+        name: st.name,
+        type: "other-staff",
+        staffCategory: "Other Staff",
+        role: st.role,
+        designation: st.role,
+        department: st.department,
+        phone: st.phone || "N/A",
+        photoUrl: st.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${st.name}`,
+        dob: "01-Jan-1985",
+        address: st.address || "Bhogamur Village, Ward 4",
+        status: st.status || "Active",
+      }));
+
+      const leadership = adminList.map((adm) => ({
+        id: adm.id,
+        name: adm.name,
+        type: "administrator",
+        staffCategory: "Administrator",
+        role: adm.designation,
+        designation: adm.designation,
+        qualification: adm.qualification,
+        phone: adm.phone || "N/A",
+        photoUrl: adm.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${adm.name}`,
+        dob: "01-Jan-1975",
+        address: adm.officeLocation || "Administrative Wing",
+        status: adm.status || "Active",
+      }));
+
+      list = [...leadership, ...faculty, ...others];
     }
 
     return list.filter((m) => {
       const matchSearch =
         m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.id.toLowerCase().includes(searchTerm.toLowerCase());
+        m.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.designation && m.designation.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (m.subject && m.subject.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (m.role && m.role.toLowerCase().includes(searchTerm.toLowerCase()));
+
       const matchClass =
         targetGroup === "students" && classFilter
           ? (m.class || "").toLowerCase().replace(/\s+/g, "") ===
             classFilter.toLowerCase().replace(/\s+/g, "")
           : true;
-      return matchSearch && matchClass;
+
+      const matchRoleOrDept =
+        (targetGroup === "other-staff" || targetGroup === "staff") && roleOrDeptFilter !== "All"
+          ? (m.department === roleOrDeptFilter || m.designation === roleOrDeptFilter || m.role === roleOrDeptFilter)
+          : true;
+
+      return matchSearch && matchClass && matchRoleOrDept;
     });
   }, [
     contextStudents,
     contextTeachers,
-    settings.staffMembers,
+    otherStaffList,
+    adminList,
     targetGroup,
     searchTerm,
     classFilter,
+    roleOrDeptFilter,
   ]);
 
   const selectedStudents = allFilteredMembers.filter((m) =>
@@ -117,6 +250,7 @@ export default function IdCardGenerator() {
     setSelectedIds(new Set());
     setSearchTerm("");
     setClassFilter("Nursery");
+    setRoleOrDeptFilter("All");
   }, [targetGroup]);
 
   const handleSelectAll = (e: ChangeEvent<HTMLInputElement>) => {
@@ -290,39 +424,83 @@ export default function IdCardGenerator() {
         {/* Tab Contents */}
         {activeTab === "select" && (
           <div className="bg-white rounded-[2rem] p-6 border border-slate-200 shadow-sm overflow-hidden">
-            <div className="flex gap-2 mb-6 p-1 bg-slate-100/80 rounded-xl w-fit border border-slate-200/60">
+            <div className="flex flex-wrap gap-2 mb-6 p-1.5 bg-slate-100/90 rounded-2xl w-fit border border-slate-200/70 shadow-xs">
               <button
+                type="button"
                 onClick={() => setTargetGroup("students")}
                 className={cn(
-                  "px-4 py-2 text-sm font-semibold rounded-lg transition-colors",
+                  "flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer",
                   targetGroup === "students"
                     ? "bg-white shadow-sm text-indigo-700"
-                    : "text-slate-600 hover:text-slate-800",
+                    : "text-slate-600 hover:text-slate-900",
                 )}
               >
-                Students
+                <Users className="w-4 h-4 text-indigo-500" />
+                <span>Students</span>
+                <span className="text-[10px] bg-slate-200/60 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                  {contextStudents.length}
+                </span>
               </button>
               <button
+                type="button"
                 onClick={() => setTargetGroup("teachers")}
                 className={cn(
-                  "px-4 py-2 text-sm font-semibold rounded-lg transition-colors",
+                  "flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer",
                   targetGroup === "teachers"
-                    ? "bg-white shadow-sm text-indigo-700"
-                    : "text-slate-600 hover:text-slate-800",
+                    ? "bg-white shadow-sm text-blue-700"
+                    : "text-slate-600 hover:text-slate-900",
                 )}
               >
-                Teachers
+                <GraduationCap className="w-4 h-4 text-blue-500" />
+                <span>Teachers</span>
+                <span className="text-[10px] bg-slate-200/60 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                  {contextTeachers.length}
+                </span>
               </button>
               <button
-                onClick={() => setTargetGroup("staff")}
+                type="button"
+                onClick={() => setTargetGroup("other-staff")}
                 className={cn(
-                  "px-4 py-2 text-sm font-semibold rounded-lg transition-colors",
-                  targetGroup === "staff"
-                    ? "bg-white shadow-sm text-indigo-700"
-                    : "text-slate-600 hover:text-slate-800",
+                  "flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer",
+                  targetGroup === "other-staff" || targetGroup === "staff"
+                    ? "bg-white shadow-sm text-amber-700"
+                    : "text-slate-600 hover:text-slate-900",
                 )}
               >
-                Other Staff
+                <Briefcase className="w-4 h-4 text-amber-500" />
+                <span>Other Staff</span>
+                <span className="text-[10px] bg-slate-200/60 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                  {otherStaffList.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTargetGroup("administrators")}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer",
+                  targetGroup === "administrators"
+                    ? "bg-white shadow-sm text-purple-700"
+                    : "text-slate-600 hover:text-slate-900",
+                )}
+              >
+                <ShieldCheck className="w-4 h-4 text-purple-500" />
+                <span>Administrator</span>
+                <span className="text-[10px] bg-slate-200/60 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                  {adminList.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTargetGroup("all-staff")}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer",
+                  targetGroup === "all-staff"
+                    ? "bg-white shadow-sm text-emerald-700"
+                    : "text-slate-600 hover:text-slate-900",
+                )}
+              >
+                <Users className="w-4 h-4 text-emerald-500" />
+                <span>All Staff ({contextTeachers.length + otherStaffList.length + adminList.length})</span>
               </button>
             </div>
 
@@ -331,10 +509,20 @@ export default function IdCardGenerator() {
                 <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search members by name or ID..."
+                  placeholder={
+                    targetGroup === "students" 
+                      ? "Search students by name, roll, class..." 
+                      : targetGroup === "teachers" 
+                      ? "Search teachers by name or subject..."
+                      : targetGroup === "other-staff" || targetGroup === "staff"
+                      ? "Search other staff by name, designation, department..."
+                      : targetGroup === "administrators"
+                      ? "Search administrators by name, designation..."
+                      : "Search all staff by name, designation, department..."
+                  }
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm font-medium"
                 />
               </div>
 
@@ -344,7 +532,7 @@ export default function IdCardGenerator() {
                   <select
                     value={classFilter}
                     onChange={(e) => setClassFilter(e.target.value)}
-                    className="bg-white border border-slate-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                    className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold focus:ring-2 focus:ring-indigo-500/20 outline-none"
                   >
                     <option value="">All Classes</option>
                     {classes.map((c) => (
@@ -352,6 +540,31 @@ export default function IdCardGenerator() {
                         {c}
                       </option>
                     ))}
+                  </select>
+                </div>
+              )}
+
+              {(targetGroup === "other-staff" || targetGroup === "staff") && (
+                <div className="flex items-center gap-2">
+                  <Filter className="w-5 h-5 text-slate-400" />
+                  <select
+                    value={roleOrDeptFilter}
+                    onChange={(e) => setRoleOrDeptFilter(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold focus:ring-2 focus:ring-amber-500/20 outline-none"
+                  >
+                    <option value="All">All Departments & Roles</option>
+                    <option value="Security">Security</option>
+                    <option value="Accounts & Finance">Accounts & Finance</option>
+                    <option value="Admin Office">Admin Office</option>
+                    <option value="Facilities">Facilities</option>
+                    <option value="IT & Maintenance">IT & Maintenance</option>
+                    <option value="Security Guard">Security Guard</option>
+                    <option value="Accountant">Accountant</option>
+                    <option value="Head Clerk">Head Clerk</option>
+                    <option value="Receptionist">Receptionist</option>
+                    <option value="Caretaker">Caretaker</option>
+                    <option value="Sweeper / Cleaning Staff">Sweeper / Cleaning</option>
+                    <option value="Lab & IT Technician">Lab & IT Technician</option>
                   </select>
                 </div>
               )}
@@ -388,9 +601,14 @@ export default function IdCardGenerator() {
                         Subject
                       </th>
                     )}
-                    {targetGroup === "staff" && (
+                    {(targetGroup === "other-staff" || targetGroup === "staff" || targetGroup === "administrators") && (
                       <th className="py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Role
+                        Designation
+                      </th>
+                    )}
+                    {targetGroup === "all-staff" && (
+                      <th className="py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Staff Category & Designation
                       </th>
                     )}
                     <th className="py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -434,14 +652,14 @@ export default function IdCardGenerator() {
                                 `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.name}`
                               }
                               alt={member.name}
-                              className="w-8 h-8 rounded-full border border-slate-200"
+                              className="w-8 h-8 rounded-full border border-slate-200 object-cover"
                             />
                             <span className="font-semibold text-sm text-slate-700">
                               {member.name}
                             </span>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-sm text-slate-600 font-mono">
+                        <td className="py-3 px-4 text-sm text-slate-600 font-mono font-bold">
                           {member.id}
                         </td>
                         {targetGroup === "students" && (
@@ -450,13 +668,32 @@ export default function IdCardGenerator() {
                           </td>
                         )}
                         {targetGroup === "teachers" && (
-                          <td className="py-3 px-4 text-sm text-slate-600">
+                          <td className="py-3 px-4 text-sm text-slate-700 font-semibold">
                             {member.subject}
                           </td>
                         )}
-                        {targetGroup === "staff" && (
-                          <td className="py-3 px-4 text-sm text-slate-600">
-                            {member.role}
+                        {(targetGroup === "other-staff" || targetGroup === "staff" || targetGroup === "administrators") && (
+                          <td className="py-3 px-4 text-sm text-slate-800 font-bold">
+                            {member.designation || member.role}
+                          </td>
+                        )}
+                        {targetGroup === "all-staff" && (
+                          <td className="py-3 px-4 text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className={cn(
+                                "text-[10px] font-black uppercase px-2 py-0.5 rounded-md shrink-0",
+                                member.type === "teacher" 
+                                  ? "bg-blue-100 text-blue-800" 
+                                  : member.type === "administrator" 
+                                  ? "bg-purple-100 text-purple-800" 
+                                  : "bg-amber-100 text-amber-800"
+                              )}>
+                                {member.type === "teacher" ? "Teacher" : member.type === "administrator" ? "Admin" : "Other Staff"}
+                              </span>
+                              <span className="font-bold text-slate-800">
+                                {member.designation || member.subject || member.role}
+                              </span>
+                            </div>
                           </td>
                         )}
 

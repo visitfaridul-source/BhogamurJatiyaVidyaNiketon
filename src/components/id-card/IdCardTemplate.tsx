@@ -7,7 +7,7 @@ import { useSchool } from "@/context/SchoolContext";
 export interface CardMemberData {
   name: string;
   id: string;
-  type: "student" | "teacher" | "staff";
+  type: "student" | "teacher" | "staff" | "other-staff" | "administrator" | string;
   roll?: string;
   class?: string;
   section?: string;
@@ -20,10 +20,12 @@ export interface CardMemberData {
   photo?: string;
   emergencyContact?: string;
   session?: string;
-  // Teacher/Staff specific
+  // Teacher/Staff/Admin specific
   subject?: string;
   qualification?: string;
   role?: string;
+  designation?: string;
+  department?: string;
   email?: string;
 }
 
@@ -152,8 +154,8 @@ export default function IdCardTemplate({
     light: "#1e3a8a",
   };
 
-  // Specific override for Teacher ID Card with Prestige Gold theme
-  if (theme === "gold" && member.type === "teacher") {
+  // Specific override for Teacher / Administrator ID Card with Prestige Gold theme
+  if (theme === "gold" && (member.type === "teacher" || member.type === "administrator")) {
     styles = {
       bg: "bg-[#fffdf7]",
       primary: "#7f1d1d", // Deep Maroon
@@ -460,13 +462,13 @@ export default function IdCardTemplate({
           </div>
         )}
 
-        {member.type === "staff" && (
+        {(member.type === "staff" || member.type === "other-staff" || member.type === "administrator") && (
           <div className="flex items-center text-[8.5px] leading-snug border-b border-slate-100 pb-0.5">
             <span className="font-bold w-[21mm] uppercase text-black shrink-0">
-              Role
+              Designation
             </span>
-            <span className="font-bold text-black">
-              : {member.role || "N/A"}
+            <span className="font-bold text-black truncate max-w-[28mm]">
+              : {member.designation || member.role || "Staff"}
             </span>
           </div>
         )}
@@ -522,7 +524,13 @@ export default function IdCardTemplate({
       <div className="absolute bottom-[12mm] left-0 right-0 px-3 flex justify-between items-end z-20">
         <div className="text-left flex flex-col justify-end pb-[5mm] translate-y-[9mm]">
            <span className="text-[12px] font-bold text-red-700 uppercase tracking-tight font-fjalla">
-              {member.type === "student" ? "Student ID Card" : "Teacher ID Card"}
+              {member.type === "student"
+                ? "Student ID Card"
+                : member.type === "teacher"
+                ? "Teacher ID Card"
+                : member.type === "administrator"
+                ? "Administrator ID Card"
+                : "Staff ID Card"}
            </span>
         </div>
         <div className="text-right flex flex-col items-end pt-1 pb-[1mm] translate-y-[5mm]">

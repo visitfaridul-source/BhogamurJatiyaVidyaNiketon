@@ -1,5 +1,25 @@
-import React, { useState, useRef } from 'react';
-import { Search, Plus, Filter, MoreVertical, Mail, Phone, BookOpen, UserPlus, X, Upload, PencilLine, Camera, RefreshCcw } from 'lucide-react';
+import React, { useState, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Search, 
+  Plus, 
+  Filter, 
+  MoreVertical, 
+  Mail, 
+  Phone, 
+  BookOpen, 
+  UserPlus, 
+  X, 
+  Upload, 
+  PencilLine, 
+  Camera, 
+  RefreshCcw,
+  Users,
+  Briefcase,
+  ShieldCheck,
+  ChevronDown,
+  GraduationCap
+} from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useSchool } from '../../context/SchoolContext';
 import { useConfirm } from '../../context/ConfirmationContext';
@@ -66,11 +86,35 @@ const handleDateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 export default function Teachers() {
   const { teachers, setTeachers } = useSchool();
   const { confirm } = useConfirm();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedSubject, setSelectedSubject] = useState('All');
+  const [staffDropdownOpen, setStaffDropdownOpen] = useState(false);
   const [isAddTeacherModalOpen, setIsAddTeacherModalOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<any>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Available subjects for dropdown filtering
+  const availableSubjects = useMemo(() => {
+    const set = new Set<string>();
+    teachers.forEach((t) => {
+      if (t.subject && t.subject.trim()) set.add(t.subject.trim());
+    });
+    return Array.from(set).sort();
+  }, [teachers]);
+
+  const filteredTeachers = useMemo(() => {
+    return teachers.filter((t) => {
+      const matchSearch =
+        t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.classes && t.classes.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchSubject =
+        selectedSubject === 'All' || t.subject.trim() === selectedSubject;
+      return matchSearch && matchSubject;
+    });
+  }, [teachers, searchTerm, selectedSubject]);
 
   // Camera capture states
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -244,12 +288,68 @@ export default function Teachers() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Teacher Management</h1>
-          <p className="text-slate-500 text-sm mt-1 font-medium">Manage staff directory, class assignments, and communications.</p>
+          <p className="text-slate-500 text-sm mt-1 font-medium">Manage faculty directory, academic departments, class assignments, and communications.</p>
         </div>
-        <div className="flex gap-3 mt-2 sm:mt-0">
+        <div className="flex flex-wrap items-center gap-3 mt-2 sm:mt-0">
+          {/* Quick Staff Navigation Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setStaffDropdownOpen(!staffDropdownOpen)}
+              className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-xs cursor-pointer"
+            >
+              <Users className="w-4 h-4 text-blue-600" />
+              <span>Section: <strong className="text-blue-700">Teachers</strong></span>
+              <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${staffDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {staffDropdownOpen && (
+              <div className="absolute right-0 sm:left-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-30 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-slate-400">
+                  All Staff Categories
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStaffDropdownOpen(false)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all text-left cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <GraduationCap className="w-4 h-4 text-blue-600" />
+                    <span>Teachers (Faculty)</span>
+                  </div>
+                  <span className="text-[10px] bg-blue-200/60 text-blue-900 px-2 py-0.5 rounded-full font-mono font-bold">
+                    {teachers.length} Active
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStaffDropdownOpen(false);
+                    navigate('/admin/other-staff');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-all text-left cursor-pointer"
+                >
+                  <Briefcase className="w-4 h-4 text-amber-500" />
+                  <span>Other Staff (Guards, Accountant, Clerk...)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStaffDropdownOpen(false);
+                    navigate('/admin/administrators');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-all text-left cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4 text-purple-500" />
+                  <span>Administrator (Principal, Admins...)</span>
+                </button>
+              </div>
+            )}
+          </div>
+
           <button 
             onClick={() => setIsAddTeacherModalOpen(true)}
-            className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm"
+            className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             Add Teacher
@@ -262,22 +362,40 @@ export default function Teachers() {
           <Search className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input 
             type="text" 
-            placeholder="Search teachers by name or subject..." 
+            placeholder="Search teachers by name, subject, or assigned classes..." 
             className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <button className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-5 py-3 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm">
-          <Filter className="w-5 h-5" />
-          More Filters
-        </button>
+
+        {/* Teacher Subject Dropdown */}
+        <div className="flex items-center gap-2 shrink-0">
+          <BookOpen className="w-5 h-5 text-slate-400 hidden sm:block" />
+          <select
+            value={selectedSubject}
+            onChange={(e) => setSelectedSubject(e.target.value)}
+            className="bg-white border border-slate-200 text-slate-700 px-4 py-3 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+          >
+            <option value="All">All Subjects ({teachers.length})</option>
+            {availableSubjects.map((sub) => (
+              <option key={sub} value={sub}>
+                {sub}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {teachers
-          .filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()) || t.subject.toLowerCase().includes(searchTerm.toLowerCase()))
-          .map((teacher) => (
+      {filteredTeachers.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+          <GraduationCap className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-lg font-bold text-slate-700">No teachers found</h3>
+          <p className="text-slate-500 text-sm mt-1">Try adjusting your search query or subject filter.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredTeachers.map((teacher) => (
           <div key={teacher.id} className="bg-white rounded-[2xl] border border-slate-200 shadow-sm hover:-translate-y-1 hover:shadow-md transition-all duration-300 overflow-hidden group">
              <div className="h-24 bg-gradient-to-r from-blue-600 to-indigo-600 relative">
                <div className="absolute top-4 right-4 group/dropdown">
@@ -352,6 +470,7 @@ export default function Teachers() {
           </div>
         ))}
       </div>
+    )}
 
       {/* Add/Edit Teacher Modal */}
       {(isAddTeacherModalOpen || editingTeacher) && createPortal(

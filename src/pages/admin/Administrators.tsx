@@ -48,7 +48,7 @@ export interface AdministratorMember {
   isPrimarySignatory?: boolean;
 }
 
-const DEFAULT_ADMINISTRATORS: AdministratorMember[] = [
+export const DEFAULT_ADMINISTRATORS: AdministratorMember[] = [
   {
     id: 'ADM-EXEC-01',
     name: 'DR. S. K. SHARMA',
