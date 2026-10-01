@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useWebsite } from '@/context/WebsiteContext';
 import { useAuth } from '@/context/AuthContext';
@@ -39,15 +39,15 @@ import {
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
-const navItems = [
+const primaryNavItemsBeforeStaff = [
   { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/admin/students', icon: GraduationCap, label: 'Students' },
   { path: '/admin/admission-data', icon: FileText, label: 'Admin Data' },
   { path: '/admin/courses', icon: Library, label: 'Courses' },
   { path: '/admin/promotions', icon: TrendingUp, label: 'Promotions' },
-  { path: '/admin/teachers', icon: Users, label: 'Teachers' },
-  { path: '/admin/staffs', icon: Briefcase, label: 'Website Staff' },
-  { path: '/admin/website-pages', icon: BookOpen, label: 'Custom Pages' },
+];
+
+const primaryNavItemsAfterStaff = [
   { path: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
   { path: '/admin/whatsapp-messages', icon: MessageSquare, label: 'WhatsApp SMS' },
   { path: '/admin/results', icon: BookOpen, label: 'Results' },
@@ -55,6 +55,8 @@ const navItems = [
   { path: '/admin/fees', icon: Wallet, label: 'Fees' },
   { path: '/admin/id-cards', icon: IdCard, label: 'ID Cards' },
   { path: '/admin/sessions', icon: Clock, label: 'Sessions' },
+  { path: '/admin/website-pages', icon: BookOpen, label: 'Custom Pages' },
+  { path: '/admin/staffs', icon: Briefcase, label: 'Website Staff' },
 ];
 
 export default function AdminLayout() {
@@ -66,7 +68,8 @@ export default function AdminLayout() {
     syncAllToFirebase, 
     resetFirestoreToMock, 
     firestoreDbEmpty, 
-    dbStats 
+    dbStats,
+    teachers
   } = useSchool();
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -78,6 +81,17 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { settings } = useWebsite();
+
+  const isStaffRoute = location.pathname.startsWith('/admin/teachers') || 
+                       location.pathname.startsWith('/admin/other-staff') || 
+                       location.pathname.startsWith('/admin/administrators');
+  const [staffDropdownOpen, setStaffDropdownOpen] = useState(isStaffRoute);
+
+  useEffect(() => {
+    if (isStaffRoute) {
+      setStaffDropdownOpen(true);
+    }
+  }, [location.pathname, isStaffRoute]);
 
   // Open settings menu by default if we are on the settings page
   useState(() => {
@@ -136,13 +150,150 @@ export default function AdminLayout() {
         </div>
 
         <div className="flex-1 overflow-y-auto py-6 px-4 flex flex-col gap-2">
-          {navItems.filter(item => {
+          {/* Top Navigation Items (Dashboard, Students, Admin Data, Courses, Promotions) */}
+          {primaryNavItemsBeforeStaff.filter(item => {
             if (user.role === 'Super Admin' || user.role === 'Admin') return true;
             if (user.role === 'Teacher') {
-              return ['Dashboard', 'Students', 'Attendance', 'Results', 'Face Scan', 'Sessions', 'Courses'].includes(item.label);
+              return ['Dashboard', 'Students', 'Courses'].includes(item.label);
             }
             if (user.role === 'Student' || user.role === 'Parent') {
-              return ['Results', 'Courses'].includes(item.label);
+              return ['Courses'].includes(item.label);
+            }
+            return false;
+          }).map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname.includes(item.path);
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={cn(
+                  "flex items-center gap-4 px-4 py-3.5 rounded-2xl font-semibold transition-all duration-200",
+                  isActive 
+                    ? "bg-blue-600 text-white shadow-sm" 
+                    : "hover:bg-slate-800 hover:text-white"
+                )}
+                onClick={() => {
+                  if (window.innerWidth < 768) setSidebarOpen(false);
+                }}
+              >
+                <Icon className={cn("w-5 h-5", isActive ? "text-white" : "text-slate-400")} />
+                {item.label}
+              </NavLink>
+            );
+          })}
+
+          {/* ALL STAFF DROPDOWN (Renamed from Teachers with sub-options: Teachers, Other staff, Administrator) */}
+          {(user.role === 'Super Admin' || user.role === 'Admin' || user.role === 'Teacher') && (
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => setStaffDropdownOpen(!staffDropdownOpen)}
+                className={cn(
+                  "flex items-center justify-between w-full px-4 py-3.5 rounded-2xl font-semibold transition-all duration-200 cursor-pointer",
+                  isStaffRoute 
+                    ? "bg-blue-600 text-white shadow-sm" 
+                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                )}
+              >
+                <div className="flex items-center gap-4">
+                  <Users className={cn("w-5 h-5", isStaffRoute ? "text-white" : "text-slate-400")} />
+                  <span>All staff</span>
+                </div>
+                {staffDropdownOpen ? (
+                  <ChevronUp className="w-4 h-4 opacity-70" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 opacity-70" />
+                )}
+              </button>
+
+              <AnimatePresence>
+                {staffDropdownOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pl-6 pr-2 py-1.5 space-y-1">
+                      {/* 1. Teachers (Teacher Management - Page & Data 100% Intact) */}
+                      <NavLink
+                        to="/admin/teachers"
+                        className={cn(
+                          "flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all",
+                          location.pathname === '/admin/teachers'
+                            ? "bg-blue-500 text-white shadow-xs"
+                            : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                        )}
+                        onClick={() => {
+                          if (window.innerWidth < 768) setSidebarOpen(false);
+                        }}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <GraduationCap className={cn("w-4 h-4", location.pathname === '/admin/teachers' ? "text-white" : "text-blue-400")} />
+                          <span>Teachers</span>
+                        </div>
+                        <span className={cn(
+                          "text-[10px] px-1.5 py-0.2 rounded font-mono font-bold",
+                          location.pathname === '/admin/teachers' ? "bg-white/20 text-white" : "bg-slate-800 text-slate-400"
+                        )}>
+                          {teachers.length}
+                        </span>
+                      </NavLink>
+
+                      {/* 2. Other staff (Guards, Accountant, Clerk, Receptionist, Sweeper, Technician, Caretaker) */}
+                      {(user.role === 'Super Admin' || user.role === 'Admin') && (
+                        <NavLink
+                          to="/admin/other-staff"
+                          className={cn(
+                            "flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all",
+                            location.pathname === '/admin/other-staff'
+                              ? "bg-amber-600 text-white shadow-xs"
+                              : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                          )}
+                          onClick={() => {
+                            if (window.innerWidth < 768) setSidebarOpen(false);
+                          }}
+                        >
+                          <Briefcase className={cn("w-4 h-4", location.pathname === '/admin/other-staff' ? "text-white" : "text-amber-400")} />
+                          <span>Other staff</span>
+                        </NavLink>
+                      )}
+
+                      {/* 3. Administrator (Principal, Vice Principal, and Authorized Admins) */}
+                      {(user.role === 'Super Admin' || user.role === 'Admin') && (
+                        <NavLink
+                          to="/admin/administrators"
+                          className={cn(
+                            "flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all",
+                            location.pathname === '/admin/administrators'
+                              ? "bg-indigo-600 text-white shadow-xs"
+                              : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                          )}
+                          onClick={() => {
+                            if (window.innerWidth < 768) setSidebarOpen(false);
+                          }}
+                        >
+                          <ShieldCheck className={cn("w-4 h-4", location.pathname === '/admin/administrators' ? "text-white" : "text-indigo-400")} />
+                          <span>Administrator</span>
+                        </NavLink>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Remaining Navigation Items (Attendance, WhatsApp, Results, Face Scan, Fees, etc.) */}
+          {primaryNavItemsAfterStaff.filter(item => {
+            if (user.role === 'Super Admin' || user.role === 'Admin') return true;
+            if (user.role === 'Teacher') {
+              return ['Attendance', 'Results', 'Face Scan', 'Sessions'].includes(item.label);
+            }
+            if (user.role === 'Student' || user.role === 'Parent') {
+              return ['Results'].includes(item.label);
             }
             return false;
           }).map((item) => {

@@ -14,6 +14,8 @@ import AdminLayout from './components/layout/AdminLayout';
 import Dashboard from './pages/admin/Dashboard';
 import Students from './pages/admin/Students';
 import Teachers from './pages/admin/Teachers';
+import OtherStaff from './pages/admin/OtherStaff';
+import Administrators from './pages/admin/Administrators';
 import Fees from './pages/admin/Fees';
 import IdCardGenerator from './pages/admin/IdCardGenerator';
 import Settings from './pages/admin/Settings';
@@ -78,6 +80,8 @@ export default function App() {
               <Route path="students" element={<Students />} />
               <Route path="promotions" element={<Promotions />} />
               <Route path="teachers" element={<Teachers />} />
+              <Route path="other-staff" element={<OtherStaff />} />
+              <Route path="administrators" element={<Administrators />} />
               <Route path="staffs" element={<StaffManagement />} />
               <Route path="attendance" element={<Attendance />} />
               <Route path="whatsapp-messages" element={<WhatsAppMessages />} />
