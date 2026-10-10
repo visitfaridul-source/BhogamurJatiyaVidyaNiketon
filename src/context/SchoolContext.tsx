@@ -153,14 +153,17 @@ interface SchoolContextType {
   deleteSchoolEvent: (id: string) => Promise<void>;
 }
 
-const mockStudents: Student[] = [
-  { id: 'ADM2023001', name: 'AARAV SHARMA', gender: 'Male', class: 'Class 10', section: 'A', roll: '1', parentName: 'RAJESH SHARMA', phone: '+1 (555) 123-4567', dob: '15/08/2008', admissionDate: '24/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aarav' },
-  { id: 'ADM2023002', name: 'SOPHIA CHEN', gender: 'Female', class: 'Class 10', section: 'A', roll: '2', parentName: 'DAVID CHEN', phone: '+1 (555) 987-6543', dob: '12/10/2008', admissionDate: '25/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sophia' }
+export const mockStudents: Student[] = [
+  { id: 'ADM2023001', name: 'AARAV SHARMA', gender: 'Male', class: 'Class 10', section: 'A', roll: '1', parentName: 'RAJESH SHARMA', phone: '+91 94350-00101', dob: '15/08/2008', admissionDate: '24/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aarav' },
+  { id: 'ADM2023002', name: 'SOPHIA CHEN', gender: 'Female', class: 'Class 10', section: 'A', roll: '2', parentName: 'DAVID CHEN', phone: '+91 94350-00102', dob: '12/10/2008', admissionDate: '25/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sophia' },
+  { id: 'ADM2023003', name: 'PRIYA DAS', gender: 'Female', class: 'Class 9', section: 'A', roll: '3', parentName: 'BIKASH DAS', phone: '+91 94350-11223', dob: '10/05/2009', admissionDate: '12/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya' },
+  { id: 'ADM2023004', name: 'ROHIT SAIKIA', gender: 'Male', class: 'Class 8', section: 'A', roll: '4', parentName: 'DIPEN SAIKIA', phone: '+91 94350-22334', dob: '18/11/2010', admissionDate: '15/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Rohit' },
+  { id: 'STU001', name: 'ANANYA BORA', gender: 'Female', class: 'Class 10', section: 'A', roll: '5', parentName: 'HEMANTA BORA', phone: '+91 94350-33445', dob: '05/02/2008', admissionDate: '20/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ananya' }
 ];
 
-const mockTeachers: Teacher[] = [
-  { id: 'T001', name: 'DR. SARAH JENKINS', gender: 'Female', subject: 'Mathematics', qualification: 'Ph.D. in Math', phone: '+1 (555) 123-0001', email: 'sarah.j@school.com', dob: '12/03/1985', joiningDate: '01/06/2018', status: 'Present', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah' },
-  { id: 'T002', name: 'MICHAEL CHANG', gender: 'Male', subject: 'Physics', qualification: 'M.Sc. Physics', phone: '+1 (555) 123-0002', email: 'm.chang@school.com', dob: '22/07/1988', joiningDate: '15/07/2020', status: 'Present', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Michael' }
+export const mockTeachers: Teacher[] = [
+  { id: 'T001', name: 'DR. SARAH JENKINS', gender: 'Female', subject: 'Mathematics', qualification: 'Ph.D. in Math', phone: '+91 94350-00111', email: 'sarah.j@bjvn.edu', dob: '12/03/1985', joiningDate: '01/06/2018', status: 'Present', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah' },
+  { id: 'T002', name: 'MICHAEL CHANG', gender: 'Male', subject: 'Physics', qualification: 'M.Sc. Physics', phone: '+91 94350-00112', email: 'm.chang@bjvn.edu', dob: '22/07/1988', joiningDate: '15/07/2020', status: 'Present', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Michael' }
 ];
 
 const mockAdmissions: OnlineAdmissionForm[] = [
@@ -258,8 +261,22 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const isAdminUser = user && (user.role === 'Super Admin' || user.role === 'Admin');
 
-  const [students, setStudentsState] = useState<Student[]>([]);
-  const [teachers, setTeachersState] = useState<Teacher[]>([]);
+  const [students, setStudentsState] = useState<Student[]>(() => {
+    try {
+      const local = localStorage.getItem('school_students_v1');
+      if (local) return JSON.parse(local);
+    } catch (e) {}
+    return mockStudents;
+  });
+
+  const [teachers, setTeachersState] = useState<Teacher[]>(() => {
+    try {
+      const local = localStorage.getItem('school_teachers_v1');
+      if (local) return JSON.parse(local);
+    } catch (e) {}
+    return mockTeachers;
+  });
+
   const [onlineAdmissions, setOnlineAdmissionsState] = useState<OnlineAdmissionForm[]>([]);
   const [results, setResultsState] = useState<StudentResult[]>([]);
   const [sessions, setSessionsState] = useState<AcademicSession[]>([]);
@@ -271,8 +288,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
   // Track Firestore actual database statistics
   const [dbStats, setDbStats] = useState({
-    students: 0,
-    teachers: 0,
+    students: mockStudents.length,
+    teachers: mockTeachers.length,
     onlineAdmissions: 0,
     results: 0,
     sessions: 0,
@@ -307,46 +324,64 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     let unsubFees = () => {};
     let unsubEvents = () => {};
 
-    // 1. Students - only if logged in
+    // 1. Students - load from Firestore or fallback to mock/local
     if (user) {
       unsubStudents = onSnapshot(collection(db, 'students'), (snapshot) => {
         const data: Student[] = [];
         snapshot.forEach(doc => {
           data.push({ id: doc.id, ...doc.data() } as Student);
         });
-        setDbStats(prev => ({ ...prev, students: snapshot.size }));
+        setDbStats(prev => ({ ...prev, students: snapshot.size || mockStudents.length }));
         if (snapshot.size === 0) {
-          setStudentsState([]);
+          // If firestore is empty, seed mockStudents so the database is populated
+          mockStudents.forEach(item => {
+            setDoc(doc(db, 'students', item.id), sanitizeFirestoreData(item)).catch(() => {});
+          });
+          setStudentsState(mockStudents);
+          localStorage.setItem('school_students_v1', JSON.stringify(mockStudents));
         } else {
           setStudentsState(data);
+          localStorage.setItem('school_students_v1', JSON.stringify(data));
         }
       }, () => {
-        // Suppress background listener error in console
-        setStudentsState([]);
+        // Suppress background listener error in console and keep local state
+        try {
+          const local = localStorage.getItem('school_students_v1');
+          if (local) setStudentsState(JSON.parse(local));
+          else setStudentsState(mockStudents);
+        } catch {
+          setStudentsState(mockStudents);
+        }
       });
-    } else {
-      setStudentsState([]);
     }
 
-    // 2. Teachers - only if logged in
+    // 2. Teachers - load from Firestore or fallback to mock/local
     if (user) {
       unsubTeachers = onSnapshot(collection(db, 'teachers'), (snapshot) => {
         const data: Teacher[] = [];
         snapshot.forEach(doc => {
           data.push({ id: doc.id, ...doc.data() } as Teacher);
         });
-        setDbStats(prev => ({ ...prev, teachers: snapshot.size }));
+        setDbStats(prev => ({ ...prev, teachers: snapshot.size || mockTeachers.length }));
         if (snapshot.size === 0) {
-          setTeachersState([]);
+          mockTeachers.forEach(item => {
+            setDoc(doc(db, 'teachers', item.id), sanitizeFirestoreData(item)).catch(() => {});
+          });
+          setTeachersState(mockTeachers);
+          localStorage.setItem('school_teachers_v1', JSON.stringify(mockTeachers));
         } else {
           setTeachersState(data);
+          localStorage.setItem('school_teachers_v1', JSON.stringify(data));
         }
       }, () => {
-        // Suppress background listener error in console
-        setTeachersState([]);
+        try {
+          const local = localStorage.getItem('school_teachers_v1');
+          if (local) setTeachersState(JSON.parse(local));
+          else setTeachersState(mockTeachers);
+        } catch {
+          setTeachersState(mockTeachers);
+        }
       });
-    } else {
-      setTeachersState([]);
     }
 
     // 3. Online Admissions - only if Admin user

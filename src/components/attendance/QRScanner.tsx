@@ -24,11 +24,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
-import { useSchool } from "@/context/SchoolContext";
+import { useSchool, mockStudents, mockTeachers, Student } from "@/context/SchoolContext";
 import { useAttendanceTiming, formatTime12h } from "@/lib/attendanceTiming";
 import AttendanceTimeManagerModal from "@/components/attendance/AttendanceTimeManagerModal";
 import { db, sanitizeFirestoreData } from "@/firebase";
-import { doc, setDoc, collection, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, onSnapshot } from "firebase/firestore";
 import { OtherStaffMember, DEFAULT_STAFF_LIST } from "@/pages/admin/OtherStaff";
 import { AdministratorMember, DEFAULT_ADMINISTRATORS } from "@/pages/admin/Administrators";
 
@@ -175,6 +175,9 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContextClass) return;
       const ctx = new AudioContextClass();
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
       
       if (type === "success") {
         // High, pleasant chime for attendance marked
@@ -235,6 +238,8 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     }
   };
 
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
   const speakVoice = (text: string) => {
     if (!soundEnabled) return;
     try {
@@ -247,7 +252,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
         setTimeout(() => {
           try {
             const utterance = new SpeechSynthesisUtterance(text);
-            utterance.rate = 0.95; // Crisp, perfectly paced pronunciation
+            utterance.rate = 0.95; // Crisp, clearly enunciated
             utterance.pitch = 1.05;
             utterance.volume = 1.0;
             utterance.lang = "en-IN";
@@ -257,6 +262,16 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
             if (preferred) {
               utterance.voice = preferred;
             }
+            activeUtteranceRef.current = utterance;
+            (window as any)._activeUtterance = utterance;
+            utterance.onend = () => {
+              activeUtteranceRef.current = null;
+              (window as any)._activeUtterance = null;
+            };
+            utterance.onerror = () => {
+              activeUtteranceRef.current = null;
+              (window as any)._activeUtterance = null;
+            };
             window.speechSynthesis.speak(utterance);
           } catch (e) {
             console.warn("SpeechSynthesis utterance error:", e);
@@ -442,107 +457,300 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     const cleanName = (payloadName || "").trim().toLowerCase();
     const cleanIdAlphaNum = cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
-    // Strategy 1: Check Students
-    if (parsedType === "student" || parsedType === "" || parsedType === "unknown") {
-      // 1A. Exact ID match
-      let student = students.find(s => s.id === cleanId);
-      // 1B. Case-insensitive ID match
-      if (!student) {
-        student = students.find(s => s.id.toLowerCase() === cleanId.toLowerCase());
-      }
-      // 1C. Clean alphanumeric ID match (handles ADM-01 vs ADM01 vs STU_01)
-      if (!student && cleanIdAlphaNum) {
-        student = students.find(s => s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
-      }
-      // 1D. Roll number match
-      if (!student && cleanId) {
-        const rollMatches = students.filter(s => {
-          const sRoll = (s.roll || "").trim();
-          const matchRoll = sRoll === cleanId || sRoll === String(parseInt(cleanId, 10));
-          if (!matchRoll) return false;
-          if (payloadClass) {
-            return s.class.toLowerCase().replace(/\s+/g, '') === payloadClass.toLowerCase().replace(/\s+/g, '');
-          }
-          return true;
-        });
-        if (rollMatches.length === 1) {
-          student = rollMatches[0];
+    // Helper: Build student match object with guaranteed photo resolution
+    const buildStudentResult = (s: Student) => ({
+      member: s,
+      type: "student" as const,
+      classNameStr: `${s.class} - ${s.section || "A"}`,
+      photoUrl: s.avatar || (s as any).photoUrl || (s as any).photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(s.name)}`
+    });
+
+    // Helper: Build teacher match object
+    const buildTeacherResult = (t: any) => ({
+      member: t,
+      type: "teacher" as const,
+      classNameStr: t.subject || "Faculty Member",
+      photoUrl: t.avatar || (t as any).photoUrl || (t as any).photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(t.name)}`
+    });
+
+    // Helper: Build staff match object
+    const buildStaffResult = (st: OtherStaffMember) => ({
+      member: st,
+      type: "other-staff" as const,
+      classNameStr: st.role || st.department || "Staff",
+      photoUrl: st.avatar || (st as any).photoUrl || (st as any).photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(st.name)}`
+    });
+
+    // Helper: Build admin match object
+    const buildAdminResult = (adm: AdministratorMember) => ({
+      member: adm,
+      type: "administrator" as const,
+      classNameStr: adm.designation || "Administrator",
+      photoUrl: adm.avatar || (adm as any).photoUrl || (adm as any).photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(adm.name)}`
+    });
+
+    // Tier 1: Exact direct ID matches across all school roles
+    if (cleanId) {
+      const sExact = students.find(s => s.id === cleanId || s.id.toLowerCase() === cleanId.toLowerCase());
+      if (sExact) return buildStudentResult(sExact);
+
+      const tExact = teachers.find(t => t.id === cleanId || t.id.toLowerCase() === cleanId.toLowerCase());
+      if (tExact) return buildTeacherResult(tExact);
+
+      const stExact = otherStaffList.find(st => st.id === cleanId || st.id.toLowerCase() === cleanId.toLowerCase());
+      if (stExact) return buildStaffResult(stExact);
+
+      const admExact = adminList.find(ad => ad.id === cleanId || ad.id.toLowerCase() === cleanId.toLowerCase());
+      if (admExact) return buildAdminResult(admExact);
+    }
+
+    // Tier 2: Clean alphanumeric ID matches (e.g. ADM-01 vs ADM01 vs STU_01 vs STU001 vs ADM2023001)
+    if (cleanIdAlphaNum) {
+      const sAlpha = students.find(s => s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
+      if (sAlpha) return buildStudentResult(sAlpha);
+
+      const tAlpha = teachers.find(t => t.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
+      if (tAlpha) return buildTeacherResult(tAlpha);
+
+      const stAlpha = otherStaffList.find(st => st.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
+      if (stAlpha) return buildStaffResult(stAlpha);
+
+      const admAlpha = adminList.find(ad => ad.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
+      if (admAlpha) return buildAdminResult(admAlpha);
+    }
+
+    // Tier 3: Roll number match across students (handles plain serial roll e.g. "1", "2", "05")
+    if (cleanId) {
+      const rollMatches = students.filter(s => {
+        const sRoll = (s.roll || "").trim();
+        const matchRoll = sRoll === cleanId || sRoll === String(parseInt(cleanId, 10));
+        if (!matchRoll) return false;
+        if (payloadClass) {
+          return s.class.toLowerCase().replace(/\s+/g, '') === payloadClass.toLowerCase().replace(/\s+/g, '');
         }
+        return true;
+      });
+      if (rollMatches.length === 1) {
+        return buildStudentResult(rollMatches[0]);
       }
-      // 1E. Name matching fallback
-      if (!student && cleanName) {
-        const nameMatches = students.filter(s => s.name.toLowerCase().trim() === cleanName);
-        if (nameMatches.length === 1) {
-          student = nameMatches[0];
-        } else if (nameMatches.length > 1 && payloadClass) {
-          const classSpecific = nameMatches.find(s => s.class.toLowerCase().replace(/\s+/g, '') === payloadClass.toLowerCase().replace(/\s+/g, ''));
-          if (classSpecific) student = classSpecific;
-        }
+    }
+
+    // Tier 4: Exact Name matches
+    if (cleanName) {
+      // 4A. Student exact name (or with class filter)
+      const nameMatches = students.filter(s => s.name.toLowerCase().trim() === cleanName);
+      if (nameMatches.length === 1) {
+        return buildStudentResult(nameMatches[0]);
+      } else if (nameMatches.length > 1 && payloadClass) {
+        const classSpecific = nameMatches.find(s => s.class.toLowerCase().replace(/\s+/g, '') === payloadClass.toLowerCase().replace(/\s+/g, ''));
+        if (classSpecific) return buildStudentResult(classSpecific);
       }
 
-      if (student) {
+      // 4B. Teacher name
+      const tName = teachers.find(t => t.name.toLowerCase().trim() === cleanName);
+      if (tName) return buildTeacherResult(tName);
+
+      // 4C. Staff name
+      const stName = otherStaffList.find(st => st.name.toLowerCase().trim() === cleanName);
+      if (stName) return buildStaffResult(stName);
+
+      // 4D. Admin name
+      const admName = adminList.find(ad => ad.name.toLowerCase().trim() === cleanName);
+      if (admName) return buildAdminResult(admName);
+    }
+
+    // Tier 5: Clean alphanumeric Name matches
+    if (cleanName) {
+      const cleanNameAlphaNum = cleanName.replace(/[^a-zA-Z0-9]/g, '');
+      if (cleanNameAlphaNum.length >= 3) {
+        const sAlphaName = students.find(s => s.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
+        if (sAlphaName) return buildStudentResult(sAlphaName);
+
+        const tAlphaName = teachers.find(t => t.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
+        if (tAlphaName) return buildTeacherResult(tAlphaName);
+
+        const stAlphaName = otherStaffList.find(st => st.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
+        if (stAlphaName) return buildStaffResult(stAlphaName);
+
+        const admAlphaName = adminList.find(ad => ad.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
+        if (admAlphaName) return buildAdminResult(admAlphaName);
+      }
+    }
+
+    return null;
+  };
+
+  // Fallback database lookup: checks localStorage journals and Firestore directly
+  const fallbackLookupDatabase = async (
+    parsedId: string,
+    payloadName: string,
+    payloadClass: string
+  ) => {
+    const cleanId = (parsedId || "").trim();
+    const cleanName = (payloadName || "").trim().toLowerCase();
+    const cleanIdAlphaNum = cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+    // 1. Check local storage cache
+    try {
+      const localStudents: Student[] = JSON.parse(localStorage.getItem('school_students_v1') || '[]');
+      const matchStu = localStudents.find(s => 
+        (s.id && s.id.toLowerCase() === cleanId.toLowerCase()) ||
+        (cleanIdAlphaNum && s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum) ||
+        (cleanName && s.name && s.name.toLowerCase().trim() === cleanName)
+      );
+      if (matchStu) {
         return {
-          member: student,
+          member: matchStu,
           type: "student" as const,
-          classNameStr: `${student.class} - ${student.section || "A"}`,
-          photoUrl: student.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}`
+          classNameStr: `${matchStu.class} - ${matchStu.section || "A"}`,
+          photoUrl: matchStu.avatar || (matchStu as any).photoUrl || (matchStu as any).photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(matchStu.name)}`
         };
       }
+    } catch (e) {}
+
+    try {
+      const localStaff: OtherStaffMember[] = JSON.parse(localStorage.getItem('school_other_staff_v1') || '[]');
+      const matchStf = localStaff.find(st => 
+        (st.id && st.id.toLowerCase() === cleanId.toLowerCase()) ||
+        (cleanIdAlphaNum && st.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum) ||
+        (cleanName && st.name && st.name.toLowerCase().trim() === cleanName)
+      );
+      if (matchStf) {
+        return {
+          member: matchStf,
+          type: "other-staff" as const,
+          classNameStr: matchStf.role || matchStf.department || "Staff",
+          photoUrl: matchStf.avatar || (matchStf as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(matchStf.name)}`
+        };
+      }
+    } catch (e) {}
+
+    try {
+      const localAdmins: AdministratorMember[] = JSON.parse(localStorage.getItem('school_administrators_v1') || '[]');
+      const matchAdm = localAdmins.find(ad => 
+        (ad.id && ad.id.toLowerCase() === cleanId.toLowerCase()) ||
+        (cleanIdAlphaNum && ad.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum) ||
+        (cleanName && ad.name && ad.name.toLowerCase().trim() === cleanName)
+      );
+      if (matchAdm) {
+        return {
+          member: matchAdm,
+          type: "administrator" as const,
+          classNameStr: matchAdm.designation || "Administrator",
+          photoUrl: matchAdm.avatar || (matchAdm as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(matchAdm.name)}`
+        };
+      }
+    } catch (e) {}
+
+    // 2. Query Firestore directly by ID
+    if (cleanId) {
+      try {
+        const studentDoc = await getDoc(doc(db, 'students', cleanId));
+        if (studentDoc.exists()) {
+          const s = { id: studentDoc.id, ...studentDoc.data() } as Student;
+          return {
+            member: s,
+            type: "student" as const,
+            classNameStr: `${s.class} - ${s.section || "A"}`,
+            photoUrl: s.avatar || (s as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(s.name)}`
+          };
+        }
+      } catch (e) {}
+
+      try {
+        const staffDoc = await getDoc(doc(db, 'other_staff', cleanId));
+        if (staffDoc.exists()) {
+          const st = { id: staffDoc.id, ...staffDoc.data() } as OtherStaffMember;
+          return {
+            member: st,
+            type: "other-staff" as const,
+            classNameStr: st.role || st.department || "Staff",
+            photoUrl: st.avatar || (st as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(st.name)}`
+          };
+        }
+      } catch (e) {}
+
+      try {
+        const adminDoc = await getDoc(doc(db, 'administrators', cleanId));
+        if (adminDoc.exists()) {
+          const ad = { id: adminDoc.id, ...adminDoc.data() } as AdministratorMember;
+          return {
+            member: ad,
+            type: "administrator" as const,
+            classNameStr: ad.designation || "Administrator",
+            photoUrl: ad.avatar || (ad as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(ad.name)}`
+          };
+        }
+      } catch (e) {}
+
+      try {
+        const teacherDoc = await getDoc(doc(db, 'teachers', cleanId));
+        if (teacherDoc.exists()) {
+          const t = { id: teacherDoc.id, ...teacherDoc.data() } as any;
+          return {
+            member: t,
+            type: "teacher" as const,
+            classNameStr: t.subject || "Faculty",
+            photoUrl: t.avatar || (t as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(t.name)}`
+          };
+        }
+      } catch (e) {}
     }
 
-    // Strategy 2: Check Teachers
-    let teacher = teachers.find(t => t.id === cleanId || t.id.toLowerCase() === cleanId.toLowerCase());
-    if (!teacher && cleanName) {
-      teacher = teachers.find(t => t.name.toLowerCase().trim() === cleanName);
-    }
-    if (teacher) {
-      return {
-        member: teacher,
-        type: "teacher" as const,
-        classNameStr: teacher.subject || "Faculty Member",
-        photoUrl: teacher.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${teacher.name}`
-      };
-    }
-
-    // Strategy 3: Check Other Staff
-    let staff = otherStaffList.find(st => st.id === cleanId || st.id.toLowerCase() === cleanId.toLowerCase());
-    if (!staff && cleanName) {
-      staff = otherStaffList.find(st => st.name.toLowerCase().trim() === cleanName);
-    }
-    if (staff) {
-      return {
-        member: staff,
-        type: "other-staff" as const,
-        classNameStr: staff.role || staff.department || "Staff",
-        photoUrl: staff.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${staff.name}`
-      };
-    }
-
-    // Strategy 4: Check Administrators
-    let admin = adminList.find(ad => ad.id === cleanId || ad.id.toLowerCase() === cleanId.toLowerCase());
-    if (!admin && cleanName) {
-      admin = adminList.find(ad => ad.name.toLowerCase().trim() === cleanName);
-    }
-    if (admin) {
-      return {
-        member: admin,
-        type: "administrator" as const,
-        classNameStr: admin.designation || "Administrator",
-        photoUrl: admin.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${admin.name}`
-      };
-    }
-
-    // Strategy 5: Deep Student Search across any partial ID or name if parsedType was teacher/unknown
-    const anyStudent = students.find(s => 
-      s.id.toLowerCase() === cleanId.toLowerCase() || 
+    // 3. Fallback to mock databases
+    const mockStu = mockStudents.find(s => 
+      s.id.toLowerCase() === cleanId.toLowerCase() ||
+      (cleanIdAlphaNum && s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum) ||
       (cleanName && s.name.toLowerCase().trim() === cleanName)
     );
-    if (anyStudent) {
+    if (mockStu) {
       return {
-        member: anyStudent,
+        member: mockStu,
         type: "student" as const,
-        classNameStr: `${anyStudent.class} - ${anyStudent.section || "A"}`,
-        photoUrl: anyStudent.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${anyStudent.name}`
+        classNameStr: `${mockStu.class} - ${mockStu.section || "A"}`,
+        photoUrl: mockStu.avatar || (mockStu as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(mockStu.name)}`
+      };
+    }
+
+    const mockStf = DEFAULT_STAFF_LIST.find(st => 
+      st.id.toLowerCase() === cleanId.toLowerCase() ||
+      (cleanIdAlphaNum && st.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum) ||
+      (cleanName && st.name.toLowerCase().trim() === cleanName)
+    );
+    if (mockStf) {
+      return {
+        member: mockStf,
+        type: "other-staff" as const,
+        classNameStr: mockStf.role || mockStf.department || "Staff",
+        photoUrl: mockStf.avatar || (mockStf as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(mockStf.name)}`
+      };
+    }
+
+    const mockAdm = DEFAULT_ADMINISTRATORS.find(ad => 
+      ad.id.toLowerCase() === cleanId.toLowerCase() ||
+      (cleanIdAlphaNum && ad.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum) ||
+      (cleanName && ad.name.toLowerCase().trim() === cleanName)
+    );
+    if (mockAdm) {
+      return {
+        member: mockAdm,
+        type: "administrator" as const,
+        classNameStr: mockAdm.designation || "Administrator",
+        photoUrl: mockAdm.avatar || (mockAdm as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(mockAdm.name)}`
+      };
+    }
+
+    const mockTch = mockTeachers.find(t => 
+      t.id.toLowerCase() === cleanId.toLowerCase() ||
+      (cleanIdAlphaNum && t.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum) ||
+      (cleanName && t.name.toLowerCase().trim() === cleanName)
+    );
+    if (mockTch) {
+      return {
+        member: mockTch,
+        type: "teacher" as const,
+        classNameStr: mockTch.subject || "Faculty",
+        photoUrl: mockTch.avatar || (mockTch as any).photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(mockTch.name)}`
       };
     }
 
@@ -551,7 +759,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
 
   // 6. 100% Accuracy Sequential Attendance Engine
   const handleScannedData = async (payload: string) => {
-    // A. Sequential Execution Lock: Ignore any scan while a student record is saving to server
+    // A. Sequential Execution Lock: Ignore any camera frames while previous student is being saved to server
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsProcessing(true);
@@ -561,36 +769,69 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     const readableTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     try {
-      // B. Parse QR payload safely
-      let parsedId = payload.trim();
+      // B. Parse QR payload safely (handles URI encoded, JSON formats, raw IDs, and formatted prefixes)
+      let rawText = payload.trim();
+      if (rawText.startsWith("%7B") || rawText.includes("%22")) {
+        try { rawText = decodeURIComponent(rawText); } catch (e) {}
+      }
+      if (rawText.startsWith('"') && rawText.endsWith('"') && rawText.length > 2) {
+        rawText = rawText.slice(1, -1);
+      }
+
+      let parsedId = rawText;
       let parsedType = "student";
       let payloadName = "";
       let payloadClass = "";
 
       try {
-        const parsed = JSON.parse(payload);
-        if (parsed.id) {
-          parsedId = String(parsed.id).trim();
-          parsedType = parsed.type || "student";
-          payloadName = parsed.name || "";
-          payloadClass = parsed.class || "";
+        const parsed = JSON.parse(rawText);
+        if (parsed && typeof parsed === "object") {
+          parsedId = String(
+            parsed.id || 
+            parsed.ID || 
+            parsed.Id || 
+            parsed.studentId || 
+            parsed.student_id || 
+            parsed.memberId || 
+            parsed.member_id || 
+            parsed.admissionNo || 
+            parsed.admission_no || 
+            parsed.rollNo || 
+            parsed.roll_no || 
+            parsed.roll || 
+            parsed.code || 
+            parsed.regNo || 
+            ""
+          ).trim();
+
+          parsedType = String(parsed.type || parsed.role || parsed.category || "student").trim().toLowerCase();
+          payloadName = String(parsed.name || parsed.studentName || parsed.memberName || "").trim();
+          payloadClass = String(parsed.class || parsed.className || "").trim();
         }
       } catch (e) {
-        parsedId = payload.trim();
+        parsedId = rawText.trim();
       }
 
-      // C. Resolve person with multi-tier matching
-      const matchResult = resolveScannedPerson(payload, parsedId, parsedType, payloadName, payloadClass);
+      // Clean prefix if any, e.g. "ID: ADM2023001" or "ID-STU001"
+      parsedId = parsedId.replace(/^(id|id\s*no|id\s*#|admission\s*no)[\s:\-=_]+/i, '').trim();
+
+      // C. Resolve person with multi-tier matching (in-memory + database fallback)
+      let matchResult = resolveScannedPerson(rawText, parsedId, parsedType, payloadName, payloadClass);
+
+      if (!matchResult) {
+        // Asynchronous database & cache fallback lookup
+        matchResult = await fallbackLookupDatabase(parsedId, payloadName, payloadClass);
+      }
 
       if (!matchResult) {
         playBeep("error");
         speakVoice("ID not found in database");
         setScannedMember({
-          name: payloadName || parsedId,
+          name: payloadName || parsedId || "Unknown Member",
           classOrSubject: "Unknown Record",
           status: "NOT_FOUND",
           mode: scannerMode,
-          photo: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payloadName || parsedId)}`,
+          photo: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payloadName || parsedId || 'ID')}`,
           serverVerified: false
         });
         await new Promise(r => setTimeout(r, 2200));
@@ -1073,6 +1314,9 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
                         alt={scannedMember.name} 
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover" 
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(scannedMember.name || 'ID')}`;
+                        }}
                       />
                     </div>
                     

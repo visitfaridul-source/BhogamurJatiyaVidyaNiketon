@@ -18,6 +18,9 @@ export interface CardMemberData {
   address?: string;
   photoUrl?: string; // Standardized to photoUrl
   photo?: string;
+  avatar?: string;
+  profilePhoto?: string;
+  image?: string;
   emergencyContact?: string;
   session?: string;
   // Teacher/Staff/Admin specific
@@ -194,8 +197,11 @@ export default function IdCardTemplate({
 
   const photoUrl =
     member.photoUrl ||
+    member.avatar ||
     member.photo ||
-    `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.name}`;
+    member.profilePhoto ||
+    member.image ||
+    `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(member.name || 'member')}`;
   const dob = member.dob || "01-Jan-2010";
   const parentName = member.parentName || "N/A";
   const motherName = member.motherName || "N/A";
@@ -214,11 +220,11 @@ export default function IdCardTemplate({
         style={{ boxSizing: "border-box" }}
       >
         {/* Custom Back Background Photo */}
-        {settings.idCardBackBackgroundUrl && (
+        {(settings.idCardBackBackgroundUrl || (settings as any).backBackgroundUrl || localStorage.getItem('idCardBackBackgroundUrl')) && (
           <div className="absolute inset-0 pointer-events-none z-0">
             <img 
-              src={settings.idCardBackBackgroundUrl}
-              className="w-full h-full object-cover"
+              src={settings.idCardBackBackgroundUrl || (settings as any).backBackgroundUrl || localStorage.getItem('idCardBackBackgroundUrl') || ''}
+              className="w-full h-full object-cover opacity-90"
               alt="Back Background"
             />
           </div>
@@ -279,28 +285,44 @@ export default function IdCardTemplate({
           </div>
         )}
 
-        <div className="flex-1 w-full pt-4 pb-[13mm] flex flex-col justify-end relative z-10">
+        <div className="flex-1 w-full pt-[13mm] pb-[13mm] flex flex-col items-center justify-center gap-1 relative z-10">
+          {/* Member Photo on Back Side */}
+          <div className="flex flex-col items-center justify-center shrink-0 relative z-20">
+            <div className="w-[17mm] h-[20mm] rounded-md overflow-hidden border-[1.5px] border-white shadow-md bg-white">
+              <img
+                src={photoUrl}
+                alt={member.name}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(member.name || 'ID')}`;
+                }}
+              />
+            </div>
+            <span className="text-[8px] font-bold text-slate-900 uppercase mt-0.5 max-w-[44mm] truncate text-center font-fjalla tracking-wide leading-tight">
+              {member.name}
+            </span>
+          </div>
+
           {/* QR Code Container - Centered */}
-          <div className="flex flex-col items-center justify-center mt-auto mb-0 shrink-0 relative z-20">
-            <div className="p-1.5 bg-white rounded-lg shadow-sm border border-black/5 flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center justify-center shrink-0 relative z-20">
+            <div className="p-1 bg-white rounded-lg shadow-sm border border-black/10 flex flex-col items-center gap-0.5">
               <QRCodeSVG
                 value={JSON.stringify({
                   id: member.id,
                   name: member.name,
-                  type: member.type,
+                  type: member.type || "student",
                   class: member.class || "",
                   section: member.section || ""
                 })}
-                size={80}
+                size={54}
                 level="M"
                 includeMargin={false}
               />
-              <span className="text-[7.5px] font-mono font-bold text-slate-900 tracking-wide bg-slate-50 px-2 py-0.5 rounded border border-black/5">
+              <span className="text-[6.5px] font-mono font-bold text-slate-900 tracking-wide bg-slate-50 px-1.5 py-0.5 rounded border border-black/5 leading-none">
                 ID No: {member.id}
               </span>
             </div>
           </div>
-
         </div>
 
         {/* Bottom Overlay Info */}
@@ -413,6 +435,9 @@ export default function IdCardTemplate({
             src={photoUrl}
             alt={member.name}
             className="w-full h-full object-cover"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(member.name || 'ID')}`;
+            }}
           />
           <div className="absolute inset-0 shadow-inner rounded-[4px] pointer-events-none"></div>
         </div>
