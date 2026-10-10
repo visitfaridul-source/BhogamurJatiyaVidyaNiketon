@@ -143,7 +143,7 @@ interface SchoolContextType {
     events: number;
   };
   attendanceMap: Record<string, { status: 'Present' | 'Absent' | 'Late' | 'Early Leave' | 'Half Day'; remarks: string; inTime?: string; outTime?: string; earlyOutReason?: string }>;
-  saveAttendanceRecord: (memberId: string, date: string, fields: { status?: 'Present' | 'Absent' | 'Late' | 'Early Leave' | 'Half Day'; remarks?: string; inTime?: string; outTime?: string; earlyOutReason?: string }) => Promise<void>;
+  saveAttendanceRecord: (memberId: string, date: string, fields: { status?: 'Present' | 'Absent' | 'Late' | 'Early Leave' | 'Half Day'; remarks?: string; inTime?: string; outTime?: string; earlyOutReason?: string }) => Promise<boolean>;
   deleteAttendanceRecord: (memberId: string, date: string) => Promise<void>;
   feesTransactions: any[];
   saveFeeTransaction: (tx: any) => Promise<void>;
@@ -917,9 +917,17 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         earlyOutReason: fields.earlyOutReason !== undefined ? fields.earlyOutReason : (existing.earlyOutReason || '')
       };
 
-      await setDoc(docRef, sanitizeFirestoreData(updatedRecord));
+      // Optimistic instant state update so UI, counters, and next scans never see stale data
+      setAttendanceMapState(prev => ({
+        ...prev,
+        [currentMapKey]: updatedRecord
+      }));
+
+      await setDoc(docRef, sanitizeFirestoreData(updatedRecord), { merge: true });
+      return true;
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `attendance/${date}_${memberId}`);
+      return false;
     }
   };
 

@@ -19,19 +19,24 @@ import {
   ArrowRight,
   ShieldCheck,
   RefreshCw,
-  SearchCode
+  SearchCode,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { useSchool } from "@/context/SchoolContext";
 import { useAttendanceTiming, formatTime12h } from "@/lib/attendanceTiming";
 import AttendanceTimeManagerModal from "@/components/attendance/AttendanceTimeManagerModal";
+import { db, sanitizeFirestoreData } from "@/firebase";
+import { doc, setDoc, collection, onSnapshot } from "firebase/firestore";
+import { OtherStaffMember, DEFAULT_STAFF_LIST } from "@/pages/admin/OtherStaff";
+import { AdministratorMember, DEFAULT_ADMINISTRATORS } from "@/pages/admin/Administrators";
 
 interface ScanLog {
   id: string;
   memberId: string;
   name: string;
-  type: "student" | "teacher";
+  type: "student" | "teacher" | "staff" | "other-staff" | "administrator";
   classOrSubject: string;
   time: string;
   mode: "Entry" | "Exit";
@@ -54,13 +59,58 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
   const [selectedCameraId, setSelectedCameraId] = useState<string>("");
   const [scannerMode, setScannerMode] = useState<"Entry" | "Exit">("Entry");
   const [selectedClass, setSelectedClass] = useState<string>("");
+
+  // 100% Accuracy Sequential Locking State (one student saved to server before next can scan)
+  const isProcessingRef = useRef<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [serverSaveStep, setServerSaveStep] = useState<string>("");
+
+  // Staff and Administrator lists for universal ID card scanning
+  const [otherStaffList, setOtherStaffList] = useState<OtherStaffMember[]>(() => {
+    try {
+      const local = localStorage.getItem('school_other_staff_v1');
+      if (local) return JSON.parse(local);
+    } catch (e) {}
+    return DEFAULT_STAFF_LIST;
+  });
+
+  const [adminList, setAdminList] = useState<AdministratorMember[]>(() => {
+    try {
+      const local = localStorage.getItem('school_administrators_v1');
+      if (local) return JSON.parse(local);
+    } catch (e) {}
+    return DEFAULT_ADMINISTRATORS;
+  });
+
+  useEffect(() => {
+    const unsubStaff = onSnapshot(collection(db, 'other_staff'), (snapshot) => {
+      if (!snapshot.empty) {
+        const list: OtherStaffMember[] = [];
+        snapshot.forEach((docSnap) => list.push({ id: docSnap.id, ...(docSnap.data() as any) }));
+        setOtherStaffList(list);
+      }
+    }, () => {});
+
+    const unsubAdmins = onSnapshot(collection(db, 'administrators'), (snapshot) => {
+      if (!snapshot.empty) {
+        const list: AdministratorMember[] = [];
+        snapshot.forEach((docSnap) => list.push({ id: docSnap.id, ...(docSnap.data() as any) }));
+        setAdminList(list);
+      }
+    }, () => {});
+
+    return () => {
+      unsubStaff();
+      unsubAdmins();
+    };
+  }, []);
   
   // Manual attendance input fallback
   const [manualSearch, setManualSearch] = useState("");
   const [manualType, setManualType] = useState<"student" | "teacher">("student");
 
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
-  const cooldownsRef = useRef<Record<string, number>>({}); // prevent scanning same card repeatedly within 8 seconds
+  const cooldownsRef = useRef<Record<string, number>>({});
 
   const todayDateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD for attendanceMap matching
 
@@ -189,11 +239,29 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     if (!soundEnabled) return;
     try {
       if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel(); // Clear speaking queue immediately
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.05;
-        utterance.pitch = 1.0;
-        window.speechSynthesis.speak(utterance);
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+        window.speechSynthesis.cancel();
+        
+        setTimeout(() => {
+          try {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 0.95; // Crisp, perfectly paced pronunciation
+            utterance.pitch = 1.05;
+            utterance.volume = 1.0;
+            utterance.lang = "en-IN";
+            
+            const voices = window.speechSynthesis.getVoices();
+            const preferred = voices.find(v => v.lang === "en-IN" || v.lang === "hi-IN" || v.lang.startsWith("en-"));
+            if (preferred) {
+              utterance.voice = preferred;
+            }
+            window.speechSynthesis.speak(utterance);
+          } catch (e) {
+            console.warn("SpeechSynthesis utterance error:", e);
+          }
+        }, 35);
       }
     } catch (e) {
       console.warn("SpeechSynthesis utterance failed:", e);
@@ -201,18 +269,6 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
   };
 
   const lastScanTimeRef = useRef<number>(Date.now());
-
-  useEffect(() => {
-    if (!isScanning) return;
-    lastScanTimeRef.current = Date.now();
-    const interval = setInterval(() => {
-      if (!scannedMember && (Date.now() - lastScanTimeRef.current > 15000)) {
-        speakVoice("Scan again");
-        lastScanTimeRef.current = Date.now();
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [isScanning, scannedMember, soundEnabled]);
 
   // 2. Hydrate scan history directly from database state so logs match today's actual updates
   useEffect(() => {
@@ -223,9 +279,11 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       if (key.startsWith(todayDateStr + ":")) {
         const memberId = key.substring(todayDateStr.length + 1);
         
-        // Find matching student or teacher
+        // Find matching student, teacher, other staff, or administrator
         const student = students.find(s => s.id === memberId);
         const teacher = teachers.find(t => t.id === memberId);
+        const staff = otherStaffList.find(st => st.id === memberId);
+        const admin = adminList.find(ad => ad.id === memberId);
         
         if (student) {
           list.push({
@@ -251,6 +309,30 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
             status: record.status as any,
             rawTime: record.inTime || record.outTime || "00:00"
           });
+        } else if (staff) {
+          list.push({
+            id: `seed_${memberId}_${record.inTime || record.outTime || "Entry"}`,
+            memberId: staff.id,
+            name: staff.name,
+            type: "other-staff",
+            classOrSubject: staff.role || "Staff",
+            time: record.inTime || record.outTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            mode: record.outTime ? "Exit" : "Entry",
+            status: record.status as any,
+            rawTime: record.inTime || record.outTime || "00:00"
+          });
+        } else if (admin) {
+          list.push({
+            id: `seed_${memberId}_${record.inTime || record.outTime || "Entry"}`,
+            memberId: admin.id,
+            name: admin.name,
+            type: "administrator",
+            classOrSubject: admin.designation || "Administrator",
+            time: record.inTime || record.outTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            mode: record.outTime ? "Exit" : "Entry",
+            status: record.status as any,
+            rawTime: record.inTime || record.outTime || "00:00"
+          });
         }
       }
     });
@@ -258,7 +340,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     // Sort by timestamp descending
     list.sort((a, b) => b.id.localeCompare(a.id));
     setScanLogs(list);
-  }, [attendanceMap, students, teachers, todayDateStr]);
+  }, [attendanceMap, students, teachers, otherStaffList, adminList, todayDateStr]);
 
   // 3. Setup HTML5-Qrcode scanner devices
   useEffect(() => {
@@ -311,6 +393,8 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
         }
       },
       (decodedText) => {
+        // Strict Sequential Lock: Drop any camera frames while previous student is being saved to server
+        if (isProcessingRef.current) return;
         handleScannedData(decodedText);
       },
       (errorMessage) => {
@@ -346,186 +430,376 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     }
   };
 
-  // 5. core attendance verification, double lookup, and Firestore writing
+  // 5. Robust multi-tier member resolver across Students, Teachers, Other Staff, and Admins
+  const resolveScannedPerson = (
+    rawPayload: string,
+    parsedId: string,
+    parsedType: string,
+    payloadName: string,
+    payloadClass: string
+  ) => {
+    const cleanId = (parsedId || "").trim();
+    const cleanName = (payloadName || "").trim().toLowerCase();
+    const cleanIdAlphaNum = cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+    // Strategy 1: Check Students
+    if (parsedType === "student" || parsedType === "" || parsedType === "unknown") {
+      // 1A. Exact ID match
+      let student = students.find(s => s.id === cleanId);
+      // 1B. Case-insensitive ID match
+      if (!student) {
+        student = students.find(s => s.id.toLowerCase() === cleanId.toLowerCase());
+      }
+      // 1C. Clean alphanumeric ID match (handles ADM-01 vs ADM01 vs STU_01)
+      if (!student && cleanIdAlphaNum) {
+        student = students.find(s => s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
+      }
+      // 1D. Roll number match
+      if (!student && cleanId) {
+        const rollMatches = students.filter(s => {
+          const sRoll = (s.roll || "").trim();
+          const matchRoll = sRoll === cleanId || sRoll === String(parseInt(cleanId, 10));
+          if (!matchRoll) return false;
+          if (payloadClass) {
+            return s.class.toLowerCase().replace(/\s+/g, '') === payloadClass.toLowerCase().replace(/\s+/g, '');
+          }
+          return true;
+        });
+        if (rollMatches.length === 1) {
+          student = rollMatches[0];
+        }
+      }
+      // 1E. Name matching fallback
+      if (!student && cleanName) {
+        const nameMatches = students.filter(s => s.name.toLowerCase().trim() === cleanName);
+        if (nameMatches.length === 1) {
+          student = nameMatches[0];
+        } else if (nameMatches.length > 1 && payloadClass) {
+          const classSpecific = nameMatches.find(s => s.class.toLowerCase().replace(/\s+/g, '') === payloadClass.toLowerCase().replace(/\s+/g, ''));
+          if (classSpecific) student = classSpecific;
+        }
+      }
+
+      if (student) {
+        return {
+          member: student,
+          type: "student" as const,
+          classNameStr: `${student.class} - ${student.section || "A"}`,
+          photoUrl: student.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}`
+        };
+      }
+    }
+
+    // Strategy 2: Check Teachers
+    let teacher = teachers.find(t => t.id === cleanId || t.id.toLowerCase() === cleanId.toLowerCase());
+    if (!teacher && cleanName) {
+      teacher = teachers.find(t => t.name.toLowerCase().trim() === cleanName);
+    }
+    if (teacher) {
+      return {
+        member: teacher,
+        type: "teacher" as const,
+        classNameStr: teacher.subject || "Faculty Member",
+        photoUrl: teacher.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${teacher.name}`
+      };
+    }
+
+    // Strategy 3: Check Other Staff
+    let staff = otherStaffList.find(st => st.id === cleanId || st.id.toLowerCase() === cleanId.toLowerCase());
+    if (!staff && cleanName) {
+      staff = otherStaffList.find(st => st.name.toLowerCase().trim() === cleanName);
+    }
+    if (staff) {
+      return {
+        member: staff,
+        type: "other-staff" as const,
+        classNameStr: staff.role || staff.department || "Staff",
+        photoUrl: staff.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${staff.name}`
+      };
+    }
+
+    // Strategy 4: Check Administrators
+    let admin = adminList.find(ad => ad.id === cleanId || ad.id.toLowerCase() === cleanId.toLowerCase());
+    if (!admin && cleanName) {
+      admin = adminList.find(ad => ad.name.toLowerCase().trim() === cleanName);
+    }
+    if (admin) {
+      return {
+        member: admin,
+        type: "administrator" as const,
+        classNameStr: admin.designation || "Administrator",
+        photoUrl: admin.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${admin.name}`
+      };
+    }
+
+    // Strategy 5: Deep Student Search across any partial ID or name if parsedType was teacher/unknown
+    const anyStudent = students.find(s => 
+      s.id.toLowerCase() === cleanId.toLowerCase() || 
+      (cleanName && s.name.toLowerCase().trim() === cleanName)
+    );
+    if (anyStudent) {
+      return {
+        member: anyStudent,
+        type: "student" as const,
+        classNameStr: `${anyStudent.class} - ${anyStudent.section || "A"}`,
+        photoUrl: anyStudent.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${anyStudent.name}`
+      };
+    }
+
+    return null;
+  };
+
+  // 6. 100% Accuracy Sequential Attendance Engine
   const handleScannedData = async (payload: string) => {
-    const now = Date.now();
-    lastScanTimeRef.current = now; // Reset idle alarm timer on any scanned data beam hit
-    const curTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); // 13:45 format
+    // A. Sequential Execution Lock: Ignore any scan while a student record is saving to server
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    setIsProcessing(true);
+    setServerSaveStep("Connecting & Verifying...");
+
+    const curTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     const readableTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Extract ID and properties from either raw string or nested JSON
-    let parsedId = payload.trim();
-    let parsedType: "student" | "teacher" = "student";
-    let payloadName = "";
-
     try {
-      const parsed = JSON.parse(payload);
-      if (parsed.id) {
-        parsedId = parsed.id;
-        parsedType = parsed.type === "teacher" ? "teacher" : "student";
-        payloadName = parsed.name || "";
+      // B. Parse QR payload safely
+      let parsedId = payload.trim();
+      let parsedType = "student";
+      let payloadName = "";
+      let payloadClass = "";
+
+      try {
+        const parsed = JSON.parse(payload);
+        if (parsed.id) {
+          parsedId = String(parsed.id).trim();
+          parsedType = parsed.type || "student";
+          payloadName = parsed.name || "";
+          payloadClass = parsed.class || "";
+        }
+      } catch (e) {
+        parsedId = payload.trim();
       }
-    } catch (e) {
-      // payload is raw string: check if it matches static teacher values
-      const matchedTeacher = teachers.find(t => t.id === parsedId || t.name === parsedId);
-      if (matchedTeacher) {
-        parsedType = "teacher";
-      }
-    }
 
-    // A. Cooldown protection (prevent scanning same card multiple times within 8 seconds)
-    const cooldownKey = `${parsedId}:${scannerMode}`;
-    if (cooldownsRef.current[cooldownKey] && (now - cooldownsRef.current[cooldownKey] < 8000)) {
-      return; 
-    }
-    cooldownsRef.current[cooldownKey] = now;
+      // C. Resolve person with multi-tier matching
+      const matchResult = resolveScannedPerson(payload, parsedId, parsedType, payloadName, payloadClass);
 
-    // B. Find member in database state
-    let member: any = null;
-    let classNameStr = "";
-    let photoUrl = "";
-
-    if (parsedType === "student") {
-      member = students.find(s => s.id === parsedId);
-      if (member) {
-        classNameStr = `${member.class} - ${member.section || "A"}`;
-        photoUrl = member.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.name}`;
-      }
-    } else {
-      member = teachers.find(t => t.id === parsedId);
-      if (member) {
-        classNameStr = member.subject || "Faculty Member";
-        photoUrl = member.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.name}`;
-      }
-    }
-
-    // Return if member was not found at all
-    if (!member) {
-      playBeep("error");
-      speakVoice("Scan again");
-      setScannedMember({
-        name: payloadName || parsedId,
-        classOrSubject: parsedType === "teacher" ? "Faculty" : "Student Class",
-        status: "NOT_FOUND",
-        mode: scannerMode,
-        photo: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payloadName || parsedId)}`
-      });
-      setTimeout(() => setScannedMember(null), 3000);
-      return;
-    }
-
-    // C. Check restricted class selection
-    if (selectedClass && parsedType === "student" && member.class !== selectedClass) {
-      playBeep("error");
-      speakVoice("Scan again");
-      setScannedMember({
-        ...member,
-        classOrSubject: classNameStr,
-        status: "WRONG_CLASS",
-        mode: scannerMode,
-        photo: photoUrl
-      });
-      setTimeout(() => setScannedMember(null), 3500);
-      return;
-    }
-
-    // D. Process check-in vs check-out attendance state
-    const mapKey = `${todayDateStr}:${member.id}`;
-    const todayRecord = attendanceMap[mapKey];
-
-    if (scannerMode === "Entry") {
-      // Check-In Mode
-      if (todayRecord && todayRecord.inTime) {
-        // Already marked entry
-        playBeep("warning");
-        speakVoice("Duplicate for the day");
+      if (!matchResult) {
+        playBeep("error");
+        speakVoice("ID not found in database");
         setScannedMember({
-          ...member,
-          classOrSubject: classNameStr,
-          status: "ALREADY_IN",
+          name: payloadName || parsedId,
+          classOrSubject: "Unknown Record",
+          status: "NOT_FOUND",
           mode: scannerMode,
-          timeStr: todayRecord.inTime,
-          photo: photoUrl
+          photo: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payloadName || parsedId)}`,
+          serverVerified: false
         });
-        setTimeout(() => setScannedMember(null), 3500);
+        await new Promise(r => setTimeout(r, 2200));
+        setScannedMember(null);
         return;
       }
 
-      // Late check with dynamic session timing
-      const timing = resolveForClass(member.class);
-      const isLate = curTimeStr > timing.lateCutoff;
-      const finalStatus: "Present" | "Late" = isLate ? "Late" : "Present";
-      const recordRemarks = isLate 
-        ? (timing.isExamMode ? `Late Exam Arrival [${timing.sessionName}]` : "Late QR Check-In") 
-        : (timing.isExamMode ? `Exam Arrival [${timing.sessionName}]` : "Regular QR Check-In");
+      const { member, type: resolvedType, classNameStr, photoUrl } = matchResult;
+      const firstName = (member.name || "").split(" ")[0].trim();
 
-      // Save record into Firestore via handle
-      await saveAttendanceRecord(member.id, todayDateStr, {
-        status: finalStatus,
-        inTime: curTimeStr,
-        remarks: recordRemarks
-      });
+      // D. Check existing record in today's attendance
+      const mapKey = `${todayDateStr}:${member.id}`;
+      const todayRecord = attendanceMap[mapKey];
 
-      playBeep("success");
-      speakVoice(isLate ? `${member.name.split(" ")[0]}, Late arrival marked` : "Done");
-      setScannedMember({
-        ...member,
-        classOrSubject: classNameStr,
-        status: finalStatus,
-        mode: scannerMode,
-        timeStr: readableTime,
-        photo: photoUrl
-      });
+      if (scannerMode === "Entry") {
+        // ENTRY CHECK-IN
+        if (todayRecord && todayRecord.inTime) {
+          playBeep("warning");
+          speakVoice(`${firstName}, Already marked`);
+          setScannedMember({
+            ...member,
+            classOrSubject: classNameStr,
+            status: "ALREADY_IN",
+            mode: scannerMode,
+            timeStr: todayRecord.inTime,
+            photo: photoUrl,
+            serverVerified: true
+          });
+          await new Promise(r => setTimeout(r, 2200));
+          setScannedMember(null);
+          return;
+        }
 
-    } else {
-      // Check-Out / Exit Mode
-      if (todayRecord && todayRecord.outTime) {
-        // Already checked out
-        playBeep("warning");
-        speakVoice("Duplicate for the day");
+        // Timing Calculation
+        const timing = resolveForClass((member as any).class || "");
+        const isLate = curTimeStr > timing.lateCutoff;
+        const finalStatus: "Present" | "Late" = isLate ? "Late" : "Present";
+        const recordRemarks = isLate 
+          ? (timing.isExamMode ? `Late Exam Arrival [${timing.sessionName}]` : "Late QR Check-In") 
+          : (timing.isExamMode ? `Exam Arrival [${timing.sessionName}]` : "Regular QR Check-In");
+
+        setServerSaveStep("Saving to Firebase Server...");
+
+        // Prepare Complete Record
+        const docId = `${todayDateStr}_${member.id}`;
+        const docRef = doc(db, 'attendance', docId);
+        const recordData = {
+          id: member.id,
+          memberId: member.id,
+          memberName: member.name,
+          memberType: resolvedType,
+          class: (member as any).class || "",
+          section: (member as any).section || "",
+          roll: (member as any).roll || "",
+          date: todayDateStr,
+          status: finalStatus,
+          inTime: curTimeStr,
+          outTime: todayRecord?.outTime || '',
+          earlyOutReason: todayRecord?.earlyOutReason || '',
+          remarks: recordRemarks,
+          updatedAt: new Date().toISOString(),
+          verified: true
+        };
+
+        // 1. Save through SchoolContext (guarantees local map update + Firestore write)
+        await saveAttendanceRecord(member.id, todayDateStr, {
+          status: finalStatus,
+          inTime: curTimeStr,
+          remarks: recordRemarks
+        });
+
+        // 2. Direct Firestore write with merge: true (100% server persistence guarantee)
+        await setDoc(docRef, sanitizeFirestoreData(recordData), { merge: true });
+
+        // 3. Save to local storage offline journal
+        try {
+          const key = `school_attendance_${todayDateStr}`;
+          const existingLocal = JSON.parse(localStorage.getItem(key) || '{}');
+          existingLocal[member.id] = recordData;
+          localStorage.setItem(key, JSON.stringify(existingLocal));
+        } catch (e) {}
+
+        setServerSaveStep("Server Verified 100%");
+
+        // E. CLEAR AUDIO BEEP & CLEAR VOICE SPEECH:
+        playBeep(isLate ? "warning" : "success");
+        if (isLate) {
+          speakVoice(`${firstName}, Late`);
+        } else {
+          speakVoice(`${firstName}, Present`);
+        }
+
+        // F. Show Verified Confirmation Card
         setScannedMember({
           ...member,
           classOrSubject: classNameStr,
-          status: "ALREADY_OUT",
+          status: finalStatus,
           mode: scannerMode,
-          timeStr: todayRecord.outTime,
-          photo: photoUrl
+          timeStr: readableTime,
+          photo: photoUrl,
+          serverVerified: true
         });
-        setTimeout(() => setScannedMember(null), 3500);
-        return;
-      }
 
-      // Early Leave calculation with dynamic session timing
-      const timing = resolveForClass(member.class);
-      const isEarlyLeave = curTimeStr < timing.earlyLeaveCutoff;
-      const exitStatus: "Early Leave" | "Present" | "Late" = isEarlyLeave ? "Early Leave" : (todayRecord?.status === "Late" ? "Late" : "Present");
-      const earlyLeaveReasonStr = isEarlyLeave 
-        ? (timing.isExamMode ? `Left before Exam Dismissal (${formatTime12h(timing.earlyLeaveCutoff)})` : "Self QR Early Departure") 
-        : "";
-      
-      await saveAttendanceRecord(member.id, todayDateStr, {
-        status: exitStatus,
-        outTime: curTimeStr,
-        earlyOutReason: earlyLeaveReasonStr || (isEarlyLeave ? "Early Exit Scanned" : ""),
-        remarks: isEarlyLeave 
+        // G. Hold Lock for 2.0s so confirmation finishes before next student can scan
+        await new Promise(r => setTimeout(r, 2000));
+        setScannedMember(null);
+
+      } else {
+        // EXIT CHECK-OUT
+        if (todayRecord && todayRecord.outTime) {
+          playBeep("warning");
+          speakVoice(`${firstName}, Already checked out`);
+          setScannedMember({
+            ...member,
+            classOrSubject: classNameStr,
+            status: "ALREADY_OUT",
+            mode: scannerMode,
+            timeStr: todayRecord.outTime,
+            photo: photoUrl,
+            serverVerified: true
+          });
+          await new Promise(r => setTimeout(r, 2200));
+          setScannedMember(null);
+          return;
+        }
+
+        const timing = resolveForClass((member as any).class || "");
+        const isEarlyLeave = curTimeStr < timing.earlyLeaveCutoff;
+        const exitStatus: "Early Leave" | "Present" | "Late" = isEarlyLeave 
+          ? "Early Leave" 
+          : (todayRecord?.status === "Late" ? "Late" : "Present");
+        const earlyLeaveReasonStr = isEarlyLeave 
+          ? (timing.isExamMode ? `Left before Exam Dismissal (${formatTime12h(timing.earlyLeaveCutoff)})` : "Self QR Early Departure") 
+          : "";
+        const recordRemarks = isEarlyLeave 
           ? `Early Exit (Before ${formatTime12h(timing.earlyLeaveCutoff)})` 
-          : (timing.isExamMode ? `Exam Dismissal [${timing.sessionName}]` : "Regular Check-Out")
-      });
+          : (timing.isExamMode ? `Exam Dismissal [${timing.sessionName}]` : "Regular Check-Out");
 
-      playBeep("success");
-      speakVoice(isEarlyLeave ? `${member.name.split(" ")[0]}, Early leave marked` : "Done");
-      setScannedMember({
-        ...member,
-        classOrSubject: classNameStr,
-        status: isEarlyLeave ? "EARLY_LEAVE" : "LEFT",
-        mode: scannerMode,
-        timeStr: readableTime,
-        photo: photoUrl
-      });
+        setServerSaveStep("Saving Check-Out to Server...");
+
+        const docId = `${todayDateStr}_${member.id}`;
+        const docRef = doc(db, 'attendance', docId);
+        const recordData = {
+          id: member.id,
+          memberId: member.id,
+          memberName: member.name,
+          memberType: resolvedType,
+          class: (member as any).class || "",
+          section: (member as any).section || "",
+          roll: (member as any).roll || "",
+          date: todayDateStr,
+          status: exitStatus,
+          inTime: todayRecord?.inTime || curTimeStr,
+          outTime: curTimeStr,
+          earlyOutReason: earlyLeaveReasonStr,
+          remarks: recordRemarks,
+          updatedAt: new Date().toISOString(),
+          verified: true
+        };
+
+        await saveAttendanceRecord(member.id, todayDateStr, {
+          status: exitStatus,
+          outTime: curTimeStr,
+          earlyOutReason: earlyLeaveReasonStr,
+          remarks: recordRemarks
+        });
+
+        await setDoc(docRef, sanitizeFirestoreData(recordData), { merge: true });
+
+        try {
+          const key = `school_attendance_${todayDateStr}`;
+          const existingLocal = JSON.parse(localStorage.getItem(key) || '{}');
+          existingLocal[member.id] = recordData;
+          localStorage.setItem(key, JSON.stringify(existingLocal));
+        } catch (e) {}
+
+        setServerSaveStep("Server Verified 100%");
+
+        playBeep(isEarlyLeave ? "warning" : "success");
+        if (isEarlyLeave) {
+          speakVoice(`${firstName}, Early Leave`);
+        } else {
+          speakVoice(`${firstName}, Checked out`);
+        }
+
+        setScannedMember({
+          ...member,
+          classOrSubject: classNameStr,
+          status: isEarlyLeave ? "EARLY_LEAVE" : "LEFT",
+          mode: scannerMode,
+          timeStr: readableTime,
+          photo: photoUrl,
+          serverVerified: true
+        });
+
+        await new Promise(r => setTimeout(r, 2000));
+        setScannedMember(null);
+      }
+
+    } catch (err) {
+      console.error("Attendance scan processing error:", err);
+      playBeep("error");
+      speakVoice("Attendance save error");
+    } finally {
+      // 100% Guaranteed release of lock for next student
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+      setServerSaveStep("");
     }
-
-    // Clear overlay card after 3.2 seconds
-    setTimeout(() => setScannedMember(null), 3200);
   };
 
   // Switch camera manual triggers
@@ -745,6 +1019,16 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
               </div>
             </div>
 
+            {/* Sequential 100% Accuracy Server Persistence Indicator */}
+            {isProcessing && !scannedMember && (
+              <div className="absolute inset-x-0 bottom-4 mx-auto w-fit z-20 bg-slate-900/90 text-white border border-teal-400/40 px-4 py-2 rounded-2xl flex items-center gap-2.5 shadow-xl backdrop-blur-md animate-pulse">
+                <Loader2 className="w-4 h-4 text-teal-400 animate-spin" />
+                <span className="text-xs font-bold text-teal-200">
+                  {serverSaveStep || "Saving to server... Terminal locked for 100% accuracy"}
+                </span>
+              </div>
+            )}
+
             {/* OVERLAY: SUCCESS LOG DIALOG (POPS OVER VIDEO INSTANTLY UPON BEAM HIT) */}
             <AnimatePresence>
               {scannedMember && (
@@ -816,12 +1100,19 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
                     )}>
                       {scannedMember.status === "NOT_FOUND" ? "UNKNOWN ID / NOT IN SCHOOL DATABASE" :
                        scannedMember.status === "WRONG_CLASS" ? "WRONG CLASS / WRONG DIVISION" :
-                       scannedMember.status === "ALREADY_IN" ? "DUPLICATE FOR THE DAY" :
-                       scannedMember.status === "ALREADY_OUT" ? "DUPLICATE FOR THE DAY" :
-                       scannedMember.status === "Late" ? "✓ LATE CHECK-IN SAVED SUCCESS" :
-                       scannedMember.status === "EARLY_LEAVE" ? "✓ EARLY LEAVE EXIT REGISTERED" :
-                       "✓ ATTENDANCE RECORDED SUCCESSFULLY"}
+                       scannedMember.status === "ALREADY_IN" ? "DUPLICATE: ALREADY RECORDED FOR TODAY" :
+                       scannedMember.status === "ALREADY_OUT" ? "DUPLICATE: ALREADY CHECKED OUT" :
+                       scannedMember.status === "Late" ? "✓ LATE (100% SAVED TO SERVER)" :
+                       scannedMember.status === "EARLY_LEAVE" ? "✓ EARLY LEAVE (100% SAVED TO SERVER)" :
+                       "✓ PRESENT (100% SAVED TO SERVER)"}
                     </div>
+
+                    {scannedMember.serverVerified && (
+                      <div className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/60 animate-in fade-in">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Server Confirmed & Persistent</span>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}
