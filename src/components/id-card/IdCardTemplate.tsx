@@ -202,6 +202,16 @@ export default function IdCardTemplate({
     member.profilePhoto ||
     member.image ||
     `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(member.name || 'member')}`;
+  
+  const schoolPhotoUrl =
+    settings.idCardSchoolPhoto ||
+    (settings as any).schoolPhoto ||
+    (settings as any).schoolBuildingUrl ||
+    settings.heroGalleryImages?.[0] ||
+    settings.galleryImages?.[0] ||
+    localStorage.getItem('idCardSchoolPhoto') ||
+    "https://images.unsplash.com/photo-1577896851231-70ef18881754?auto=format&fit=crop&q=80&w=800";
+
   const dob = member.dob || "01-Jan-2010";
   const parentName = member.parentName || "N/A";
   const motherName = member.motherName || "N/A";
@@ -285,25 +295,8 @@ export default function IdCardTemplate({
           </div>
         )}
 
-        <div className="flex-1 w-full pt-[13mm] pb-[13mm] flex flex-col items-center justify-center gap-1 relative z-10">
-          {/* Member Photo on Back Side */}
-          <div className="flex flex-col items-center justify-center shrink-0 relative z-20">
-            <div className="w-[17mm] h-[20mm] rounded-md overflow-hidden border-[1.5px] border-white shadow-md bg-white">
-              <img
-                src={photoUrl}
-                alt={member.name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(member.name || 'ID')}`;
-                }}
-              />
-            </div>
-            <span className="text-[8px] font-bold text-slate-900 uppercase mt-0.5 max-w-[44mm] truncate text-center font-fjalla tracking-wide leading-tight">
-              {member.name}
-            </span>
-          </div>
-
-          {/* QR Code Container - Centered */}
+        <div className="flex-1 w-full pt-[13mm] pb-[13mm] flex flex-col items-center justify-center gap-2 relative z-10 px-2">
+          {/* QR Code Container (Top) */}
           <div className="flex flex-col items-center justify-center shrink-0 relative z-20">
             <div className="p-1 bg-white rounded-lg shadow-sm border border-black/10 flex flex-col items-center gap-0.5">
               <QRCodeSVG
@@ -319,8 +312,27 @@ export default function IdCardTemplate({
                 includeMargin={false}
               />
               <span className="text-[6.5px] font-mono font-bold text-slate-900 tracking-wide bg-slate-50 px-1.5 py-0.5 rounded border border-black/5 leading-none">
-                ID No: {member.id}
+                ID NO: {member.id}
               </span>
+            </div>
+          </div>
+
+          {/* School Photo under QR Code */}
+          <div className="flex flex-col items-center justify-center shrink-0 relative z-20 w-full px-2">
+            <div className="w-[34mm] h-[18mm] rounded-md overflow-hidden border-[1.5px] border-white shadow-md bg-white relative">
+              <img
+                src={schoolPhotoUrl}
+                alt={settings.idCardSchoolName || settings.schoolName || "School Campus"}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = "https://images.unsplash.com/photo-1577896851231-70ef18881754?auto=format&fit=crop&q=80&w=800";
+                }}
+              />
+              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/75 to-transparent px-1 py-0.5 text-center">
+                <span className="text-[6px] font-bold text-white uppercase tracking-wider truncate block drop-shadow-sm font-fjalla">
+                  {settings.idCardSchoolName || settings.schoolName || "School Campus"}
+                </span>
+              </div>
             </div>
           </div>
         </div>

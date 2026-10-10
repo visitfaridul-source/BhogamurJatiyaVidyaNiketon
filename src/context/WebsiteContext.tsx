@@ -213,6 +213,7 @@ export interface WebsiteSettings {
   vicePrincipalHeroImage?: string;
   vicePrincipalHeroName?: string;
   idCardBackBackgroundUrl?: string;
+  idCardSchoolPhoto?: string;
   
   // Login Sidebar
   watermarkUrl?: string;
@@ -446,6 +447,7 @@ const defaultSettings: WebsiteSettings = {
   principalSignatureUrl: undefined,
   watermarkUrl: undefined,
   idCardBackBackgroundUrl: undefined,
+  idCardSchoolPhoto: undefined,
   loginSidebarHeading: "Empowering education through technology.",
   loginSidebarLogoUrl: undefined,
   loginSidebarQuoteAuthor: "Dr. Sarah Jenkins",

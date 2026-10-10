@@ -362,6 +362,61 @@ export default function Settings() {
                 />
               </div>
             </div>
+
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">School Photo (Back Side below QR)</label>
+              <div className="border-2 border-dashed border-slate-300 rounded-2xl p-6 flex flex-col items-center justify-center text-center bg-slate-50 relative overflow-hidden group hover:border-amber-400 transition-colors h-[164px]">
+                {formData.idCardSchoolPhoto ? (
+                  <div className="relative w-full h-full">
+                    <img src={formData.idCardSchoolPhoto} alt="School Photo" className="w-full h-full object-cover rounded-lg" />
+                    <button onClick={() => { setFormData(prev => ({...prev, idCardSchoolPhoto: undefined})); localStorage.removeItem('idCardSchoolPhoto'); setSaved(false); }} className="absolute -top-3 -right-3 bg-rose-500 text-white w-6 h-6 rounded-full flex items-center justify-center shadow-md z-10">
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="w-12 h-12 bg-slate-200 text-slate-400 rounded-full flex items-center justify-center mb-3 group-hover:bg-amber-100 group-hover:text-amber-600 transition-colors">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    <p className="text-sm font-medium text-slate-600">Click to upload school campus photo</p>
+                    <p className="text-xs text-slate-400 mt-1">Appears below QR code on back side</p>
+                  </>
+                )}
+                <input 
+                  type="file" 
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      const reader = new FileReader();
+                      reader.onload = async (event) => {
+                        if (event.target?.result) {
+                          const compressed = await compressImage(event.target!.result as string, 800, 600, 0.75);
+                          setFormData(prev => ({ ...prev, idCardSchoolPhoto: compressed }));
+                          localStorage.setItem('idCardSchoolPhoto', compressed);
+                          setSaved(false);
+                        }
+                      };
+                      reader.readAsDataURL(e.target.files[0]);
+                    }
+                  }} 
+                  accept="image/*" 
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                  style={{ display: formData.idCardSchoolPhoto ? 'none' : 'block' }}
+                />
+              </div>
+              <div className="mt-3">
+                <input
+                  type="text"
+                  name="idCardSchoolPhoto"
+                  value={formData.idCardSchoolPhoto || ''}
+                  onChange={(e) => {
+                    handleChange(e);
+                    localStorage.setItem('idCardSchoolPhoto', e.target.value);
+                  }}
+                  placeholder="Or paste school photo URL here"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+            </div>
           </div>
         </motion.div>
         )}

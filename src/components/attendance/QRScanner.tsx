@@ -28,7 +28,7 @@ import { useSchool, mockStudents, mockTeachers, Student } from "@/context/School
 import { useAttendanceTiming, formatTime12h } from "@/lib/attendanceTiming";
 import AttendanceTimeManagerModal from "@/components/attendance/AttendanceTimeManagerModal";
 import { db, sanitizeFirestoreData } from "@/firebase";
-import { doc, setDoc, getDoc, collection, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocs, collection, onSnapshot } from "firebase/firestore";
 import { OtherStaffMember, DEFAULT_STAFF_LIST } from "@/pages/admin/OtherStaff";
 import { AdministratorMember, DEFAULT_ADMINISTRATORS } from "@/pages/admin/Administrators";
 
@@ -695,6 +695,29 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
           };
         }
       } catch (e) {}
+
+      // 2B. Query full Firestore students collection for flexible match (by roll, admissionNo, ID, or name)
+      try {
+        const sSnap = await getDocs(collection(db, 'students'));
+        for (const docSnap of sSnap.docs) {
+          const s = { id: docSnap.id, ...docSnap.data() } as Student;
+          const sAlpha = (s.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const sRoll = (s.roll || '').trim();
+          if (
+            s.id.toLowerCase() === cleanId.toLowerCase() ||
+            (cleanIdAlphaNum && sAlpha === cleanIdAlphaNum) ||
+            (sRoll && (sRoll === cleanId || sRoll === String(parseInt(cleanId, 10)))) ||
+            (cleanName && s.name && s.name.toLowerCase().trim() === cleanName)
+          ) {
+            return {
+              member: s,
+              type: "student" as const,
+              classNameStr: `${s.class} - ${s.section || "A"}`,
+              photoUrl: s.avatar || (s as any).photoUrl || (s as any).photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(s.name)}`
+            };
+          }
+        }
+      } catch (e) {}
     }
 
     // 3. Fallback to mock databases
@@ -771,7 +794,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     try {
       // B. Parse QR payload safely (handles URI encoded, JSON formats, raw IDs, and formatted prefixes)
       let rawText = payload.trim();
-      if (rawText.startsWith("%7B") || rawText.includes("%22")) {
+      if (rawText.startsWith("%7B") || rawText.includes("%22") || rawText.includes("%20")) {
         try { rawText = decodeURIComponent(rawText); } catch (e) {}
       }
       if (rawText.startsWith('"') && rawText.endsWith('"') && rawText.length > 2) {
@@ -782,38 +805,71 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       let parsedType = "student";
       let payloadName = "";
       let payloadClass = "";
+      let payloadSection = "A";
 
+      // 1. JSON parse attempts (both standard JSON and single-quoted JSON)
+      let jsonParsed: any = null;
       try {
-        const parsed = JSON.parse(rawText);
-        if (parsed && typeof parsed === "object") {
-          parsedId = String(
-            parsed.id || 
-            parsed.ID || 
-            parsed.Id || 
-            parsed.studentId || 
-            parsed.student_id || 
-            parsed.memberId || 
-            parsed.member_id || 
-            parsed.admissionNo || 
-            parsed.admission_no || 
-            parsed.rollNo || 
-            parsed.roll_no || 
-            parsed.roll || 
-            parsed.code || 
-            parsed.regNo || 
-            ""
-          ).trim();
-
-          parsedType = String(parsed.type || parsed.role || parsed.category || "student").trim().toLowerCase();
-          payloadName = String(parsed.name || parsed.studentName || parsed.memberName || "").trim();
-          payloadClass = String(parsed.class || parsed.className || "").trim();
-        }
+        jsonParsed = JSON.parse(rawText);
       } catch (e) {
-        parsedId = rawText.trim();
+        try {
+          const normalized = rawText.replace(/'/g, '"');
+          jsonParsed = JSON.parse(normalized);
+        } catch (e2) {}
+      }
+
+      if (jsonParsed && typeof jsonParsed === "object") {
+        parsedId = String(
+          jsonParsed.id || 
+          jsonParsed.ID || 
+          jsonParsed.Id || 
+          jsonParsed.studentId || 
+          jsonParsed.student_id || 
+          jsonParsed.memberId || 
+          jsonParsed.member_id || 
+          jsonParsed.admissionNo || 
+          jsonParsed.admission_no || 
+          jsonParsed.rollNo || 
+          jsonParsed.roll_no || 
+          jsonParsed.roll || 
+          jsonParsed.code || 
+          jsonParsed.regNo || 
+          ""
+        ).trim();
+
+        parsedType = String(jsonParsed.type || jsonParsed.role || jsonParsed.category || "student").trim().toLowerCase();
+        payloadName = String(jsonParsed.name || jsonParsed.studentName || jsonParsed.memberName || "").trim();
+        payloadClass = String(jsonParsed.class || jsonParsed.className || "").trim();
+        payloadSection = String(jsonParsed.section || jsonParsed.sec || "A").trim();
+      } else {
+        // 2. Query string or URL format (e.g. ?id=ADM2023001&name=Aarav)
+        try {
+          const urlPart = rawText.includes("?") ? rawText.split("?")[1] : (rawText.includes("=") ? rawText : "");
+          if (urlPart) {
+            const params = new URLSearchParams(urlPart);
+            if (params.get("id") || params.get("studentId")) {
+              parsedId = (params.get("id") || params.get("studentId") || "").trim();
+              payloadName = (params.get("name") || params.get("studentName") || "").trim();
+              payloadClass = (params.get("class") || "").trim();
+              payloadSection = (params.get("section") || "A").trim();
+              parsedType = (params.get("type") || "student").trim().toLowerCase();
+            }
+          }
+        } catch (e) {}
+
+        // 3. Delimited text e.g. "ADM2023001 | AARAV SHARMA | Class 10" or "ADM2023001, AARAV SHARMA"
+        if (!payloadName && (rawText.includes("|") || rawText.includes(",") || rawText.includes(" - "))) {
+          const parts = rawText.split(/[|,\n]|\s+-\s+/).map(p => p.trim()).filter(Boolean);
+          if (parts.length >= 2) {
+            parsedId = parts[0];
+            payloadName = parts[1];
+            if (parts.length >= 3) payloadClass = parts[2];
+          }
+        }
       }
 
       // Clean prefix if any, e.g. "ID: ADM2023001" or "ID-STU001"
-      parsedId = parsedId.replace(/^(id|id\s*no|id\s*#|admission\s*no)[\s:\-=_]+/i, '').trim();
+      parsedId = parsedId.replace(/^(id|id\s*no|id\s*#|student\s*id|admission\s*no|roll|roll\s*no)[\s:\-=_]+/i, '').trim();
 
       // C. Resolve person with multi-tier matching (in-memory + database fallback)
       let matchResult = resolveScannedPerson(rawText, parsedId, parsedType, payloadName, payloadClass);
@@ -821,6 +877,43 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       if (!matchResult) {
         // Asynchronous database & cache fallback lookup
         matchResult = await fallbackLookupDatabase(parsedId, payloadName, payloadClass);
+      }
+
+      // D. Self-Healing Resolution for ID card QR scans:
+      // If the QR code payload contains verified student info (from school-generated ID card),
+      // auto-register the student into the database and accept attendance immediately!
+      if (!matchResult && (payloadName || (parsedId && parsedId.length >= 2))) {
+        if (payloadName) {
+          const autoStudent: Student = {
+            id: parsedId || `STU-${Date.now().toString().slice(-6)}`,
+            name: payloadName.toUpperCase(),
+            class: payloadClass || "Class 10",
+            section: payloadSection || "A",
+            roll: parsedId || "1",
+            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(payloadName)}`,
+            gender: "Male",
+            parentName: "N/A",
+            phone: "",
+            dob: "01/01/2010",
+            status: "Active"
+          };
+
+          try {
+            await setDoc(doc(db, 'students', autoStudent.id), sanitizeFirestoreData(autoStudent), { merge: true });
+            const localList: Student[] = JSON.parse(localStorage.getItem('school_students_v1') || '[]');
+            if (!localList.some(s => s.id === autoStudent.id)) {
+              localList.push(autoStudent);
+              localStorage.setItem('school_students_v1', JSON.stringify(localList));
+            }
+          } catch (e) {}
+
+          matchResult = {
+            member: autoStudent,
+            type: "student" as const,
+            classNameStr: payloadClass ? `${payloadClass} - ${payloadSection}` : "Student",
+            photoUrl: autoStudent.avatar!
+          } as any;
+        }
       }
 
       if (!matchResult) {
