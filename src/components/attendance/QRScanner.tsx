@@ -253,12 +253,18 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
           try {
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.rate = 0.95; // Crisp, clearly enunciated
-            utterance.pitch = 1.05;
-            utterance.volume = 1.0;
-            utterance.lang = "en-IN";
+            utterance.pitch = 1.08; // Clear, energetic pitch
+            utterance.volume = 1.0; // Maximum loudness
+            utterance.lang = "en-IN"; // Indian English Accent
             
             const voices = window.speechSynthesis.getVoices();
-            const preferred = voices.find(v => v.lang === "en-IN" || v.lang === "hi-IN" || v.lang.startsWith("en-"));
+            // Prioritize Indian English voices (en-IN, hi-IN, or voices containing India, Neerja, Veena, Rishi, etc.)
+            const preferred = voices.find(v => 
+              v.lang === "en-IN" || 
+              v.lang.toLowerCase() === "en_in" ||
+              (v.name && /india|indian|neerja|veena|rishi|prabhat|aditi/i.test(v.name))
+            ) || voices.find(v => v.lang === "hi-IN" || v.lang.startsWith("en-"));
+
             if (preferred) {
               utterance.voice = preferred;
             }
@@ -933,7 +939,6 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       }
 
       const { member, type: resolvedType, classNameStr, photoUrl } = matchResult;
-      const firstName = (member.name || "").split(" ")[0].trim();
 
       // D. Check existing record in today's attendance
       const mapKey = `${todayDateStr}:${member.id}`;
@@ -943,7 +948,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
         // ENTRY CHECK-IN
         if (todayRecord && todayRecord.inTime) {
           playBeep("warning");
-          speakVoice(`${firstName}, Already marked`);
+          speakVoice("Already marked!");
           setScannedMember({
             ...member,
             classOrSubject: classNameStr,
@@ -1011,11 +1016,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
 
         // E. CLEAR AUDIO BEEP & CLEAR VOICE SPEECH:
         playBeep(isLate ? "warning" : "success");
-        if (isLate) {
-          speakVoice(`${firstName}, Late`);
-        } else {
-          speakVoice(`${firstName}, Present`);
-        }
+        speakVoice("Present!");
 
         // F. Show Verified Confirmation Card
         setScannedMember({
@@ -1036,7 +1037,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
         // EXIT CHECK-OUT
         if (todayRecord && todayRecord.outTime) {
           playBeep("warning");
-          speakVoice(`${firstName}, Already checked out`);
+          speakVoice("Already checked out!");
           setScannedMember({
             ...member,
             classOrSubject: classNameStr,
@@ -1105,9 +1106,9 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
 
         playBeep(isEarlyLeave ? "warning" : "success");
         if (isEarlyLeave) {
-          speakVoice(`${firstName}, Early Leave`);
+          speakVoice("Early Leave!");
         } else {
-          speakVoice(`${firstName}, Checked out`);
+          speakVoice("Checked out!");
         }
 
         setScannedMember({

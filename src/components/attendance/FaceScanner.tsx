@@ -269,10 +269,26 @@ export default function FaceScanner({
     if (!soundEnabled) return;
     try {
       if ("speechSynthesis" in window) {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
         window.speechSynthesis.cancel(); // Clear speaking queue immediately
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.02;
-        utterance.pitch = 1.0;
+        utterance.rate = 0.95;
+        utterance.pitch = 1.08;
+        utterance.volume = 1.0; // Loud volume
+        utterance.lang = "en-IN"; // Indian English
+
+        const voices = window.speechSynthesis.getVoices();
+        const preferred = voices.find(v => 
+          v.lang === "en-IN" || 
+          v.lang.toLowerCase() === "en_in" ||
+          (v.name && /india|indian|neerja|veena|rishi|prabhat|aditi/i.test(v.name))
+        ) || voices.find(v => v.lang === "hi-IN" || v.lang.startsWith("en-"));
+
+        if (preferred) {
+          utterance.voice = preferred;
+        }
         window.speechSynthesis.speak(utterance);
       }
     } catch (e) {
@@ -714,15 +730,15 @@ export default function FaceScanner({
               lastSpeechTimes.current[speechKey] = nowMs;
               if (hasAlreadyScanned) {
                 playWebAudioSound("warning");
-                speakVoice(`${matchedPerson.name}, Already Marked!`);
+                speakVoice("Already Marked!");
               } else if (curScannerMode === "Entry") {
                 playWebAudioSound("success");
-                speakVoice(isLate ? `${matchedPerson.name}, Late arrival marked!` : `${matchedPerson.name}, Present!`);
+                speakVoice("Present!");
                 const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3");
                 audio.play().catch((e) => console.log("Audio play failed:", e));
               } else {
                 playWebAudioSound("success");
-                speakVoice(isEarlyLeave ? `${matchedPerson.name}, Early leave marked!` : `${matchedPerson.name}, Checked out!`);
+                speakVoice(isEarlyLeave ? "Early leave marked!" : "Checked out!");
               }
             }
 
