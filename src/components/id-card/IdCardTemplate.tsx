@@ -286,8 +286,8 @@ export default function IdCardTemplate({
           </div>
         )}
 
-        <div className="flex-1 w-full pt-[13mm] pb-[13mm] flex flex-col items-center justify-center relative z-10 px-2">
-          {/* Centered & Scaled-Up QR Code Card */}
+        <div className="flex-1 w-full pt-[23mm] pb-[3mm] flex flex-col items-center justify-center relative z-10 px-2">
+          {/* Centered & Scaled-Up QR Code Card (shifted 10mm down as requested) */}
           <div className="flex flex-col items-center justify-center shrink-0 relative z-20">
             <div className="p-2.5 bg-white rounded-2xl shadow-lg border border-black/10 flex flex-col items-center gap-1.5">
               <QRCodeSVG
