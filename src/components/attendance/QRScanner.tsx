@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { 
   CheckCircle2, 
   User, 
@@ -111,6 +111,8 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
 
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
   const cooldownsRef = useRef<Record<string, number>>({});
+  const lastScannedTextRef = useRef<string>("");
+  const lastScannedTimeRef = useRef<number>(0);
 
   const todayDateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD for attendanceMap matching
 
@@ -399,26 +401,53 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     // Stop any active instance first
     stopScanner();
 
-    const html5Qrcode = new Html5Qrcode("qr-reader-enhanced");
+    const html5Qrcode = new Html5Qrcode("qr-reader-enhanced", {
+      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+      useBarCodeDetectorIfSupported: true,
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true,
+      },
+      verbose: false,
+    });
     html5QrcodeRef.current = html5Qrcode;
 
     setStatusMessage(null);
 
+    const cameraConfig = {
+      fps: 25, // Optimized frame rate for instant recognition without CPU lag
+      qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+        const minDim = Math.min(viewfinderWidth, viewfinderHeight);
+        // Wide 88% scanning zone so card is detected instantly anywhere in camera view
+        const size = Math.max(Math.floor(minDim * 0.88), 240);
+        return { width: size, height: size };
+      },
+      aspectRatio: 1.333333,
+      videoConstraints: {
+        deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined,
+        facingMode: "environment",
+        width: { min: 640, ideal: 1280, max: 1920 },
+        height: { min: 480, ideal: 720, max: 1080 },
+        advanced: [{ focusMode: "continuous" } as any],
+      },
+    };
+
     html5Qrcode.start(
       selectedCameraId,
-      {
-        fps: 30, // Higher FPS for better responsivness and scan probability
-        qrbox: (viewfinderWidth, viewfinderHeight) => {
-          const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.72;
-          return { width: size, height: size };
-        }
-      },
+      cameraConfig,
       (decodedText) => {
-        // Strict Sequential Lock: Drop any camera frames while previous student is being saved to server
+        const now = Date.now();
+        // Drop identical repeated frames in 0ms without running heavy parser
+        if (decodedText === lastScannedTextRef.current && now - lastScannedTimeRef.current < 2500) {
+          return;
+        }
+        // Strict Sequential Lock: Drop frames while current card animation/sound is playing
         if (isProcessingRef.current) return;
+
+        lastScannedTextRef.current = decodedText;
+        lastScannedTimeRef.current = now;
         handleScannedData(decodedText);
       },
-      (errorMessage) => {
+      () => {
         // Quiet mode for live scan tick errors
       }
     )
@@ -426,11 +455,35 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       setIsScanning(true);
     })
     .catch((err) => {
-      console.error("Camera start failed:", err);
-      setIsScanning(false);
-      setStatusMessage({
-        text: "Could not start camera. It may be locked by another application.",
-        type: "error"
+      console.warn("Retrying camera with generic constraints:", err);
+      // Fallback start without custom videoConstraints if device rejects them
+      html5Qrcode.start(
+        selectedCameraId,
+        {
+          fps: 25,
+          qrbox: (w, h) => {
+            const size = Math.max(Math.floor(Math.min(w, h) * 0.88), 220);
+            return { width: size, height: size };
+          }
+        },
+        (decodedText) => {
+          const now = Date.now();
+          if (decodedText === lastScannedTextRef.current && now - lastScannedTimeRef.current < 2500) return;
+          if (isProcessingRef.current) return;
+          lastScannedTextRef.current = decodedText;
+          lastScannedTimeRef.current = now;
+          handleScannedData(decodedText);
+        },
+        () => {}
+      )
+      .then(() => setIsScanning(true))
+      .catch((fallbackErr) => {
+        console.error("Camera start failed:", fallbackErr);
+        setIsScanning(false);
+        setStatusMessage({
+          text: "Could not start camera. Please verify camera permissions.",
+          type: "error"
+        });
       });
     });
 
@@ -933,12 +986,17 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
           photo: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payloadName || parsedId || 'ID')}`,
           serverVerified: false
         });
-        await new Promise(r => setTimeout(r, 2200));
+        await new Promise(r => setTimeout(r, 850));
         setScannedMember(null);
         return;
       }
 
       const { member, type: resolvedType, classNameStr, photoUrl } = matchResult;
+
+      // Skip re-processing if this member was just marked in this physical scan
+      if (cooldownsRef.current[member.id] && Date.now() < cooldownsRef.current[member.id]) {
+        return;
+      }
 
       // D. Check existing record in today's attendance
       const mapKey = `${todayDateStr}:${member.id}`;
@@ -958,7 +1016,8 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
             photo: photoUrl,
             serverVerified: true
           });
-          await new Promise(r => setTimeout(r, 2200));
+          cooldownsRef.current[member.id] = Date.now() + 3000;
+          await new Promise(r => setTimeout(r, 800));
           setScannedMember(null);
           return;
         }
@@ -970,8 +1029,6 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
         const recordRemarks = isLate 
           ? (timing.isExamMode ? `Late Exam Arrival [${timing.sessionName}]` : "Late QR Check-In") 
           : (timing.isExamMode ? `Exam Arrival [${timing.sessionName}]` : "Regular QR Check-In");
-
-        setServerSaveStep("Saving to Firebase Server...");
 
         // Prepare Complete Record
         const docId = `${todayDateStr}_${member.id}`;
@@ -994,31 +1051,11 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
           verified: true
         };
 
-        // 1. Save through SchoolContext (guarantees local map update + Firestore write)
-        await saveAttendanceRecord(member.id, todayDateStr, {
-          status: finalStatus,
-          inTime: curTimeStr,
-          remarks: recordRemarks
-        });
-
-        // 2. Direct Firestore write with merge: true (100% server persistence guarantee)
-        await setDoc(docRef, sanitizeFirestoreData(recordData), { merge: true });
-
-        // 3. Save to local storage offline journal
-        try {
-          const key = `school_attendance_${todayDateStr}`;
-          const existingLocal = JSON.parse(localStorage.getItem(key) || '{}');
-          existingLocal[member.id] = recordData;
-          localStorage.setItem(key, JSON.stringify(existingLocal));
-        } catch (e) {}
-
-        setServerSaveStep("Server Verified 100%");
-
-        // E. CLEAR AUDIO BEEP & CLEAR VOICE SPEECH:
+        // 1. INSTANT AUDIO & VOICE FEEDBACK (0ms delay):
         playBeep(isLate ? "warning" : "success");
         speakVoice("Present!");
 
-        // F. Show Verified Confirmation Card
+        // 2. INSTANT VERIFIED CARD POPUP:
         setScannedMember({
           ...member,
           classOrSubject: classNameStr,
@@ -1029,8 +1066,30 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
           serverVerified: true
         });
 
-        // G. Hold Lock for 2.0s so confirmation finishes before next student can scan
-        await new Promise(r => setTimeout(r, 2000));
+        // 3. Instant local journal write
+        try {
+          const key = `school_attendance_${todayDateStr}`;
+          const existingLocal = JSON.parse(localStorage.getItem(key) || '{}');
+          existingLocal[member.id] = recordData;
+          localStorage.setItem(key, JSON.stringify(existingLocal));
+        } catch (e) {}
+
+        // 4. Parallel server persistence in background
+        Promise.all([
+          saveAttendanceRecord(member.id, todayDateStr, {
+            status: finalStatus,
+            inTime: curTimeStr,
+            remarks: recordRemarks
+          }),
+          setDoc(docRef, sanitizeFirestoreData(recordData), { merge: true })
+        ]).catch(err => {
+          console.warn("Attendance background sync warning:", err);
+        });
+
+        cooldownsRef.current[member.id] = Date.now() + 3500;
+
+        // 5. Fast 750ms turnaround so the next student in line can be scanned immediately
+        await new Promise(r => setTimeout(r, 750));
         setScannedMember(null);
 
       } else {
@@ -1047,7 +1106,8 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
             photo: photoUrl,
             serverVerified: true
           });
-          await new Promise(r => setTimeout(r, 2200));
+          cooldownsRef.current[member.id] = Date.now() + 3000;
+          await new Promise(r => setTimeout(r, 800));
           setScannedMember(null);
           return;
         }
@@ -1063,8 +1123,6 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
         const recordRemarks = isEarlyLeave 
           ? `Early Exit (Before ${formatTime12h(timing.earlyLeaveCutoff)})` 
           : (timing.isExamMode ? `Exam Dismissal [${timing.sessionName}]` : "Regular Check-Out");
-
-        setServerSaveStep("Saving Check-Out to Server...");
 
         const docId = `${todayDateStr}_${member.id}`;
         const docRef = doc(db, 'attendance', docId);
@@ -1086,24 +1144,6 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
           verified: true
         };
 
-        await saveAttendanceRecord(member.id, todayDateStr, {
-          status: exitStatus,
-          outTime: curTimeStr,
-          earlyOutReason: earlyLeaveReasonStr,
-          remarks: recordRemarks
-        });
-
-        await setDoc(docRef, sanitizeFirestoreData(recordData), { merge: true });
-
-        try {
-          const key = `school_attendance_${todayDateStr}`;
-          const existingLocal = JSON.parse(localStorage.getItem(key) || '{}');
-          existingLocal[member.id] = recordData;
-          localStorage.setItem(key, JSON.stringify(existingLocal));
-        } catch (e) {}
-
-        setServerSaveStep("Server Verified 100%");
-
         playBeep(isEarlyLeave ? "warning" : "success");
         if (isEarlyLeave) {
           speakVoice("Early Leave!");
@@ -1121,7 +1161,28 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
           serverVerified: true
         });
 
-        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const key = `school_attendance_${todayDateStr}`;
+          const existingLocal = JSON.parse(localStorage.getItem(key) || '{}');
+          existingLocal[member.id] = recordData;
+          localStorage.setItem(key, JSON.stringify(existingLocal));
+        } catch (e) {}
+
+        Promise.all([
+          saveAttendanceRecord(member.id, todayDateStr, {
+            status: exitStatus,
+            outTime: curTimeStr,
+            earlyOutReason: earlyLeaveReasonStr,
+            remarks: recordRemarks
+          }),
+          setDoc(docRef, sanitizeFirestoreData(recordData), { merge: true })
+        ]).catch(err => {
+          console.warn("Attendance checkout sync warning:", err);
+        });
+
+        cooldownsRef.current[member.id] = Date.now() + 3500;
+
+        await new Promise(r => setTimeout(r, 750));
         setScannedMember(null);
       }
 
