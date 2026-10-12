@@ -2123,13 +2123,31 @@ export default function Attendance() {
           icon={ListOrdered}
           label="Overview"
         />
-        <TabButton
-          active={activeTab === "qr"}
-          onClick={() => setActiveTab("qr")}
-          icon={QrCode}
-          label="QR Scanner"
-          disabled={settings.enableQrAttendance === false}
-        />
+        <div className="flex items-stretch bg-white rounded-xl">
+          <TabButton
+            active={activeTab === "qr"}
+            onClick={() => setActiveTab("qr")}
+            icon={QrCode}
+            label="QR Scanner"
+            disabled={settings.enableQrAttendance === false}
+          />
+          {activeTab === "qr" && settings.enableQrAttendance !== false && (
+            <div className="flex items-center gap-1 border-l border-slate-100 pl-1 py-1 mr-1">
+              <div className="relative">
+                <select 
+                  className="bg-slate-50 border hover:bg-slate-100 border-slate-200 text-[11px] font-bold tracking-tight text-slate-700 py-1.5 pl-2.5 pr-6 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer appearance-none transition-colors"
+                  value={memberType}
+                  onChange={(e) => setMemberType(e.target.value as any)}
+                  title="QR Scanner Role Target"
+                >
+                  <option value="Student">Students (छात्र)</option>
+                  <option value="Teacher">Teachers (शिक्षक)</option>
+                </select>
+                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2 pointer-events-none" />
+              </div>
+            </div>
+          )}
+        </div>
         <div className="flex items-stretch bg-white rounded-xl">
           <TabButton
             active={activeTab === "face"}
@@ -3415,7 +3433,12 @@ export default function Attendance() {
                 </div>
               }
             >
-              <QRScanner onExit={() => setActiveTab("overview")} />
+              <QRScanner
+                onExit={() => setActiveTab("overview")}
+                initialRole={memberType}
+                selectedMemberType={memberType}
+                onRoleChange={(role) => setMemberType(role === "Student" || role === "Teacher" ? role : "Student")}
+              />
             </Suspense>
           ) : (
             <div className="bg-white rounded-[2rem] border border-slate-200 p-8 text-center max-w-2xl mx-auto my-12 shadow-sm space-y-6">

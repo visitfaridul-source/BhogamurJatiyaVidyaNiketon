@@ -20,7 +20,11 @@ import {
   ShieldCheck,
   RefreshCw,
   SearchCode,
-  Loader2
+  Loader2,
+  GraduationCap,
+  Briefcase,
+  Globe,
+  AlertTriangle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
@@ -44,11 +48,51 @@ interface ScanLog {
   rawTime: string;
 }
 
-export default function QRScanner({ onExit }: { onExit?: () => void }) {
+export interface QRScannerProps {
+  onExit?: () => void;
+  initialRole?: "Student" | "Teacher" | "All";
+  selectedMemberType?: "Student" | "Teacher";
+  onRoleChange?: (role: "Student" | "Teacher") => void;
+}
+
+export default function QRScanner({
+  onExit,
+  initialRole = "Student",
+  selectedMemberType,
+  onRoleChange
+}: QRScannerProps) {
   const { students, teachers, attendanceMap, saveAttendanceRecord } = useSchool();
   const { timingConfig, updateTimingConfig, resolveForClass } = useAttendanceTiming();
   const [isTimeManagerModalOpen, setIsTimeManagerModalOpen] = useState(false);
-  
+
+  // Target Role Category: 'student' (Default: Students Only) | 'teacher' (Faculty Only) | 'all' (Universal)
+  const [targetRole, setTargetRole] = useState<"student" | "teacher" | "all">(() => {
+    const r = (selectedMemberType || initialRole || "Student").toLowerCase();
+    if (r === "teacher") return "teacher";
+    if (r === "all") return "all";
+    return "student";
+  });
+
+  // Keep in sync if prop changes from parent
+  useEffect(() => {
+    if (selectedMemberType) {
+      const r = selectedMemberType.toLowerCase();
+      setTargetRole(r === "teacher" ? "teacher" : "student");
+      setManualType(r === "teacher" ? "teacher" : "student");
+    }
+  }, [selectedMemberType]);
+
+  const handleTargetRoleChange = (newRole: "student" | "teacher" | "all") => {
+    setTargetRole(newRole);
+    if (newRole === "teacher") {
+      setManualType("teacher");
+      if (onRoleChange) onRoleChange("Teacher");
+    } else if (newRole === "student") {
+      setManualType("student");
+      if (onRoleChange) onRoleChange("Student");
+    }
+  };
+
   // Real-time scanner state
   const [scanLogs, setScanLogs] = useState<ScanLog[]>([]);
   const [scannedMember, setScannedMember] = useState<any | null>(null);
@@ -118,7 +162,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
 
   const [isAutoMarkingAbsent, setIsAutoMarkingAbsent] = useState(false);
 
-  // Live status statistics for students in scanner session
+  // Live status statistics for students / teachers in scanner session
   const currentQRStats = useMemo(() => {
     let present = 0;
     let late = 0;
@@ -126,9 +170,14 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     let absent = 0;
     let unscanned = 0;
 
-    const list = selectedClass ? students.filter(s => s.class === selectedClass) : students;
-    list.forEach(s => {
-      const rec = attendanceMap[`${todayDateStr}:${s.id}`];
+    const list: Array<any> = targetRole === "teacher"
+      ? teachers
+      : targetRole === "all"
+      ? [...students, ...teachers]
+      : (selectedClass ? students.filter(s => s.class === selectedClass) : students);
+
+    list.forEach(item => {
+      const rec = attendanceMap[`${todayDateStr}:${item.id}`];
       if (rec?.status === 'Present') present++;
       else if (rec?.status === 'Late') late++;
       else if (rec?.status === 'Early Leave') earlyLeave++;
@@ -136,29 +185,36 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       else unscanned++;
     });
 
-    return { present, late, earlyLeave, absent, unscanned, total: list.length };
-  }, [students, attendanceMap, todayDateStr, selectedClass]);
+    const roleLabel = targetRole === "teacher" ? "Teachers" : targetRole === "all" ? "Members" : "Students";
+
+    return { present, late, earlyLeave, absent, unscanned, total: list.length, roleLabel };
+  }, [students, teachers, attendanceMap, todayDateStr, selectedClass, targetRole]);
 
   const handleAutoMarkUnscanned = async () => {
     try {
       setIsAutoMarkingAbsent(true);
-      const list = selectedClass ? students.filter(s => s.class === selectedClass) : students;
+      const list: Array<any> = targetRole === "teacher"
+        ? teachers
+        : targetRole === "all"
+        ? [...students, ...teachers]
+        : (selectedClass ? students.filter(s => s.class === selectedClass) : students);
+
       let count = 0;
-      for (const s of list) {
-        const rec = attendanceMap[`${todayDateStr}:${s.id}`];
+      for (const item of list) {
+        const rec = attendanceMap[`${todayDateStr}:${item.id}`];
         if (!rec?.status) {
-          await saveAttendanceRecord(s.id, todayDateStr, {
+          await saveAttendanceRecord(item.id, todayDateStr, {
             status: "Absent",
-            remarks: "Auto-marked Absent (Unscanned via QR)",
+            remarks: `Auto-marked Absent (Unscanned via QR - ${targetRole === "teacher" ? "Faculty" : (selectedClass || "All Classes")})`,
           });
           count++;
         }
       }
       setStatusMessage({
-        text: `Marked ${count} unscanned students as Absent for ${selectedClass || "all classes"}!`,
+        text: `Marked ${count} unscanned ${currentQRStats.roleLabel} as Absent!`,
         type: "success"
       });
-      speakVoice(`${count} students marked absent`);
+      speakVoice(`${count} marked absent`);
     } catch (e) {
       console.error(e);
       setStatusMessage({
@@ -548,13 +604,19 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       photoUrl: adm.avatar || (adm as any).photoUrl || (adm as any).photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(adm.name)}`
     });
 
-    // Tier 1: Exact direct ID matches across all school roles
+    // Tier 1: Exact direct ID matches across all school roles (prioritizing active targetRole)
     if (cleanId) {
-      const sExact = students.find(s => s.id === cleanId || s.id.toLowerCase() === cleanId.toLowerCase());
-      if (sExact) return buildStudentResult(sExact);
-
-      const tExact = teachers.find(t => t.id === cleanId || t.id.toLowerCase() === cleanId.toLowerCase());
-      if (tExact) return buildTeacherResult(tExact);
+      if (targetRole === "teacher") {
+        const tExact = teachers.find(t => t.id === cleanId || t.id.toLowerCase() === cleanId.toLowerCase());
+        if (tExact) return buildTeacherResult(tExact);
+        const sExact = students.find(s => s.id === cleanId || s.id.toLowerCase() === cleanId.toLowerCase());
+        if (sExact) return buildStudentResult(sExact);
+      } else {
+        const sExact = students.find(s => s.id === cleanId || s.id.toLowerCase() === cleanId.toLowerCase());
+        if (sExact) return buildStudentResult(sExact);
+        const tExact = teachers.find(t => t.id === cleanId || t.id.toLowerCase() === cleanId.toLowerCase());
+        if (tExact) return buildTeacherResult(tExact);
+      }
 
       const stExact = otherStaffList.find(st => st.id === cleanId || st.id.toLowerCase() === cleanId.toLowerCase());
       if (stExact) return buildStaffResult(stExact);
@@ -565,11 +627,17 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
 
     // Tier 2: Clean alphanumeric ID matches (e.g. ADM-01 vs ADM01 vs STU_01 vs STU001 vs ADM2023001)
     if (cleanIdAlphaNum) {
-      const sAlpha = students.find(s => s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
-      if (sAlpha) return buildStudentResult(sAlpha);
-
-      const tAlpha = teachers.find(t => t.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
-      if (tAlpha) return buildTeacherResult(tAlpha);
+      if (targetRole === "teacher") {
+        const tAlpha = teachers.find(t => t.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
+        if (tAlpha) return buildTeacherResult(tAlpha);
+        const sAlpha = students.find(s => s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
+        if (sAlpha) return buildStudentResult(sAlpha);
+      } else {
+        const sAlpha = students.find(s => s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
+        if (sAlpha) return buildStudentResult(sAlpha);
+        const tAlpha = teachers.find(t => t.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
+        if (tAlpha) return buildTeacherResult(tAlpha);
+      }
 
       const stAlpha = otherStaffList.find(st => st.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanIdAlphaNum);
       if (stAlpha) return buildStaffResult(stAlpha);
@@ -579,7 +647,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     }
 
     // Tier 3: Roll number match across students (handles plain serial roll e.g. "1", "2", "05")
-    if (cleanId) {
+    if (cleanId && targetRole !== "teacher") {
       const rollMatches = students.filter(s => {
         const sRoll = (s.roll || "").trim();
         const matchRoll = sRoll === cleanId || sRoll === String(parseInt(cleanId, 10));
@@ -594,26 +662,33 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       }
     }
 
-    // Tier 4: Exact Name matches
+    // Tier 4: Exact Name matches (prioritizing active targetRole)
     if (cleanName) {
-      // 4A. Student exact name (or with class filter)
-      const nameMatches = students.filter(s => s.name.toLowerCase().trim() === cleanName);
-      if (nameMatches.length === 1) {
-        return buildStudentResult(nameMatches[0]);
-      } else if (nameMatches.length > 1 && payloadClass) {
-        const classSpecific = nameMatches.find(s => s.class.toLowerCase().replace(/\s+/g, '') === payloadClass.toLowerCase().replace(/\s+/g, ''));
-        if (classSpecific) return buildStudentResult(classSpecific);
+      if (targetRole === "teacher") {
+        // Teacher first
+        const tName = teachers.find(t => t.name.toLowerCase().trim() === cleanName);
+        if (tName) return buildTeacherResult(tName);
+
+        const nameMatches = students.filter(s => s.name.toLowerCase().trim() === cleanName);
+        if (nameMatches.length === 1) return buildStudentResult(nameMatches[0]);
+      } else {
+        // Student first
+        const nameMatches = students.filter(s => s.name.toLowerCase().trim() === cleanName);
+        if (nameMatches.length === 1) {
+          return buildStudentResult(nameMatches[0]);
+        } else if (nameMatches.length > 1 && payloadClass) {
+          const classSpecific = nameMatches.find(s => s.class.toLowerCase().replace(/\s+/g, '') === payloadClass.toLowerCase().replace(/\s+/g, ''));
+          if (classSpecific) return buildStudentResult(classSpecific);
+        }
+
+        const tName = teachers.find(t => t.name.toLowerCase().trim() === cleanName);
+        if (tName) return buildTeacherResult(tName);
       }
 
-      // 4B. Teacher name
-      const tName = teachers.find(t => t.name.toLowerCase().trim() === cleanName);
-      if (tName) return buildTeacherResult(tName);
-
-      // 4C. Staff name
+      // Staff / Admin fallback
       const stName = otherStaffList.find(st => st.name.toLowerCase().trim() === cleanName);
       if (stName) return buildStaffResult(stName);
 
-      // 4D. Admin name
       const admName = adminList.find(ad => ad.name.toLowerCase().trim() === cleanName);
       if (admName) return buildAdminResult(admName);
     }
@@ -622,11 +697,17 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
     if (cleanName) {
       const cleanNameAlphaNum = cleanName.replace(/[^a-zA-Z0-9]/g, '');
       if (cleanNameAlphaNum.length >= 3) {
-        const sAlphaName = students.find(s => s.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
-        if (sAlphaName) return buildStudentResult(sAlphaName);
-
-        const tAlphaName = teachers.find(t => t.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
-        if (tAlphaName) return buildTeacherResult(tAlphaName);
+        if (targetRole === "teacher") {
+          const tAlphaName = teachers.find(t => t.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
+          if (tAlphaName) return buildTeacherResult(tAlphaName);
+          const sAlphaName = students.find(s => s.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
+          if (sAlphaName) return buildStudentResult(sAlphaName);
+        } else {
+          const sAlphaName = students.find(s => s.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
+          if (sAlphaName) return buildStudentResult(sAlphaName);
+          const tAlphaName = teachers.find(t => t.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
+          if (tAlphaName) return buildTeacherResult(tAlphaName);
+        }
 
         const stAlphaName = otherStaffList.find(st => st.name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '') === cleanNameAlphaNum);
         if (stAlphaName) return buildStaffResult(stAlphaName);
@@ -940,8 +1021,8 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
 
       // D. Self-Healing Resolution for ID card QR scans:
       // If the QR code payload contains verified student info (from school-generated ID card),
-      // auto-register the student into the database and accept attendance immediately!
-      if (!matchResult && (payloadName || (parsedId && parsedId.length >= 2))) {
+      // auto-register the student into the database and accept attendance immediately (only in student/all mode)!
+      if (targetRole !== "teacher" && !matchResult && (payloadName || (parsedId && parsedId.length >= 2))) {
         if (payloadName) {
           const autoStudent: Student = {
             id: parsedId || `STU-${Date.now().toString().slice(-6)}`,
@@ -992,6 +1073,76 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
       }
 
       const { member, type: resolvedType, classNameStr, photoUrl } = matchResult;
+
+      // STRICT ROLE CATEGORY ENFORCEMENT:
+      // If Student mode is active, reject teachers/staff immediately!
+      if (targetRole === "student" && resolvedType !== "student") {
+        playBeep("error");
+        speakVoice("Teacher QR detected. Student mode active.");
+        setStatusMessage({
+          text: `⚠️ Teacher ID detected (${member.name})! Scanner is in "Students Only" mode. Attendance NOT marked.`,
+          type: "warning"
+        });
+        setScannedMember({
+          name: member.name,
+          classOrSubject: classNameStr || "Faculty",
+          status: "ROLE_MISMATCH",
+          mode: scannerMode,
+          photo: photoUrl,
+          mismatchMessage: `TEACHER ID DETECTED: Scanner is in Students Only mode. Switch to Teachers mode to mark faculty.`,
+          serverVerified: false
+        });
+        cooldownsRef.current[member.id] = Date.now() + 3000;
+        await new Promise(r => setTimeout(r, 1200));
+        setScannedMember(null);
+        return;
+      }
+
+      // If Teacher mode is active, reject students immediately!
+      if (targetRole === "teacher" && resolvedType !== "teacher") {
+        playBeep("error");
+        speakVoice("Student QR detected. Teacher mode active.");
+        setStatusMessage({
+          text: `⚠️ Student ID detected (${member.name})! Scanner is in "Teachers Only" mode. Attendance NOT marked.`,
+          type: "warning"
+        });
+        setScannedMember({
+          name: member.name,
+          classOrSubject: classNameStr || "Student",
+          status: "ROLE_MISMATCH",
+          mode: scannerMode,
+          photo: photoUrl,
+          mismatchMessage: `STUDENT ID DETECTED: Scanner is in Teachers Only mode. Switch to Students mode to mark students.`,
+          serverVerified: false
+        });
+        cooldownsRef.current[member.id] = Date.now() + 3000;
+        await new Promise(r => setTimeout(r, 1200));
+        setScannedMember(null);
+        return;
+      }
+
+      // Class Restriction check when in student mode with a specific class selected
+      if (targetRole === "student" && selectedClass && (member as any).class && (member as any).class !== selectedClass) {
+        playBeep("warning");
+        speakVoice("Class mismatch");
+        setStatusMessage({
+          text: `⚠️ Student belongs to ${(member as any).class}! Scanner is locked to "${selectedClass}". Attendance NOT marked.`,
+          type: "warning"
+        });
+        setScannedMember({
+          name: member.name,
+          classOrSubject: `${(member as any).class} - ${(member as any).section || 'A'}`,
+          status: "WRONG_CLASS",
+          mode: scannerMode,
+          photo: photoUrl,
+          mismatchMessage: `CLASS MISMATCH: ${(member as any).class} ≠ ${selectedClass}`,
+          serverVerified: false
+        });
+        cooldownsRef.current[member.id] = Date.now() + 3000;
+        await new Promise(r => setTimeout(r, 1200));
+        setScannedMember(null);
+        return;
+      }
 
       // Skip re-processing if this member was just marked in this physical scan
       if (cooldownsRef.current[member.id] && Date.now() < cooldownsRef.current[member.id]) {
@@ -1280,6 +1431,88 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
             </div>
           </div>
 
+          {/* Target Role Selector Banner (Student vs Teacher vs All) */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2.5xl border border-indigo-900/50 shadow-md mb-4">
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-colors",
+                targetRole === "teacher" 
+                  ? "bg-purple-600/30 border-purple-400/40 text-purple-300"
+                  : targetRole === "all"
+                  ? "bg-teal-600/30 border-teal-400/40 text-teal-300"
+                  : "bg-indigo-600/30 border-indigo-400/40 text-indigo-300"
+              )}>
+                {targetRole === "teacher" ? <Briefcase className="w-5 h-5" /> : <GraduationCap className="w-5 h-5" />}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={cn(
+                    "text-[9px] uppercase font-black tracking-widest px-2 py-0.5 rounded-full border",
+                    targetRole === "teacher" 
+                      ? "bg-purple-500/20 text-purple-300 border-purple-400/30"
+                      : targetRole === "all"
+                      ? "bg-teal-500/20 text-teal-300 border-teal-400/30"
+                      : "bg-indigo-500/20 text-indigo-300 border-indigo-400/30"
+                  )}>
+                    SCANNER ROLE TARGET
+                  </span>
+                  <span className="text-xs font-bold text-white">
+                    {targetRole === "student" && "🎓 Students Only Mode (केवल छात्र)"}
+                    {targetRole === "teacher" && "👨‍🏫 Teachers Only Mode (केवल शिक्षक)"}
+                    {targetRole === "all" && "🌐 Universal Mode (छात्र और शिक्षक दोनों)"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-indigo-200/80 mt-0.5">
+                  {targetRole === "student" && "Teacher ID scans will be automatically rejected. Only student attendance will be recorded."}
+                  {targetRole === "teacher" && "Student ID scans will be automatically rejected. Only faculty teacher attendance will be recorded."}
+                  {targetRole === "all" && "Universal mode active. Both students and teachers can scan their ID cards."}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex bg-slate-950/80 p-1 rounded-2xl border border-white/10 gap-1 self-start sm:self-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => handleTargetRoleChange("student")}
+                className={cn(
+                  "px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer",
+                  targetRole === "student"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-1 ring-white/20"
+                    : "text-slate-400 hover:text-white"
+                )}
+              >
+                <GraduationCap className="w-4 h-4" />
+                <span>Students (छात्र)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTargetRoleChange("teacher")}
+                className={cn(
+                  "px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer",
+                  targetRole === "teacher"
+                    ? "bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-white/20"
+                    : "text-slate-400 hover:text-white"
+                )}
+              >
+                <Briefcase className="w-4 h-4" />
+                <span>Teachers (शिक्षक)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTargetRoleChange("all")}
+                className={cn(
+                  "px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  targetRole === "all"
+                    ? "bg-slate-700 text-white shadow-sm ring-1 ring-white/20"
+                    : "text-slate-400 hover:text-white"
+                )}
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>All (सभी)</span>
+              </button>
+            </div>
+          </div>
+
           {/* Mode (Check-In vs Out) & Class Filters */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
             {/* Entry vs Exit Toggle */}
@@ -1310,23 +1543,35 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
               </button>
             </div>
 
-            {/* Target Class Selector */}
-            <div className="relative">
-              <select
-                className="w-full pl-3.5 pr-8 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-700 outline-none focus:ring-2 focus:ring-teal-500/20 shadow-xs appearance-none"
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
-                title="Limit Scans to a Specific Class"
-              >
-                <option value="">🎯 Allow All Classes (सभी कक्षाएं स्वीकार्य)</option>
-                {["Nursery", "LKG", "UKG", "Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"].map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                <ChevronRight className="w-4 h-4 rotate-90" />
+            {/* Target Class Selector or Teacher Faculty Indicator */}
+            {targetRole === "teacher" ? (
+              <div className="w-full px-4 py-3 bg-purple-50/70 border border-purple-200/80 rounded-2xl text-xs font-bold text-purple-900 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-purple-600" />
+                  <span>Faculty (शिक्षक उपस्थिति) — All Departments</span>
+                </div>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-purple-200/80 text-purple-900 rounded-lg">
+                  {teachers.length} Active
+                </span>
               </div>
-            </div>
+            ) : (
+              <div className="relative">
+                <select
+                  className="w-full pl-3.5 pr-8 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-700 outline-none focus:ring-2 focus:ring-teal-500/20 shadow-xs appearance-none"
+                  value={selectedClass}
+                  onChange={(e) => setSelectedClass(e.target.value)}
+                  title="Limit Scans to a Specific Class"
+                >
+                  <option value="">🎯 Allow All Classes (सभी कक्षाएं स्वीकार्य)</option>
+                  {["Nursery", "LKG", "UKG", "Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <ChevronRight className="w-4 h-4 rotate-90" />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Live Scanner Session Stats & Follow-up Actions */}
@@ -1437,7 +1682,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
                 >
                   <div className={cn(
                     "bg-white rounded-[2.5rem] p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center relative overflow-hidden border-2",
-                    scannedMember.status === "NOT_FOUND" ? "border-rose-500" :
+                    scannedMember.status === "NOT_FOUND" || scannedMember.status === "ROLE_MISMATCH" ? "border-rose-500" :
                     scannedMember.status === "WRONG_CLASS" ? "border-amber-400" :
                     scannedMember.status && ["Late", "EARLY_LEAVE", "LEFT"].includes(scannedMember.status) ? "border-amber-500" :
                     scannedMember.status && ["ALREADY_IN", "ALREADY_OUT"].includes(scannedMember.status) ? "border-teal-500/80" :
@@ -1447,7 +1692,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
                     {/* Glowing Aura Effect */}
                     <div className={cn(
                       "absolute -top-32 w-64 h-64 rounded-full filter blur-[40px] opacity-15",
-                      scannedMember.status === "NOT_FOUND" ? "bg-rose-500" :
+                      scannedMember.status === "NOT_FOUND" || scannedMember.status === "ROLE_MISMATCH" ? "bg-rose-500" :
                       scannedMember.status === "WRONG_CLASS" ? "bg-amber-400" : "bg-emerald-500"
                     )} />
 
@@ -1457,6 +1702,10 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
                         <CheckCircle2 className="w-16 h-16 text-emerald-500 stroke-[2.5]" />
                       ) : ["ALREADY_IN", "ALREADY_OUT"].includes(scannedMember.status) ? (
                         <ShieldCheck className="w-16 h-16 text-teal-500 stroke-[2.5]" />
+                      ) : scannedMember.status === "ROLE_MISMATCH" ? (
+                        <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
+                          <AlertTriangle className="w-10 h-10 stroke-[2.5]" />
+                        </div>
                       ) : (
                         <XCircle className="w-16 h-16 text-rose-500 stroke-[2.5]" />
                       )}
@@ -1489,7 +1738,7 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
                     {/* Diagnostic Status Alert Box */}
                     <div className={cn(
                       "px-4 py-2.5 rounded-2xl text-[11px] font-bold w-full shadow-xs border",
-                      scannedMember.status === "NOT_FOUND" ? "bg-rose-50 text-rose-700 border-rose-100" :
+                      scannedMember.status === "NOT_FOUND" || scannedMember.status === "ROLE_MISMATCH" ? "bg-rose-50 text-rose-700 border-rose-100" :
                       scannedMember.status === "WRONG_CLASS" ? "bg-amber-50 text-amber-700 border-amber-100" :
                       scannedMember.status === "ALREADY_IN" ? "bg-teal-50 text-teal-700 border-teal-100" :
                       scannedMember.status === "ALREADY_OUT" ? "bg-amber-100/40 text-amber-700 border-amber-200" :
@@ -1498,7 +1747,8 @@ export default function QRScanner({ onExit }: { onExit?: () => void }) {
                       "bg-emerald-50 text-emerald-800 border-emerald-100"
                     )}>
                       {scannedMember.status === "NOT_FOUND" ? "UNKNOWN ID / NOT IN SCHOOL DATABASE" :
-                       scannedMember.status === "WRONG_CLASS" ? "WRONG CLASS / WRONG DIVISION" :
+                       scannedMember.status === "ROLE_MISMATCH" ? (scannedMember.mismatchMessage || "ROLE MISMATCH / NOT MARKED") :
+                       scannedMember.status === "WRONG_CLASS" ? (scannedMember.mismatchMessage || "WRONG CLASS / WRONG DIVISION") :
                        scannedMember.status === "ALREADY_IN" ? "DUPLICATE: ALREADY RECORDED FOR TODAY" :
                        scannedMember.status === "ALREADY_OUT" ? "DUPLICATE: ALREADY CHECKED OUT" :
                        scannedMember.status === "Late" ? "✓ LATE (100% SAVED TO SERVER)" :
