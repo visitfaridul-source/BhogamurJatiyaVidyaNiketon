@@ -26,7 +26,9 @@ import {
   ChevronRight,
   ChevronDown,
   MessageSquare,
+  FileText,
 } from "lucide-react";
+import html2pdf from "html2pdf.js";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useSchool } from "@/context/SchoolContext";
@@ -113,6 +115,7 @@ export default function Attendance() {
   const [isTimeManagerModalOpen, setIsTimeManagerModalOpen] = useState(false);
   const { timingConfig, updateTimingConfig, resolveForClass } = useAttendanceTiming();
   const [monitorCategoryFilter, setMonitorCategoryFilter] = useState<"All" | "Student" | "Teacher">("Teacher");
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   useEffect(() => {
     if (location.state) {
@@ -842,6 +845,189 @@ export default function Attendance() {
       setTimeout(() => {
         printWin.print();
       }, 350);
+    }
+  };
+
+  const exportSpecificListPDF = async (
+    targetStatus: "Absent" | "Late" | "Early Leave" | "Present" | "Not Recorded" | "Current",
+  ) => {
+    const effectiveStatus = targetStatus === "Current" ? statusFilter : targetStatus;
+
+    let membersToFilter: any[] = [];
+    if (memberType === "Student") {
+      membersToFilter = selectedClass
+        ? students.filter(
+            (s) =>
+              s.class.toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
+              (!selectedSection || (s.section || "").toUpperCase().trim() === selectedSection.toUpperCase().trim()),
+          )
+        : students;
+    } else if (memberType === "Teacher") {
+      membersToFilter = teachers;
+    } else {
+      membersToFilter = settings.staffMembers || [];
+    }
+
+    const filtered = membersToFilter.filter((member) => {
+      const record = attendanceMap[`${date}:${member.id}`];
+      const status = getCalculatedStatus(record, date);
+      if (effectiveStatus === "All") return true;
+      return status === effectiveStatus;
+    });
+
+    if (filtered.length === 0) {
+      alert(`No records found for status: "${effectiveStatus}" on ${date}.`);
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+
+    const titleMap: Record<string, string> = {
+      Absent: "STUDENTS ABSENTEE LIST (अनुपस्थित सूची)",
+      Late: "LATE ARRIVALS REGISTER (विलंब आगमन सूची)",
+      "Early Leave": "EARLY DEPARTURE LIST (समय पूर्व प्रस्थान सूची)",
+      Present: "ATTENDANCE PRESENT REGISTER (उपस्थित छात्र सूची)",
+      "Not Recorded": "UNSCANNED / PENDING LIST (अदर्ज सूची)",
+      All: "COMPLETE ATTENDANCE RECORD (समग्र हाजिरी सूची)",
+    };
+
+    const sheetTitle = titleMap[effectiveStatus] || `${effectiveStatus} Attendance List`;
+    const themeColor =
+      effectiveStatus === "Absent"
+        ? "#dc2626"
+        : effectiveStatus === "Late"
+          ? "#d97706"
+          : effectiveStatus === "Early Leave"
+            ? "#7c3aed"
+            : effectiveStatus === "Present"
+              ? "#16a34a"
+              : "#4f46e5";
+
+    let rowsHtml = filtered
+      .map((member, index) => {
+        const displayId =
+          memberType === "Student" ? (member.roll || member.id || "-") : (member.id || "-");
+        const record = attendanceMap[`${date}:${member.id}`];
+        const status = getCalculatedStatus(record, date);
+        const inTime = record?.inTime || "-";
+        const outTime = record?.outTime || "-";
+        const remarks = record?.earlyOutReason || record?.remarks || "-";
+        const phone =
+          (member as any).phone ||
+          (member as any).fatherPhone ||
+          (member as any).guardianPhone ||
+          (member as any).parentPhone ||
+          "-";
+
+        return `
+        <tr style="background:${index % 2 === 1 ? '#f8fafc' : '#ffffff'};">
+          <td style="text-align:center;font-weight:bold;padding:6px 4px;border:1px solid #cbd5e1;font-size:10px;">${index + 1}</td>
+          <td style="text-align:center;font-weight:bold;padding:6px 4px;border:1px solid #cbd5e1;font-size:10px;font-family:monospace;">${displayId}</td>
+          <td style="font-weight:600;padding:6px 8px;border:1px solid #cbd5e1;font-size:11px;color:#0f172a;">${member.name}</td>
+          <td style="text-align:center;padding:6px 6px;border:1px solid #cbd5e1;font-size:10px;">${member.class || member.subject || "-"} - ${member.section || "A"}</td>
+          <td style="text-align:center;padding:6px 4px;border:1px solid #cbd5e1;">
+            <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:9.5px;font-weight:bold;background:${themeColor}15;color:${themeColor};border:1px solid ${themeColor}40;">
+              ${status}
+            </span>
+          </td>
+          <td style="text-align:center;font-family:monospace;font-size:10px;padding:6px 4px;border:1px solid #cbd5e1;">${inTime}</td>
+          <td style="text-align:center;font-family:monospace;font-size:10px;padding:6px 4px;border:1px solid #cbd5e1;">${outTime}</td>
+          <td style="font-size:9.5px;padding:6px 6px;border:1px solid #cbd5e1;color:#475569;">${remarks}</td>
+          <td style="text-align:center;font-family:monospace;font-size:10px;padding:6px 4px;border:1px solid #cbd5e1;">${phone}</td>
+        </tr>
+      `;
+      })
+      .join("");
+
+    const reportHtml = `
+      <div style="font-family:'Inter', Arial, sans-serif; color:#1e293b; background:#ffffff; padding:16px 20px; width:100%; box-sizing:border-box;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid ${themeColor}; padding-bottom:12px; margin-bottom:12px;">
+          <div>
+            <h1 style="font-size:19px; font-weight:800; color:#0f172a; margin:0 0 3px 0; text-transform:uppercase; letter-spacing:0.5px;">
+              ${settings.schoolName || "Institutional School"}
+            </h1>
+            <p style="font-size:11px; color:#64748b; margin:0; font-weight:500;">
+              Affiliated & Recognized • Daily Attendance Verification System
+            </p>
+          </div>
+          <div style="background:${themeColor}; color:#ffffff; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; text-align:center;">
+            ${sheetTitle}
+          </div>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:16px; background:#f8fafc; padding:8px 12px; border-radius:8px; font-size:11px; font-weight:600; color:#475569; margin-bottom:14px; border:1px solid #e2e8f0;">
+          <span><strong style="color:#0f172a;">Date:</strong> ${date}</span>
+          <span><strong style="color:#0f172a;">Class:</strong> ${selectedClass || "All Classes"}</span>
+          ${selectedSection ? `<span><strong style="color:#0f172a;">Section:</strong> ${selectedSection}</span>` : ""}
+          <span><strong style="color:#0f172a;">Category:</strong> ${memberType}</span>
+          <span><strong style="color:#0f172a;">Total Count:</strong> ${filtered.length} Records</span>
+          <span><strong style="color:#0f172a;">Filter:</strong> <span style="color:${themeColor}; font-weight:700;">${effectiveStatus}</span></span>
+        </div>
+
+        <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
+          <thead>
+            <tr style="background:#f1f5f9;">
+              <th style="width:28px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">#</th>
+              <th style="width:65px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">${memberType === "Student" ? "Roll No" : "ID"}</th>
+              <th style="font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 8px; border:1px solid #cbd5e1; text-align:left;">Name</th>
+              <th style="width:105px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 6px; border:1px solid #cbd5e1; text-align:center;">Class/Section</th>
+              <th style="width:90px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">Status</th>
+              <th style="width:70px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">In Time</th>
+              <th style="width:70px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">Out Time</th>
+              <th style="font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 6px; border:1px solid #cbd5e1; text-align:left;">Reason / Remarks</th>
+              <th style="width:105px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">Guardian Phone</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <div style="display:flex; justify-content:space-between; margin-top:35px; padding-top:12px; font-size:11px; font-weight:700; color:#475569;">
+          <div style="width:180px; border-top:1px solid #94a3b8; text-align:center; padding-top:5px;">
+            Class Teacher / In-Charge
+          </div>
+          <div style="width:180px; border-top:1px solid #94a3b8; text-align:center; padding-top:5px;">
+            Attendance Supervisor
+          </div>
+          <div style="width:180px; border-top:1px solid #94a3b8; text-align:center; padding-top:5px;">
+            Principal / Headmaster
+          </div>
+        </div>
+      </div>
+    `;
+
+    const container = document.createElement("div");
+    container.style.position = "fixed";
+    container.style.left = "-9999px";
+    container.style.top = "0";
+    container.style.width = "1050px";
+    container.style.backgroundColor = "#ffffff";
+    container.innerHTML = reportHtml;
+    document.body.appendChild(container);
+
+    const filenameLabel = String(effectiveStatus).replace(/\s+/g, "_");
+    const pdfFilename = `${filenameLabel}_List_${memberType}_${selectedClass ? selectedClass : "All"}_${date}.pdf`;
+
+    try {
+      const opt = {
+        margin: [6, 6, 6, 6],
+        filename: pdfFilename,
+        image: { type: "jpeg" as const, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: "mm" as const, format: "a4" as const, orientation: "landscape" as const },
+        pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+      };
+
+      await (html2pdf as any)().from(container).set(opt).save();
+    } catch (err) {
+      console.error("PDF export error:", err);
+      printSpecificList(targetStatus);
+    } finally {
+      if (document.body.contains(container)) {
+        document.body.removeChild(container);
+      }
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -2088,30 +2274,86 @@ export default function Attendance() {
             <ListOrdered className="w-4 h-4 text-purple-600" />
             <span>Separate Lists</span>
           </button>
-          <button
-            onClick={() => exportSpecificList("Absent")}
-            className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 px-3.5 py-2 rounded-xl text-sm font-semibold hover:bg-rose-100 transition-colors shadow-sm cursor-pointer"
-            title="Download Students Absent List CSV"
-          >
-            <UserX className="w-4 h-4 text-rose-600" />
-            <span>Absent ({currentLevelStats.absent})</span>
-          </button>
-          <button
-            onClick={() => exportSpecificList("Late")}
-            className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 px-3.5 py-2 rounded-xl text-sm font-semibold hover:bg-amber-100 transition-colors shadow-sm cursor-pointer"
-            title="Download Students Late Arrivals List CSV"
-          >
-            <Clock className="w-4 h-4 text-amber-600" />
-            <span>Late ({currentLevelStats.late})</span>
-          </button>
-          <button
-            onClick={() => exportSpecificList("Early Leave")}
-            className="flex items-center gap-2 bg-purple-50 border border-purple-200 text-purple-700 px-3.5 py-2 rounded-xl text-sm font-semibold hover:bg-purple-100 transition-colors shadow-sm cursor-pointer"
-            title="Download Students Early Leave List CSV"
-          >
-            <Clock className="w-4 h-4 text-purple-600" />
-            <span>Early Leave ({currentLevelStats.earlyLeave})</span>
-          </button>
+          {/* Absent Pill: PDF & CSV */}
+          <div className="inline-flex items-stretch rounded-xl border border-rose-200 bg-rose-50 shadow-2xs hover:border-rose-300 transition-all overflow-hidden">
+            <button
+              type="button"
+              onClick={() => exportSpecificListPDF("Absent")}
+              disabled={isGeneratingPdf}
+              className="flex items-center gap-1.5 text-rose-700 pl-3.5 pr-2 py-2 text-sm font-semibold hover:bg-rose-100/90 transition-colors cursor-pointer disabled:opacity-50"
+              title="Download Absent List as PDF (.pdf)"
+            >
+              <UserX className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>Absent ({currentLevelStats.absent})</span>
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold uppercase tracking-wide bg-rose-200/90 text-rose-900 px-1.5 py-0.5 rounded shadow-2xs">
+                <FileText className="w-3 h-3" /> PDF
+              </span>
+            </button>
+            <span className="w-px bg-rose-200 self-stretch my-1" />
+            <button
+              type="button"
+              onClick={() => exportSpecificList("Absent")}
+              className="flex items-center gap-1 text-rose-700 px-2.5 py-2 text-xs font-bold hover:bg-rose-100/90 transition-colors cursor-pointer"
+              title="Download Absent List as CSV (.csv)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-rose-600" />
+              <span>CSV</span>
+            </button>
+          </div>
+
+          {/* Late Pill: PDF & CSV */}
+          <div className="inline-flex items-stretch rounded-xl border border-amber-200 bg-amber-50 shadow-2xs hover:border-amber-300 transition-all overflow-hidden">
+            <button
+              type="button"
+              onClick={() => exportSpecificListPDF("Late")}
+              disabled={isGeneratingPdf}
+              className="flex items-center gap-1.5 text-amber-700 pl-3.5 pr-2 py-2 text-sm font-semibold hover:bg-amber-100/90 transition-colors cursor-pointer disabled:opacity-50"
+              title="Download Late Arrivals List as PDF (.pdf)"
+            >
+              <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Late ({currentLevelStats.late})</span>
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold uppercase tracking-wide bg-amber-200/90 text-amber-900 px-1.5 py-0.5 rounded shadow-2xs">
+                <FileText className="w-3 h-3" /> PDF
+              </span>
+            </button>
+            <span className="w-px bg-amber-200 self-stretch my-1" />
+            <button
+              type="button"
+              onClick={() => exportSpecificList("Late")}
+              className="flex items-center gap-1 text-amber-700 px-2.5 py-2 text-xs font-bold hover:bg-amber-100/90 transition-colors cursor-pointer"
+              title="Download Late Arrivals List as CSV (.csv)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-600" />
+              <span>CSV</span>
+            </button>
+          </div>
+
+          {/* Early Leave Pill: PDF & CSV */}
+          <div className="inline-flex items-stretch rounded-xl border border-purple-200 bg-purple-50 shadow-2xs hover:border-purple-300 transition-all overflow-hidden">
+            <button
+              type="button"
+              onClick={() => exportSpecificListPDF("Early Leave")}
+              disabled={isGeneratingPdf}
+              className="flex items-center gap-1.5 text-purple-700 pl-3.5 pr-2 py-2 text-sm font-semibold hover:bg-purple-100/90 transition-colors cursor-pointer disabled:opacity-50"
+              title="Download Early Leave List as PDF (.pdf)"
+            >
+              <Clock className="w-4 h-4 text-purple-600 shrink-0" />
+              <span>Early Leave ({currentLevelStats.earlyLeave})</span>
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold uppercase tracking-wide bg-purple-200/90 text-purple-900 px-1.5 py-0.5 rounded shadow-2xs">
+                <FileText className="w-3 h-3" /> PDF
+              </span>
+            </button>
+            <span className="w-px bg-purple-200 self-stretch my-1" />
+            <button
+              type="button"
+              onClick={() => exportSpecificList("Early Leave")}
+              className="flex items-center gap-1 text-purple-700 px-2.5 py-2 text-xs font-bold hover:bg-purple-100/90 transition-colors cursor-pointer"
+              title="Download Early Leave List as CSV (.csv)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
+              <span>CSV</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2891,6 +3133,16 @@ export default function Attendance() {
                       >
                         <Printer className="w-3.5 h-3.5" />
                         <span>Print {statusFilter === "All" ? "List" : `${statusFilter}`}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => exportSpecificListPDF("Current")}
+                        disabled={isGeneratingPdf}
+                        title="Download this list as PDF document"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Download PDF</span>
                       </button>
                       <button
                         type="button"
@@ -4548,9 +4800,11 @@ export default function Attendance() {
           memberType={memberType}
           setMemberType={setMemberType}
           exportSpecificList={exportSpecificList}
+          exportSpecificListPDF={exportSpecificListPDF}
           printSpecificList={printSpecificList}
           handleAutoMarkUnrecordedAbsent={handleAutoMarkUnrecordedAbsent}
           isAutoMarking={isAutoMarking}
+          isGeneratingPdf={isGeneratingPdf}
         />
       )}
 
@@ -4561,6 +4815,13 @@ export default function Attendance() {
           config={timingConfig}
           onSave={updateTimingConfig}
         />
+      )}
+
+      {isGeneratingPdf && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 bg-slate-900/95 text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 animate-fade-in text-sm font-semibold">
+          <Loader2 className="w-4 h-4 animate-spin text-rose-400" />
+          <span>Generating attendance PDF...</span>
+        </div>
       )}
     </div>
   );
@@ -4583,9 +4844,11 @@ function SeparateListsModal({
   memberType,
   setMemberType,
   exportSpecificList,
+  exportSpecificListPDF,
   printSpecificList,
   handleAutoMarkUnrecordedAbsent,
   isAutoMarking,
+  isGeneratingPdf,
 }: {
   onClose: () => void;
   date: string;
@@ -4603,9 +4866,11 @@ function SeparateListsModal({
   memberType: "Student" | "Teacher";
   setMemberType: (m: "Student" | "Teacher") => void;
   exportSpecificList: (cat: any) => void;
+  exportSpecificListPDF: (cat: any) => void;
   printSpecificList: (cat: any) => void;
   handleAutoMarkUnrecordedAbsent: () => void;
   isAutoMarking: boolean;
+  isGeneratingPdf: boolean;
 }) {
   const [activeCategory, setActiveCategory] = useState<
     "Absent" | "Late" | "Early Leave" | "Present" | "Not Recorded"
@@ -4693,6 +4958,15 @@ function SeparateListsModal({
             >
               <Printer className="w-4 h-4" />
               <span>Print {activeCategory} List</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => exportSpecificListPDF(activeCategory)}
+              disabled={isGeneratingPdf}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              <FileText className="w-4 h-4 text-white" />
+              <span>Download PDF</span>
             </button>
             <button
               type="button"
