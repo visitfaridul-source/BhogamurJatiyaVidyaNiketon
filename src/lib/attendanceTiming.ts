@@ -41,7 +41,7 @@ export const DEFAULT_TIMING_CONFIG: AttendanceTimingConfig = {
   activePreset: 'regular',
   activeSessionName: 'Regular School Day',
   schoolStartTime: '08:00',
-  lateCutoff: '08:45',
+  lateCutoff: '09:30',
   halfDayCutoff: '11:30',
   earlyLeaveCutoff: '14:30',
   closingTime: '14:30',
@@ -57,7 +57,7 @@ export const PRESETS: Record<Exclude<TimingPresetKey, 'custom'>, AttendanceTimin
     activePreset: 'regular',
     activeSessionName: 'Regular School Day (08:00 AM - 02:30 PM)',
     schoolStartTime: '08:00',
-    lateCutoff: '08:45',
+    lateCutoff: '09:30',
     halfDayCutoff: '11:30',
     earlyLeaveCutoff: '14:30',
     closingTime: '14:30',
@@ -131,6 +131,9 @@ export function loadAttendanceTimingConfig(): AttendanceTimingConfig {
     const raw = localStorage.getItem(TIMING_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      if (parsed.activePreset === 'regular' && (parsed.lateCutoff === '08:45' || !parsed.lateCutoff)) {
+        parsed.lateCutoff = '09:30';
+      }
       return {
         ...DEFAULT_TIMING_CONFIG,
         ...parsed,

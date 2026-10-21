@@ -406,7 +406,7 @@ export default function AttendanceTimeManagerModal({
                   </div>
                   <div className="text-xs text-slate-600 space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100 font-mono">
                     <div className="flex justify-between"><span>Entry:</span> <strong className="text-slate-800">08:00 AM</strong></div>
-                    <div className="flex justify-between"><span>Late After:</span> <strong className="text-amber-700">08:45 AM</strong></div>
+                    <div className="flex justify-between"><span>Late After:</span> <strong className="text-amber-700">09:30 AM</strong></div>
                     <div className="flex justify-between"><span>Early Leave Before:</span> <strong className="text-purple-700">02:30 PM</strong></div>
                     <div className="flex justify-between"><span>School Closes:</span> <strong className="text-slate-800">02:30 PM</strong></div>
                   </div>
