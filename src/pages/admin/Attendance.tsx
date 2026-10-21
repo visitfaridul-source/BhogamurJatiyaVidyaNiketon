@@ -2202,15 +2202,7 @@ export default function Attendance() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
-            Smart Attendance
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            AI-powered tracking, QR scanning, and daily reports.
-          </p>
-        </div>
+      <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
         <div className="flex flex-wrap gap-3">
           <Link
             to="/admin/whatsapp-messages"
