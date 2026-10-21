@@ -28,7 +28,8 @@ import {
   MessageSquare,
   FileText,
 } from "lucide-react";
-import html2pdf from "html2pdf.js";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useSchool } from "@/context/SchoolContext";
@@ -882,29 +883,71 @@ export default function Attendance() {
 
     setIsGeneratingPdf(true);
 
-    const titleMap: Record<string, string> = {
-      Absent: "STUDENTS ABSENTEE LIST (अनुपस्थित सूची)",
-      Late: "LATE ARRIVALS REGISTER (विलंब आगमन सूची)",
-      "Early Leave": "EARLY DEPARTURE LIST (समय पूर्व प्रस्थान सूची)",
-      Present: "ATTENDANCE PRESENT REGISTER (उपस्थित छात्र सूची)",
-      "Not Recorded": "UNSCANNED / PENDING LIST (अदर्ज सूची)",
-      All: "COMPLETE ATTENDANCE RECORD (समग्र हाजिरी सूची)",
-    };
+    try {
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+      });
 
-    const sheetTitle = titleMap[effectiveStatus] || `${effectiveStatus} Attendance List`;
-    const themeColor =
-      effectiveStatus === "Absent"
-        ? "#dc2626"
-        : effectiveStatus === "Late"
-          ? "#d97706"
-          : effectiveStatus === "Early Leave"
-            ? "#7c3aed"
-            : effectiveStatus === "Present"
-              ? "#16a34a"
-              : "#4f46e5";
+      const schoolName = settings.schoolName || "Bhogamur Jatiya Vidya Niketon";
+      const titleMap: Record<string, string> = {
+        Absent: "STUDENTS ABSENTEE LIST (अनुपस्थित सूची)",
+        Late: "LATE ARRIVALS REGISTER (विलंब आगमन सूची)",
+        "Early Leave": "EARLY DEPARTURE LIST (समय पूर्व प्रस्थान सूची)",
+        Present: "ATTENDANCE PRESENT REGISTER (उपस्थित छात्र सूची)",
+        "Not Recorded": "UNSCANNED / PENDING LIST (अदर्ज सूची)",
+        All: "COMPLETE ATTENDANCE RECORD (समग्र हाजिरी सूची)",
+      };
 
-    let rowsHtml = filtered
-      .map((member, index) => {
+      const sheetTitle = titleMap[effectiveStatus] || `${effectiveStatus} Attendance List`;
+      const themeColor: [number, number, number] =
+        effectiveStatus === "Absent"
+          ? [220, 38, 38] // red #dc2626
+          : effectiveStatus === "Late"
+            ? [217, 119, 6] // amber #d97706
+            : effectiveStatus === "Early Leave"
+              ? [124, 58, 237] // purple #7c3aed
+              : effectiveStatus === "Present"
+                ? [22, 163, 74] // green #16a34a
+                : [79, 70, 229]; // indigo #4f46e5
+
+      // Top colored banner accent line
+      doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+      doc.rect(14, 10, 269, 1.5, "F");
+
+      // School Name
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(15);
+      doc.setTextColor(15, 23, 42);
+      doc.text(schoolName.toUpperCase(), 14, 18);
+
+      // Subtitle
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("Affiliated & Recognized • Daily Attendance Verification System", 14, 23);
+
+      // Status pill badge on top right
+      doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+      doc.roundedRect(185, 12.5, 98, 10, 2, 2, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(sheetTitle, 234, 19, { align: "center" });
+
+      // Metadata information bar
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(14, 26, 269, 7.5, 1.5, 1.5, "FD");
+
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      const metaText = `Date: ${date}   |   Class: ${selectedClass || "All Classes"}   |   Section: ${selectedSection || "All"}   |   Category: ${memberType}   |   Total Count: ${filtered.length} Records   |   Status: ${effectiveStatus}`;
+      doc.text(metaText, 17, 31);
+
+      const tableRows = filtered.map((member, index) => {
         const displayId =
           memberType === "Student" ? (member.roll || member.id || "-") : (member.id || "-");
         const record = attendanceMap[`${date}:${member.id}`];
@@ -919,114 +962,114 @@ export default function Attendance() {
           (member as any).parentPhone ||
           "-";
 
-        return `
-        <tr style="background:${index % 2 === 1 ? '#f8fafc' : '#ffffff'};">
-          <td style="text-align:center;font-weight:bold;padding:6px 4px;border:1px solid #cbd5e1;font-size:10px;">${index + 1}</td>
-          <td style="text-align:center;font-weight:bold;padding:6px 4px;border:1px solid #cbd5e1;font-size:10px;font-family:monospace;">${displayId}</td>
-          <td style="font-weight:600;padding:6px 8px;border:1px solid #cbd5e1;font-size:11px;color:#0f172a;">${member.name}</td>
-          <td style="text-align:center;padding:6px 6px;border:1px solid #cbd5e1;font-size:10px;">${member.class || member.subject || "-"} - ${member.section || "A"}</td>
-          <td style="text-align:center;padding:6px 4px;border:1px solid #cbd5e1;">
-            <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:9.5px;font-weight:bold;background:${themeColor}15;color:${themeColor};border:1px solid ${themeColor}40;">
-              ${status}
-            </span>
-          </td>
-          <td style="text-align:center;font-family:monospace;font-size:10px;padding:6px 4px;border:1px solid #cbd5e1;">${inTime}</td>
-          <td style="text-align:center;font-family:monospace;font-size:10px;padding:6px 4px;border:1px solid #cbd5e1;">${outTime}</td>
-          <td style="font-size:9.5px;padding:6px 6px;border:1px solid #cbd5e1;color:#475569;">${remarks}</td>
-          <td style="text-align:center;font-family:monospace;font-size:10px;padding:6px 4px;border:1px solid #cbd5e1;">${phone}</td>
-        </tr>
-      `;
-      })
-      .join("");
+        return [
+          String(index + 1),
+          String(displayId),
+          String(member.name || "-"),
+          String(`${member.class || member.subject || "-"} - ${member.section || "A"}`),
+          String(status),
+          String(inTime),
+          String(outTime),
+          String(remarks),
+          String(phone),
+        ];
+      });
 
-    const reportHtml = `
-      <div style="font-family:'Inter', Arial, sans-serif; color:#1e293b; background:#ffffff; padding:16px 20px; width:100%; box-sizing:border-box;">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid ${themeColor}; padding-bottom:12px; margin-bottom:12px;">
-          <div>
-            <h1 style="font-size:19px; font-weight:800; color:#0f172a; margin:0 0 3px 0; text-transform:uppercase; letter-spacing:0.5px;">
-              ${settings.schoolName || "Institutional School"}
-            </h1>
-            <p style="font-size:11px; color:#64748b; margin:0; font-weight:500;">
-              Affiliated & Recognized • Daily Attendance Verification System
-            </p>
-          </div>
-          <div style="background:${themeColor}; color:#ffffff; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; text-align:center;">
-            ${sheetTitle}
-          </div>
-        </div>
+      autoTable(doc, {
+        startY: 36,
+        margin: { left: 14, right: 14 },
+        head: [
+          [
+            "#",
+            memberType === "Student" ? "Roll No" : "ID",
+            "Name",
+            "Class / Section",
+            "Status",
+            "In Time",
+            "Out Time",
+            "Reason / Remarks",
+            "Guardian Phone",
+          ],
+        ],
+        body: tableRows,
+        theme: "grid",
+        headStyles: {
+          fillColor: themeColor,
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          fontSize: 8.5,
+          halign: "center",
+          valign: "middle",
+          cellPadding: 2,
+        },
+        styles: {
+          fontSize: 8,
+          cellPadding: 2,
+          lineColor: [203, 213, 225],
+          lineWidth: 0.2,
+          valign: "middle",
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252],
+        },
+        columnStyles: {
+          0: { halign: "center", cellWidth: 10 },
+          1: { halign: "center", fontStyle: "bold", cellWidth: 22 },
+          2: { halign: "left", fontStyle: "bold", cellWidth: 50 },
+          3: { halign: "center", cellWidth: 32 },
+          4: { halign: "center", fontStyle: "bold", cellWidth: 26 },
+          5: { halign: "center", cellWidth: 22 },
+          6: { halign: "center", cellWidth: 22 },
+          7: { halign: "left", cellWidth: 55 },
+          8: { halign: "center", cellWidth: 30 },
+        },
+        didDrawPage: (data) => {
+          const pageCount = (doc.internal as any).getNumberOfPages();
+          doc.setFontSize(7.5);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(148, 163, 184);
+          doc.text(
+            `Page ${data.pageNumber} of ${pageCount} • Official Record • ${schoolName} • Printed: ${new Date().toLocaleDateString()}`,
+            14,
+            doc.internal.pageSize.getHeight() - 6,
+          );
+        },
+      });
 
-        <div style="display:flex; flex-wrap:wrap; gap:16px; background:#f8fafc; padding:8px 12px; border-radius:8px; font-size:11px; font-weight:600; color:#475569; margin-bottom:14px; border:1px solid #e2e8f0;">
-          <span><strong style="color:#0f172a;">Date:</strong> ${date}</span>
-          <span><strong style="color:#0f172a;">Class:</strong> ${selectedClass || "All Classes"}</span>
-          ${selectedSection ? `<span><strong style="color:#0f172a;">Section:</strong> ${selectedSection}</span>` : ""}
-          <span><strong style="color:#0f172a;">Category:</strong> ${memberType}</span>
-          <span><strong style="color:#0f172a;">Total Count:</strong> ${filtered.length} Records</span>
-          <span><strong style="color:#0f172a;">Filter:</strong> <span style="color:${themeColor}; font-weight:700;">${effectiveStatus}</span></span>
-        </div>
+      // Signature section on the last page
+      const lastY = (doc as any).lastAutoTable?.finalY || 160;
+      const pageHeight = doc.internal.pageSize.getHeight();
 
-        <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
-          <thead>
-            <tr style="background:#f1f5f9;">
-              <th style="width:28px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">#</th>
-              <th style="width:65px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">${memberType === "Student" ? "Roll No" : "ID"}</th>
-              <th style="font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 8px; border:1px solid #cbd5e1; text-align:left;">Name</th>
-              <th style="width:105px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 6px; border:1px solid #cbd5e1; text-align:center;">Class/Section</th>
-              <th style="width:90px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">Status</th>
-              <th style="width:70px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">In Time</th>
-              <th style="width:70px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">Out Time</th>
-              <th style="font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 6px; border:1px solid #cbd5e1; text-align:left;">Reason / Remarks</th>
-              <th style="width:105px; font-size:10px; font-weight:800; text-transform:uppercase; color:#334155; padding:7px 4px; border:1px solid #cbd5e1; text-align:center;">Guardian Phone</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml}
-          </tbody>
-        </table>
+      let signY = lastY + 22;
+      if (signY > pageHeight - 16) {
+        doc.addPage();
+        signY = 30;
+      }
 
-        <div style="display:flex; justify-content:space-between; margin-top:35px; padding-top:12px; font-size:11px; font-weight:700; color:#475569;">
-          <div style="width:180px; border-top:1px solid #94a3b8; text-align:center; padding-top:5px;">
-            Class Teacher / In-Charge
-          </div>
-          <div style="width:180px; border-top:1px solid #94a3b8; text-align:center; padding-top:5px;">
-            Attendance Supervisor
-          </div>
-          <div style="width:180px; border-top:1px solid #94a3b8; text-align:center; padding-top:5px;">
-            Principal / Headmaster
-          </div>
-        </div>
-      </div>
-    `;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.3);
 
-    const container = document.createElement("div");
-    container.style.position = "fixed";
-    container.style.left = "-9999px";
-    container.style.top = "0";
-    container.style.width = "1050px";
-    container.style.backgroundColor = "#ffffff";
-    container.innerHTML = reportHtml;
-    document.body.appendChild(container);
+      // 3 signature lines
+      doc.line(20, signY, 75, signY);
+      doc.text("Class Teacher / In-Charge", 47.5, signY + 4.5, { align: "center" });
 
-    const filenameLabel = String(effectiveStatus).replace(/\s+/g, "_");
-    const pdfFilename = `${filenameLabel}_List_${memberType}_${selectedClass ? selectedClass : "All"}_${date}.pdf`;
+      doc.line(120, signY, 175, signY);
+      doc.text("Attendance Supervisor", 147.5, signY + 4.5, { align: "center" });
 
-    try {
-      const opt = {
-        margin: [6, 6, 6, 6],
-        filename: pdfFilename,
-        image: { type: "jpeg" as const, quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: "mm" as const, format: "a4" as const, orientation: "landscape" as const },
-        pagebreak: { mode: ["avoid-all", "css", "legacy"] },
-      };
+      doc.line(220, signY, 275, signY);
+      doc.text("Principal / Headmaster", 247.5, signY + 4.5, { align: "center" });
 
-      await (html2pdf as any)().from(container).set(opt).save();
+      const filenameLabel = String(effectiveStatus).replace(/\s+/g, "_");
+      const pdfFilename = `${filenameLabel}_List_${memberType}_${selectedClass ? selectedClass : "All"}_${date}.pdf`;
+      doc.save(pdfFilename);
     } catch (err) {
       console.error("PDF export error:", err);
+      alert("Failed to export PDF. Printing list instead.");
       printSpecificList(targetStatus);
     } finally {
-      if (document.body.contains(container)) {
-        document.body.removeChild(container);
-      }
       setIsGeneratingPdf(false);
     }
   };
