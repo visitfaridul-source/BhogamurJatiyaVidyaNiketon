@@ -547,7 +547,7 @@ export default function Students() {
       s.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (s.roll && s.roll.toLowerCase().includes(searchTerm.toLowerCase()))
     )
-    .filter(s => selectedClassFilter ? (s.class || '').toLowerCase().replace(/\s+/g, '') === selectedClassFilter.toLowerCase().replace(/\s+/g, '') : true)
+    .filter(s => (selectedClassFilter && selectedClassFilter !== 'All' && selectedClassFilter !== 'All Classes') ? (s.class || '').toLowerCase().replace(/\s+/g, '') === selectedClassFilter.toLowerCase().replace(/\s+/g, '') : true)
     .filter(s => selectedSectionFilter ? (s.section || '').toUpperCase().trim() === selectedSectionFilter.toUpperCase().trim() : true)
     .filter(s => selectedStatusFilter ? s.status === selectedStatusFilter : true);
 

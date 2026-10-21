@@ -317,7 +317,7 @@ export default function WhatsAppMessages() {
 
     return students.filter(student => {
       // Class filter
-      if (selectedClass !== 'All' && student.class !== selectedClass) {
+      if (selectedClass !== 'All' && selectedClass !== 'All Classes' && (student.class || '').toLowerCase().trim() !== selectedClass.toLowerCase().trim()) {
         return false;
       }
 

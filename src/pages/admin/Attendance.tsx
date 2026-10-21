@@ -219,10 +219,11 @@ export default function Attendance() {
     let notRecordedCount = 0;
 
     if (memberType === "Student") {
-      const activeList = selectedClass
+      const isAllClasses = !selectedClass || selectedClass === "All" || selectedClass === "All Classes";
+      const activeList = !isAllClasses
         ? students.filter(
             (s) =>
-              s.class.toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
+              (s.class || "").toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
               (!selectedSection || (s.section || "").toUpperCase().trim() === selectedSection.toUpperCase().trim())
           )
         : students;
@@ -296,10 +297,11 @@ export default function Attendance() {
   const handleAutoMarkUnrecordedAbsent = async () => {
     try {
       setIsAutoMarking(true);
-      const targetStudents = selectedClass
+      const isAllClasses = !selectedClass || selectedClass === "All" || selectedClass === "All Classes";
+      const targetStudents = !isAllClasses
         ? students.filter(
             (s) =>
-              s.class.toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
+              (s.class || "").toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
               (!selectedSection || (s.section || "").toUpperCase().trim() === selectedSection.toUpperCase().trim())
           )
         : students;
@@ -329,10 +331,11 @@ export default function Attendance() {
   };
 
   const handleMarkAllPresent = async () => {
-    const targetStudents = selectedClass
+    const isAllClasses = !selectedClass || selectedClass === "All" || selectedClass === "All Classes";
+    const targetStudents = !isAllClasses
       ? students.filter(
           (s) =>
-            s.class.toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
+            (s.class || "").toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
             (!selectedSection || (s.section || "").toUpperCase().trim() === selectedSection.toUpperCase().trim())
         )
       : students;
@@ -426,11 +429,12 @@ export default function Attendance() {
   }, [classes, searchQuery]);
 
   const availableSections = useMemo(() => {
-    if (!selectedClass) return [];
+    const isAllClasses = !selectedClass || selectedClass === "All" || selectedClass === "All Classes";
+    if (isAllClasses) return [];
     const sections = new Set<string>();
     students.forEach((s) => {
       if (
-        s.class.toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
+        (s.class || "").toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
         s.section
       ) {
         sections.add(s.section.toUpperCase().trim());
@@ -440,10 +444,11 @@ export default function Attendance() {
   }, [students, selectedClass]);
 
   const filteredStudents = useMemo(() => {
+    const isAllClasses = !selectedClass || selectedClass === "All" || selectedClass === "All Classes";
     return students.filter((s) => {
-      const matchesClass = selectedClass
-        ? s.class.toLowerCase().trim() === selectedClass.toLowerCase().trim()
-        : true;
+      const matchesClass = isAllClasses
+        ? true
+        : (s.class || "").toLowerCase().trim() === selectedClass.toLowerCase().trim();
       const matchesSection = selectedSection
         ? (s.section || "").toUpperCase().trim() === selectedSection.toUpperCase().trim()
         : true;
@@ -628,10 +633,11 @@ export default function Attendance() {
 
     let membersToFilter: any[] = [];
     if (memberType === "Student") {
-      membersToFilter = selectedClass
+      const isAllClasses = !selectedClass || selectedClass === "All" || selectedClass === "All Classes";
+      membersToFilter = !isAllClasses
         ? students.filter(
             (s) =>
-              s.class.toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
+              (s.class || "").toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
               (!selectedSection || (s.section || "").toUpperCase().trim() === selectedSection.toUpperCase().trim()),
           )
         : students;
@@ -692,10 +698,11 @@ export default function Attendance() {
 
     let membersToFilter: any[] = [];
     if (memberType === "Student") {
-      membersToFilter = selectedClass
+      const isAllClasses = !selectedClass || selectedClass === "All" || selectedClass === "All Classes";
+      membersToFilter = !isAllClasses
         ? students.filter(
             (s) =>
-              s.class.toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
+              (s.class || "").toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
               (!selectedSection || (s.section || "").toUpperCase().trim() === selectedSection.toUpperCase().trim()),
           )
         : students;
@@ -856,10 +863,11 @@ export default function Attendance() {
 
     let membersToFilter: any[] = [];
     if (memberType === "Student") {
-      membersToFilter = selectedClass
+      const isAllClasses = !selectedClass || selectedClass === "All" || selectedClass === "All Classes";
+      membersToFilter = !isAllClasses
         ? students.filter(
             (s) =>
-              s.class.toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
+              (s.class || "").toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
               (!selectedSection || (s.section || "").toUpperCase().trim() === selectedSection.toUpperCase().trim()),
           )
         : students;
@@ -2941,11 +2949,10 @@ export default function Attendance() {
                           onChange={(e) => {
                             setSelectedClass(e.target.value);
                             setSelectedSection("");
-                            if (e.target.value) {
-                              setViewMode("detailed");
-                            }
+                            setViewMode("detailed");
                           }}
                         >
+                          <option value="">All Classes ({students.length})</option>
                           {classes.map((c) => (
                             <option key={c} value={c}>
                               {c}
@@ -4914,10 +4921,11 @@ function SeparateListsModal({
 
   const membersToFilter = useMemo(() => {
     if (memberType === "Student") {
-      return selectedClass
+      const isAllClasses = !selectedClass || selectedClass === "All" || selectedClass === "All Classes";
+      return !isAllClasses
         ? students.filter(
             (s) =>
-              s.class.toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
+              (s.class || "").toLowerCase().trim() === selectedClass.toLowerCase().trim() &&
               (!selectedSection || (s.section || "").toUpperCase().trim() === selectedSection.toUpperCase().trim()),
           )
         : students;
