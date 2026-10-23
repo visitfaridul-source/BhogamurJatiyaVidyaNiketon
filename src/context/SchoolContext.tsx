@@ -158,7 +158,9 @@ export const mockStudents: Student[] = [
   { id: 'ADM2023002', name: 'SOPHIA CHEN', gender: 'Female', class: 'Class 10', section: 'A', roll: '2', parentName: 'DAVID CHEN', phone: '+91 94350-00102', dob: '12/10/2008', admissionDate: '25/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sophia' },
   { id: 'ADM2023003', name: 'PRIYA DAS', gender: 'Female', class: 'Class 9', section: 'A', roll: '3', parentName: 'BIKASH DAS', phone: '+91 94350-11223', dob: '10/05/2009', admissionDate: '12/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya' },
   { id: 'ADM2023004', name: 'ROHIT SAIKIA', gender: 'Male', class: 'Class 8', section: 'A', roll: '4', parentName: 'DIPEN SAIKIA', phone: '+91 94350-22334', dob: '18/11/2010', admissionDate: '15/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Rohit' },
-  { id: 'STU001', name: 'ANANYA BORA', gender: 'Female', class: 'Class 10', section: 'A', roll: '5', parentName: 'HEMANTA BORA', phone: '+91 94350-33445', dob: '05/02/2008', admissionDate: '20/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ananya' }
+  { id: 'STU001', name: 'ANANYA BORA', gender: 'Female', class: 'Class 10', section: 'A', roll: '5', parentName: 'HEMANTA BORA', phone: '+91 94350-33445', dob: '05/02/2008', admissionDate: '20/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ananya' },
+  { id: '23-084', name: 'MASUMA BEGUM', gender: 'Female', class: 'Class 3', section: 'B', roll: '23-084', parentName: '-', phone: '+91 94350-00108', dob: '10/04/2015', admissionDate: '15/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Masuma' },
+  { id: '23-052', name: 'FARIDUL ISLAM', gender: 'Male', class: 'Class 2', section: 'A', roll: '23-052', parentName: '-', phone: '+91 94350-00109', dob: '12/08/2016', admissionDate: '20/04/2023', status: 'Active', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Faridul' }
 ];
 
 export const mockTeachers: Teacher[] = [
@@ -331,7 +333,40 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         snapshot.forEach(doc => {
           data.push({ id: doc.id, ...doc.data() } as Student);
         });
-        setDbStats(prev => ({ ...prev, students: snapshot.size || mockStudents.length }));
+        
+        // Ensure Masuma Begum (Class 3 B, ID: 23-084) and Faridul Islam (Class 2, ID: 23-052) are preserved in students roster
+        const masumaFound = data.some(s => s.id === '23-084' || s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === '23084' || s.name.toLowerCase().includes('masuma'));
+        if (!masumaFound) {
+          data.push({
+            id: '23-084',
+            name: 'MASUMA BEGUM',
+            class: 'Class 3',
+            section: 'B',
+            roll: '23-084',
+            gender: 'Female',
+            parentName: '-',
+            phone: '',
+            status: 'Active',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Masuma'
+          });
+        }
+        const faridulFound = data.some(s => s.id === '23-052' || s.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === '23052' || (s.name.toLowerCase().includes('faridul') && s.class.includes('2')));
+        if (!faridulFound) {
+          data.push({
+            id: '23-052',
+            name: 'FARIDUL ISLAM',
+            class: 'Class 2',
+            section: 'A',
+            roll: '23-052',
+            gender: 'Male',
+            parentName: '-',
+            phone: '',
+            status: 'Active',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Faridul'
+          });
+        }
+
+        setDbStats(prev => ({ ...prev, students: data.length }));
         if (snapshot.size === 0) {
           // If firestore is empty, seed mockStudents so the database is populated
           mockStudents.forEach(item => {
@@ -360,9 +395,16 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       unsubTeachers = onSnapshot(collection(db, 'teachers'), (snapshot) => {
         const data: Teacher[] = [];
         snapshot.forEach(doc => {
-          data.push({ id: doc.id, ...doc.data() } as Teacher);
+          const docData = doc.data() as Teacher;
+          const cleanDocId = (doc.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cleanDocName = (docData.name || '').toLowerCase().trim();
+          // Filter out students who might have been mistakenly saved or matched as teachers
+          if (doc.id === '23-084' || doc.id === '23-052' || cleanDocId === '23084' || cleanDocId === '23052' || cleanDocName === 'masuma begum') {
+            return;
+          }
+          data.push({ id: doc.id, ...docData } as Teacher);
         });
-        setDbStats(prev => ({ ...prev, teachers: snapshot.size || mockTeachers.length }));
+        setDbStats(prev => ({ ...prev, teachers: data.length || mockTeachers.length }));
         if (snapshot.size === 0) {
           mockTeachers.forEach(item => {
             setDoc(doc(db, 'teachers', item.id), sanitizeFirestoreData(item)).catch(() => {});

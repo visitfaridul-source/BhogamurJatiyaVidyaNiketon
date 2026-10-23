@@ -373,9 +373,17 @@ export default function FaceScanner({
       setIsFaceMatcherLoading(true);
       const labeledFaceDescriptors: faceapi.LabeledFaceDescriptors[] = [];
 
+      const validTeachers = teachers.filter(t => 
+        t.id !== '23-084' && 
+        t.id !== '23-052' && 
+        (t.id || '').replace(/[^a-zA-Z0-9]/g, '') !== '23084' &&
+        (t.id || '').replace(/[^a-zA-Z0-9]/g, '') !== '23052' &&
+        (t.name || '').toLowerCase().trim() !== 'masuma begum'
+      );
+
       let allPeople = [
         ...students.map(s => ({ id: s.id, name: s.name, type: 'Student', class: s.class, photoUrl: s.avatar || '' })),
-        ...teachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher', class: '', photoUrl: t.avatar || '' }))
+        ...validTeachers.map(t => ({ id: t.id, name: t.name, type: 'Teacher', class: '', photoUrl: t.avatar || '' }))
       ];
 
       if (dictionaryFilterType !== "All") {
@@ -573,7 +581,13 @@ export default function FaceScanner({
                 })),
               );
               
-              const currentTeachers = latestTeachers.current;
+              const currentTeachers = (latestTeachers.current || []).filter(t => 
+                t.id !== '23-084' && 
+                t.id !== '23-052' && 
+                (t.id || '').replace(/[^a-zA-Z0-9]/g, '') !== '23084' &&
+                (t.id || '').replace(/[^a-zA-Z0-9]/g, '') !== '23052' &&
+                (t.name || '').toLowerCase().trim() !== 'masuma begum'
+              );
               candidates.push(
                 ...currentTeachers.map((t) => ({
                   id: t.id,
